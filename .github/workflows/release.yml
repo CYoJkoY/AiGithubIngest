@@ -4,18 +4,13 @@ on:
   push:
     tags:
       - "v*"
-  workflow_dispatch:
-    inputs:
-      tag_name:
-        description: "Release Tag"
-        required: true
-        type: string
 
 permissions:
   contents: write
 
 jobs:
   build-and-release:
+    name: Build & Publish Release
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -25,8 +20,6 @@ jobs:
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
-        with:
-          run_install: false
 
       - name: Setup Node.js environment
         uses: actions/setup-node@v4
@@ -42,7 +35,7 @@ jobs:
 
       - name: Verify Tag Version matches package.json
         run: |
-          RAW_TAG="${{ inputs.tag_name || github.ref_name }}"
+          RAW_TAG="${{ github.ref_name }}"
           TAG_VERSION="${RAW_TAG#v}"
           PKG_VERSION=$(node -p "require('./package.json').version")
           MANIFEST_VERSION=$(node -p "require('./manifest.json').version")
@@ -95,7 +88,7 @@ jobs:
         env:
           CRX_PRIVATE_KEY: ${{ secrets.CRX_PRIVATE_KEY }}
         run: |
-          TAG_NAME="${{ inputs.tag_name || github.ref_name }}"
+          TAG_NAME="${{ github.ref_name }}"
           ARCHIVE_NAME="ai-github-ingest-${TAG_NAME}.zip"
           CRX_NAME="ai-github-ingest-${TAG_NAME}.crx"
 
@@ -103,37 +96,29 @@ jobs:
           cd dist
           zip -r "../${ARCHIVE_NAME}" ./* -x "*.DS_Store*"
           cd ..
-
-          if [ -z "$CRX_PRIVATE_KEY" ]; then
-            echo "::error::CRX_PRIVATE_KEY 未配置，无法保证 Extension ID 稳定性，终止打包"
-            exit 1
-          fi
-
-          echo "🔑 使用 CRX_PRIVATE_KEY 签名打包 CRX3..."
-          trap 'rm -f key.pem' EXIT
-          echo "$CRX_PRIVATE_KEY" > key.pem
-          npx --yes crx3 pack dist -p key.pem -o "${CRX_NAME}"
-          rm -f key.pem
-
           sha256sum "${ARCHIVE_NAME}" > "${ARCHIVE_NAME}.sha256"
-          sha256sum "${CRX_NAME}" > "${CRX_NAME}.sha256"
 
-          echo "archive_name=${ARCHIVE_NAME}" >> $GITHUB_OUTPUT
-          echo "checksum_name=${ARCHIVE_NAME}.sha256" >> $GITHUB_OUTPUT
-          echo "crx_name=${CRX_NAME}" >> $GITHUB_OUTPUT
-          echo "crx_checksum_name=${CRX_NAME}.sha256" >> $GITHUB_OUTPUT
-          echo "release_tag=${TAG_NAME}" >> $GITHUB_OUTPUT
+          if [ -n "$CRX_PRIVATE_KEY" ]; then
+            echo "🔑 使用 CRX_PRIVATE_KEY 签名打包 CRX3..."
+            trap 'rm -f key.pem' EXIT
+            echo "$CRX_PRIVATE_KEY" > key.pem
+            npx --yes crx3 pack dist -p key.pem -o "${CRX_NAME}"
+            rm -f key.pem
+            sha256sum "${CRX_NAME}" > "${CRX_NAME}.sha256"
+          else
+            echo "::warning::未检测到 CRX_PRIVATE_KEY Secret，已跳过 CRX 打包，仅发布 ZIP 产物"
+          fi
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.package.outputs.release_tag }}
-          name: "Release ${{ steps.package.outputs.release_tag }}"
+          tag_name: ${{ github.ref_name }}
+          name: "Release ${{ github.ref_name }}"
           files: |
-            ${{ steps.package.outputs.archive_name }}
-            ${{ steps.package.outputs.checksum_name }}
-            ${{ steps.package.outputs.crx_name }}
-            ${{ steps.package.outputs.crx_checksum_name }}
+            ai-github-ingest-${{ github.ref_name }}.zip
+            ai-github-ingest-${{ github.ref_name }}.zip.sha256
+            ai-github-ingest-${{ github.ref_name }}*.crx
+            ai-github-ingest-${{ github.ref_name }}*.crx.sha256
           draft: false
-          prerelease: ${{ contains(steps.package.outputs.release_tag, '-alpha') || contains(steps.package.outputs.release_tag, '-beta') || contains(steps.package.outputs.release_tag, '-rc') }}
+          prerelease: ${{ contains(github.ref_name, '-alpha') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
           generate_release_notes: true

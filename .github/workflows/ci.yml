@@ -43,8 +43,26 @@ jobs:
       - name: Strict Typecheck
         run: pnpm exec tsc --noEmit
 
+      - name: Verify Manifest & Package Version Consistency
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          MANIFEST_VERSION=$(node -p "require('./manifest.json').version")
+          echo "🔍 检查版本同步状态: package.json (${PKG_VERSION}) vs manifest.json (${MANIFEST_VERSION})"
+          if [ "$PKG_VERSION" != "$MANIFEST_VERSION" ]; then
+            echo "::error::manifest.json 版本 (${MANIFEST_VERSION}) 与 package.json 版本 (${PKG_VERSION}) 不一致！请更新并保持同步提交。"
+            exit 1
+          fi
+
       - name: Build Extension Artifacts
         run: pnpm run build
+
+      - name: Verify Clean Worktree After Build
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::构建触发了非预期的工作区变更（例如本地隐式补正版本），请在提交前保持工作区干净："
+            git status --porcelain
+            exit 1
+          fi
 
       - name: Archive Extension Zip
         run: |
