@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 840 220" width="100%" height="100%">
+  <defs>
+    <style>
+      .card-bg { fill: #f8fafc; stroke: #e2e8f0; stroke-width: 1.5; }
+      .icon-box { fill: #e0f2fe; stroke: #38bdf8; stroke-width: 1.5; }
+      .icon-stroke { stroke: #0284c7; }
+      .title-text { fill: #0f172a; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 20px; font-weight: 700; letter-spacing: 0.02em; }
+      .desc-text { fill: #64748b; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; }
+      .btn-bg { fill: #0284c7; }
+      .btn-text { fill: #ffffff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; font-weight: 600; }
+      .heart-icon { fill: #ffffff; }
+
+      @media (prefers-color-scheme: dark) {
+        .card-bg { fill: #0f172a; stroke: #334155; }
+        .icon-box { fill: #1e293b; stroke: #0284c7; }
+        .icon-stroke { stroke: #38bdf8; }
+        .title-text { fill: #f8fafc; }
+        .desc-text { fill: #94a3b8; }
+        .btn-bg { fill: #0284c7; }
+      }
+    </style>
+  </defs>
+
+  <!-- Container -->
+  <rect class="card-bg" x="2" y="2" width="836" height="216" rx="16" />
+
+  <!-- Left Icon Visual (Repository + Lightning/AI Ingest) -->
+  <g transform="translate(32, 42)">
+    <rect class="icon-box" x="0" y="0" width="76" height="76" rx="16" />
+    <path class="icon-stroke" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+          d="M26 44V26a4 4 0 0 1 4-4h16a4 4 0 0 1 4 4v24a4 4 0 0 1-4 4H30a4 4 0 0 1-4-4z" />
+    <polyline class="icon-stroke" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+              points="42 22 42 30 50 30" />
+    <polygon class="icon-stroke" fill="#38bdf8" fill-opacity="0.3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+             points="39 34 33 44 38 44 37 50 43 40 38 40 39 34" />
+  </g>
+
+  <!-- Content Text -->
+  <g transform="translate(132, 64)">
+    <text class="title-text" x="0" y="0">SUPPORT AI GITHUB INGEST</text>
+    <text class="desc-text" x="0" y="28">Sustain zero-proxy, client-side repository ingestion &amp; browser extension maintenance.</text>
+  </g>
+
+  <!-- Action Button Pill -->
+  <g transform="translate(132, 132)">
+    <rect class="btn-bg" x="0" y="0" width="220" height="42" rx="21" />
+    <!-- Heart Icon inside Button -->
+    <path class="heart-icon" transform="translate(24, 13) scale(0.65)"
+          d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+    <text class="btn-text" x="48" y="26">Sponsor on GitHub</text>
+  </g>
+</svg>
