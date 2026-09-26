@@ -62,22 +62,45 @@ jobs:
           done
           echo "✅ 产物契约校验通过"
 
-      - name: Package extension archive
+      - name: Package extension archive (ZIP & CRX)
         id: package
+        env:
+          CRX_PRIVATE_KEY: ${{ secrets.CRX_PRIVATE_KEY }}
         run: |
           TAG_NAME="${{ github.ref_name }}"
           ARCHIVE_NAME="ai-github-ingest-${TAG_NAME}.zip"
+          CRX_NAME="ai-github-ingest-${TAG_NAME}.crx"
 
-          # 进入 dist 目录打包，确保 manifest.json 位于 zip 顶层根目录
+          # 1. 打包 ZIP 文件（确保 manifest.json 位于解压根目录）
+          echo "📦 打包 ZIP 产物..."
           cd dist
           zip -r "../${ARCHIVE_NAME}" ./* -x "*.DS_Store*"
           cd ..
 
-          # 生成 SHA-256 校验凭据
+          # 2. 打包 CRX 文件
+          echo "📦 打包 CRX 产物..."
+          # 设置异常与退出陷阱，防御式清理私钥，防止泄露
+          trap 'rm -f key.pem' EXIT
+
+          if [ -n "$CRX_PRIVATE_KEY" ]; then
+            echo "🔑 使用配置的 CRX_PRIVATE_KEY 签名..."
+            echo "$CRX_PRIVATE_KEY" > key.pem
+          else
+            echo "⚠️ 未配置 CRX_PRIVATE_KEY，生成临时 RSA 2048 私钥进行签名构建..."
+            openssl genrsa -out key.pem 2048
+          fi
+
+          npx --yes crx pack dist -p key.pem -o "${CRX_NAME}"
+          rm -f key.pem
+
+          # 3. 生成 SHA-256 校验凭据
           sha256sum "${ARCHIVE_NAME}" > "${ARCHIVE_NAME}.sha256"
+          sha256sum "${CRX_NAME}" > "${CRX_NAME}.sha256"
 
           echo "archive_name=${ARCHIVE_NAME}" >> $GITHUB_OUTPUT
           echo "checksum_name=${ARCHIVE_NAME}.sha256" >> $GITHUB_OUTPUT
+          echo "crx_name=${CRX_NAME}" >> $GITHUB_OUTPUT
+          echo "crx_checksum_name=${CRX_NAME}.sha256" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -86,6 +109,8 @@ jobs:
           files: |
             ${{ steps.package.outputs.archive_name }}
             ${{ steps.package.outputs.checksum_name }}
+            ${{ steps.package.outputs.crx_name }}
+            ${{ steps.package.outputs.crx_checksum_name }}
           draft: false
           prerelease: ${{ contains(github.ref, '-alpha') || contains(github.ref, '-beta') || contains(github.ref, '-rc') }}
           generate_release_notes: true
