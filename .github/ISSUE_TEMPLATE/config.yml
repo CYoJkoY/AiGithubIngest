@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: GitHub Discussions
+    url: https://github.com/CYoJkoY/AiGithubIngest/discussions
+    about: Ask questions, share ideas, and discuss general workflows.
+  - name: Documentation & Architecture
+    url: https://github.com/CYoJkoY/AiGithubIngest#readme
+    about: Review supported platforms, architectural boundaries, and configuration details.

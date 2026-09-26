@@ -1,0 +1,123 @@
+name: "Bug Report"
+description: "Report an unexpected error, extraction failure, token estimation bug, or DOM injection defect."
+title: "[Bug]: <one-line summary>"
+labels: ["type: bug", "status: triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting an issue! Please verify that the target site is enabled in the extension popup and that you are using the latest release before submitting.
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Target AI Platform
+      description: On which AI chat platform did the issue occur?
+      options:
+        - ChatGPT (chatgpt.com / chat.openai.com)
+        - Claude (claude.ai)
+        - Google Gemini (gemini.google.com)
+        - DeepSeek (chat.deepseek.com)
+        - Poe (poe.com)
+        - Perplexity (perplexity.ai)
+        - Kimi (kimi.moonshot.cn)
+        - ChatGLM (chatglm.cn)
+        - Tongyi Qianwen (tongyi.aliyun.com)
+        - Microsoft Copilot (copilot.microsoft.com)
+        - Custom Whitelisted Domain
+        - Standalone Web Interface (index.html)
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: repo-url
+    attributes:
+      label: Target GitHub Repository URL
+      description: The repository URL, ref, or subpath that triggered the issue (redact sensitive identifiers if testing a private repository).
+      placeholder: "e.g., https://github.com/owner/repo or owner/repo/tree/main/src"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: browser
+    attributes:
+      label: Browser Environment
+      description: Which Chromium-based browser are you running?
+      options:
+        - Google Chrome
+        - Microsoft Edge
+        - Brave Browser
+        - Arc
+        - Vivaldi
+        - Other Chromium Variant
+    validations:
+      required: true
+
+  - type: dropdown
+    id: token-status
+    attributes:
+      label: GitHub Token Configuration
+      description: Is a GitHub Personal Access Token configured in the extension popup?
+      options:
+        - None / Anonymous access (subject to 60 req/h rate limit)
+        - Classic Personal Access Token (with 'repo' scope)
+        - Fine-grained Personal Access Token
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: mounting-outcome
+    attributes:
+      label: UniversalEditor Mounting Outcome
+      description: What happened in the input area after pasting the repository link?
+      options:
+        - label: "Toast showed success and mounted a native Markdown file attachment (.md)"
+        - label: "Failed to mount file attachment, but fell back to ASCII tree and digest text at the cursor"
+        - label: "Reverted to plain URL paste without parsing"
+        - label: "Page completely froze or hung (anti-freeze fallback did not engage)"
+        - label: "Toast displayed an error notification banner"
+
+  - type: textarea
+    id: actual-behavior
+    attributes:
+      label: Observed Behavior & Error Logs
+      description: Provide a detailed description of the error, including Toast error messages and DevTools Console / Background Service Worker logs.
+      placeholder: |
+        - Toast message:
+        - DevTools Console logs:
+        - Background Service Worker logs (chrome://extensions):
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected Behavior
+      description: Describe what you expected to happen instead.
+      placeholder: "The repository should decompress and attach as owner_repo.md in the prompt area..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction-steps
+    attributes:
+      label: Steps to Reproduce
+      description: List the minimal, reproducible steps to trigger the issue.
+      value: |
+        1. Open AI platform: `...`
+        2. Copy GitHub repository link: `...`
+        3. Paste into the chat input area (Ctrl+V / Cmd+V)
+        4. Observe the failure:
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Validation Checklist
+      options:
+        - label: "I have verified that the repository URL exists and is publicly accessible (or valid PAT permissions are set)."
+          required: true
+        - label: "I have searched open and closed issues to ensure this problem has not already been reported."
+          required: true

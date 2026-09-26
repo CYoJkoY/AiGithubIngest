@@ -1,0 +1,58 @@
+name: "Site Support Request"
+description: "Propose adding a new AI chat platform to the default built-in policy or report DOM mounting compatibility for a specific domain."
+title: "[Site Support]: Support <Platform Name / Domain>"
+labels: ["type: site-support", "status: triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        AiGithubIngest natively activates on platforms like ChatGPT, Claude, and Gemini[cite: 1, 4]. If you regularly work on another AI interface, submit the platform details below.
+
+  - type: input
+    id: site-name
+    attributes:
+      label: Platform Name
+      placeholder: "e.g., Mistral Le Chat, Dify, FastGPT"
+    validations:
+      required: true
+
+  - type: input
+    id: site-domain
+    attributes:
+      label: Platform Domain or URL
+      placeholder: "e.g., chat.mistral.ai"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: native-upload-support
+    attributes:
+      label: Native File Upload Support
+      description: Does this platform's input area natively accept file attachments or drag-and-drop files?
+      options:
+        - "Yes (features an attachment button or accepts drag-and-drop files)"
+        - "No (text-only prompt area, requires cursor text insertion fallback)"
+        - "Unsure"
+    validations:
+      required: true
+
+  - type: textarea
+    id: editor-dom-info
+    attributes:
+      label: Editor DOM Characteristics (Optional)
+      description: If familiar with browser DevTools, inspect the chat input area and share node details (e.g., textarea, contenteditable div, nearby file inputs).
+      placeholder: |
+        - Input element: `<div contenteditable="true" role="textbox" ...>`
+        - Nearby file input: `<input type="file" accept=".txt,.md" ...>`
+        - Manual file drag-and-drop outcome:
+    validations:
+      required: false
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation & Context
+      description: Explain why this platform should be integrated into default built-in support.
+      placeholder: "This platform is an open-source self-hosted model interface widely used by..."
+    validations:
+      required: true

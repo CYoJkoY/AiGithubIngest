@@ -1,0 +1,55 @@
+name: "Feature Request"
+description: "Suggest a new capability, file filter enhancement, token estimator improvement, or UX optimization."
+title: "[Feature]: <short summary>"
+labels: ["type: feature", "status: triage"]
+body:
+  - type: dropdown
+    id: category
+    attributes:
+      label: Affected Subsystem
+      options:
+        - Repository Fetching & Streaming Decompression (github-engine / ingest / fflate)
+        - Path Ignore & Pattern Filtering (file-filter / glob rules)
+        - Directory Tree Builder & Output Formatter (tree-builder / output-formatter)
+        - Heuristic Token Estimator (token-estimator)
+        - DOM & Universal Editor Mounting Driver (universal-editor)
+        - Extension Popup & Storage Settings (popup / policy / storage)
+        - Standalone Ingestion Web UI (index.html / main.ts)
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem-statement
+    attributes:
+      label: Problem Statement
+      description: What limitation or friction do you encounter with the current implementation?
+      placeholder: "When ingesting repositories with monorepo structures or specific lockfiles..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: Proposed Solution
+      description: Describe the expected behavior and implementation direction.
+      placeholder: "Add default exclusion patterns in file-filter.ts for..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives-considered
+    attributes:
+      label: Alternatives Considered
+      description: Are there any workarounds or alternative approaches you have evaluated?
+      placeholder: "Currently, users must manually configure exclusion tokens or delete sections..."
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Provide mockups, references, sample repositories, or relevant technical documentation.
+    validations:
+      required: false
