@@ -3,19 +3,16 @@
   "name": "AI GitHub Ingest Engine",
   "version": "1.0.0",
   "description": "在 AI 站点粘贴 GitHub 链接时自动解析并注入代码树结构，支持自定义域名白名单。",
-  "permissions": [
-    "storage",
-    "tabs"
-  ],
+  "permissions": ["activeTab", "scripting", "storage"],
   "host_permissions": [
-    "https://gitingest.com/*"
+    "https://gitingest.com/*",
+    "https://*.gitingest.com/*"
   ],
   "action": {
     "default_popup": "popup.html"
   },
   "background": {
-    "service_worker": "background.js",
-    "type": "module"
+    "service_worker": "dist/background/index.js"
   },
   "content_scripts": [
     {

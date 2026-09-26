@@ -1,34 +1,45 @@
-import { ToastVariant } from "../types";
+export type ToastType = "info" | "success" | "error";
 
-const TOAST_ID = "__ai_github_ingest_toast__";
-let timerId: number | null = null;
+export class Toast {
+  private static container: HTMLElement | null = null;
 
-const createToastElement = (): HTMLElement => {
-  const el = document.createElement("div");
-  el.id = TOAST_ID;
-  el.className = "ai-ingest-toast";
-  document.body.appendChild(el);
-  return el;
-};
-
-export const showToast = (
-  message: string,
-  variant: ToastVariant = "info",
-): void => {
-  const toast = document.getElementById(TOAST_ID) || createToastElement();
-
-  if (timerId !== null) {
-    window.clearTimeout(timerId);
-    timerId = null;
+  private static getOrCreateContainer(): HTMLElement {
+    if (!this.container || !document.body.contains(this.container)) {
+      this.container = document.createElement("div");
+      this.container.className = "ai-github-ingest-toast-container";
+      document.body.appendChild(this.container);
+    }
+    return this.container;
   }
 
-  toast.className = `ai-ingest-toast ai-ingest-toast--${variant}`;
-  toast.textContent = message;
-  toast.setAttribute("aria-hidden", "false");
+  public static show(
+    message: string,
+    type: ToastType = "info",
+    duration: number = 3000,
+  ): void {
+    const container = this.getOrCreateContainer();
 
-  if (variant !== "info") {
-    timerId = window.setTimeout(() => {
-      toast.setAttribute("aria-hidden", "true");
-    }, 4000);
+    const toast = document.createElement("div");
+    toast.className = `ai-github-ingest-toast ${type}`;
+    toast.textContent = message;
+
+    container.appendChild(toast);
+
+    // 触发渐入平移动画
+    requestAnimationFrame(() => {
+      toast.classList.add("show");
+    });
+
+    // 定时移除
+    setTimeout(() => {
+      toast.classList.remove("show");
+      setTimeout(() => {
+        toast.remove();
+        if (container.childNodes.length === 0) {
+          container.remove();
+          Toast.container = null;
+        }
+      }, 250);
+    }, duration);
   }
-};
+}

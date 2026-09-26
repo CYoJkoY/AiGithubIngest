@@ -1,93 +1,40 @@
-import { SupportedEditor, Result } from "../types";
-import { ok, err } from "../core/result";
-import { purgeExistingChips } from "./purifier";
+/**
+ * 现代输入框增量安全写入器
+ * 适配 textarea、input 以及 contenteditable (ProseMirror / Monaco / Slate)
+ */
+export class UniversalEditor {
+  /**
+   * 将文本安全插入到当前光标所在位置，绝不覆写已存在的前后文本
+   */
+  public static insertAtCursor(text: string): boolean {
+    const activeEl = document.activeElement as HTMLElement | null;
+    if (!activeEl) return false;
 
-export const detectUniversalEditor = (
-  target: EventTarget | null,
-): SupportedEditor | null => {
-  if (!(target instanceof Element)) return null;
-
-  // 1. 匹配标准 Textarea 容器 (如 ChatGPT, DeepSeek)
-  const textarea = target.closest("textarea");
-  if (
-    textarea instanceof HTMLTextAreaElement &&
-    !textarea.disabled &&
-    !textarea.readOnly
-  ) {
-    return { kind: "textarea", element: textarea };
-  }
-
-  // 2. 匹配富文本容器 (如 Gemini, Claude, Quill, ProseMirror)
-  const editableTarget = target.closest(
-    '[contenteditable="true"], rich-textarea, .ProseMirror, .ql-editor',
-  );
-  if (editableTarget instanceof HTMLElement) {
-    const actual = editableTarget.isContentEditable
-      ? editableTarget
-      : editableTarget.querySelector<HTMLElement>('[contenteditable="true"]');
-    if (actual) return { kind: "contenteditable", element: actual };
-  }
-
-  return null;
-};
-
-export const writeUniversalText = (
-  editor: SupportedEditor,
-  text: string,
-): Result<void, Error> => {
-  try {
-    if (editor.kind === "textarea") {
-      const el = editor.element;
-      el.focus();
-
-      const start = el.selectionStart ?? 0;
-      const end = el.selectionEnd ?? el.value.length;
-      el.setRangeText(text, start, end, "end");
-
-      el.dispatchEvent(
-        new InputEvent("input", {
-          bubbles: true,
-          inputType: "insertText",
-          data: text,
-        }),
-      );
-      el.dispatchEvent(new Event("change", { bubbles: true }));
-      return ok(undefined);
+    // 优先使用标准命令，自动保留撤销历史，兼容各种 React 受控组件与富文本编辑器
+    const success = document.execCommand("insertText", false, text);
+    if (success) {
+      return true;
     }
 
-    const el = editor.element;
-    el.focus();
-    purgeExistingChips(el);
+    // 针对原生 textarea/input 在特定环境下 execCommand 失效的降级处理
+    if (
+      activeEl instanceof HTMLTextAreaElement ||
+      activeEl instanceof HTMLInputElement
+    ) {
+      const start = activeEl.selectionStart ?? activeEl.value.length;
+      const end = activeEl.selectionEnd ?? activeEl.value.length;
+      const originalValue = activeEl.value;
 
-    const selection = window.getSelection();
-    if (selection) {
-      const range = document.createRange();
-      range.selectNodeContents(el);
-      selection.removeAllRanges();
-      selection.addRange(range);
+      activeEl.value =
+        originalValue.slice(0, start) + text + originalValue.slice(end);
+      const newCursorPos = start + text.length;
+      activeEl.setSelectionRange(newCursorPos, newCursorPos);
+
+      activeEl.dispatchEvent(new Event("input", { bubbles: true }));
+      activeEl.dispatchEvent(new Event("change", { bubbles: true }));
+      return true;
     }
 
-    const inserted = document.execCommand("insertText", false, text);
-
-    if (!inserted || !el.textContent?.includes(text.slice(0, 15))) {
-      el.innerHTML = "";
-      const paragraph = document.createElement("p");
-      paragraph.textContent = text;
-      el.appendChild(paragraph);
-
-      el.dispatchEvent(
-        new InputEvent("input", {
-          bubbles: true,
-          cancelable: true,
-          inputType: "insertText",
-          data: text,
-        }),
-      );
-      el.dispatchEvent(new Event("change", { bubbles: true }));
-    }
-
-    return ok(undefined);
-  } catch (error) {
-    return err(error instanceof Error ? error : new Error("写入内容失败"));
+    return false;
   }
-};
+}
