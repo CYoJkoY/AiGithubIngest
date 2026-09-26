@@ -1,6 +1,7 @@
 {
   "name": "ai-github-ingest-extension",
-  "version": "1.0.0",
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.6.1",
   "description": "Native TypeScript Chrome extension to seamlessly ingest GitHub repositories via Gitingest into AI platforms.",
   "type": "module",
   "private": true,
