@@ -1,9 +1,13 @@
 {
   "manifest_version": 3,
   "name": "AI GitHub Ingest Engine",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "在 AI 站点粘贴 GitHub 链接时，纯本地解析并注入结构化代码上下文，无需依赖第三方在线服务。",
-  "permissions": ["activeTab", "scripting", "storage"],
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
   "host_permissions": [
     "https://api.github.com/*",
     "https://codeload.github.com/*",
@@ -18,9 +22,15 @@
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"],
-      "css": ["toast.css"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "toast.css"
+      ],
       "run_at": "document_idle"
     }
   ]
