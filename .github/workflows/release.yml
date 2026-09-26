@@ -45,8 +45,8 @@ jobs:
           echo "🔍 正在进行 Manifest V3 产物完整性防御审查..."
           REQUIRED_FILES=(
             "dist/manifest.json"
-            "dist/background/index.js"
-            "dist/content/index.js"
+            "dist/background.js"
+            "dist/content.js"
             "dist/popup.html"
             "dist/popup.js"
             "dist/popup.css"
