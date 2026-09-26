@@ -58,6 +58,19 @@ body {
   margin-bottom: 6px;
 }
 
+.brand-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.brand-icon {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  display: block;
+}
+
 .title {
   font-weight: 600;
   color: #cbd5e1;

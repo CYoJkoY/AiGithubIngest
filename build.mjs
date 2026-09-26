@@ -5,6 +5,7 @@ import {
   existsSync,
   readFileSync,
   writeFileSync,
+  readdirSync,
 } from "node:fs";
 import { resolve, dirname } from "node:path";
 
@@ -54,10 +55,16 @@ try {
     { from: "src/ui/toast.css", to: "dist/toast.css" },
   ];
 
-  // 检查可选图标文件
-  const optionalIcon = "src/assets/icon.svg";
-  if (existsSync(resolve(optionalIcon))) {
-    staticAssets.push({ from: optionalIcon, to: "dist/assets/icon.svg" });
+  // 4. 扫描并复制 src/assets/ 下的所有静态图像与图标
+  const assetsDir = resolve("src/assets");
+  if (existsSync(assetsDir)) {
+    const assetFiles = readdirSync(assetsDir);
+    for (const file of assetFiles) {
+      staticAssets.push({
+        from: `src/assets/${file}`,
+        to: `dist/assets/${file}`,
+      });
+    }
   }
 
   for (const assetEntry of staticAssets) {
