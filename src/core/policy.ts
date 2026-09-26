@@ -11,11 +11,12 @@ export const BUILTIN_AI_DOMAINS: readonly string[] = [
   "perplexity.ai",
   "copilot.microsoft.com",
 
-  // 国内主流大模型（补全通义千问新版、豆包、腾讯元宝、智谱）
+  // 国内主流大模型（深度覆盖通义千问新老版、豆包、腾讯元宝、智谱清言所有主子域名）
   "kimi.moonshot.cn",
   "chatglm.cn",
   "chat.z.ai",
   "z.ai",
+  "bigmodel.cn",
   "tongyi.aliyun.com",
   "chat.qwen.ai",
   "qwen.ai",

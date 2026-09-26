@@ -3,7 +3,8 @@ export class UniversalEditor {
   private static lastUploadKey = "";
 
   /**
-   * 校验 file input 是否接受指定文件类型（兼容处理仅写了 .txt/.doc/.pdf 等通用文档而未显式声明 .md 的 AI 平台）
+   * 校验 file input 是否具备接收文本/文档附件的能力
+   * 采用宽松防御策略：只要不是明确仅限图片/音视频的输入框，均允许挂载 Markdown
    */
   private static isValidFileInput(
     input: HTMLInputElement,
@@ -13,8 +14,22 @@ export class UniversalEditor {
     const accept = input.accept?.trim();
     if (!accept) return true;
 
-    const acceptPatterns = accept
-      .toLowerCase()
+    const acceptLower = accept.toLowerCase();
+
+    // 排除明确仅接受图片、音频、视频的专用控件（如头像上传、语音输入）
+    const isPureMedia =
+      (acceptLower.includes("image/") ||
+        acceptLower.includes(".jpg") ||
+        acceptLower.includes(".png")) &&
+      !acceptLower.includes("text") &&
+      !acceptLower.includes(".txt") &&
+      !acceptLower.includes(".doc") &&
+      !acceptLower.includes(".pdf") &&
+      !acceptLower.includes("*");
+
+    if (isPureMedia) return false;
+
+    const acceptPatterns = acceptLower
       .split(",")
       .map((item) => item.trim())
       .filter(Boolean);
@@ -24,7 +39,6 @@ export class UniversalEditor {
     const fileName = file.name.toLowerCase();
     const fileType = file.type.toLowerCase();
 
-    // 针对 AI 聊天平台的附件上传入口（接受文档/通用文本）进行智能放行
     return acceptPatterns.some((pattern) => {
       if (pattern === "*/*" || pattern === "*") return true;
       if (
@@ -35,7 +49,8 @@ export class UniversalEditor {
         pattern === "text/markdown" ||
         pattern === ".doc" ||
         pattern === ".docx" ||
-        pattern === ".pdf"
+        pattern === ".pdf" ||
+        pattern.includes("document")
       ) {
         return true;
       }
@@ -53,13 +68,45 @@ export class UniversalEditor {
   }
 
   /**
-   * 策略 1: 扫描并触发原生 input[type="file"] 挂载（兼容 React 16/17/18 内部状态追踪）
+   * 查找页面中可能存在的附件上传按钮并尝试唤起隐藏的 input
+   */
+  private static tryWakeUploadInput(): void {
+    const uploadBtnSelectors = [
+      'button[aria-label*="上传"]',
+      'button[aria-label*="文件"]',
+      'button[aria-label*="附件"]',
+      'button[title*="上传"]',
+      'button[title*="文件"]',
+      'button[title*="附件"]',
+      'div[role="button"][aria-label*="上传"]',
+      'div[role="button"][title*="上传"]',
+      '[class*="upload-btn"]',
+      '[class*="attach-btn"]',
+    ];
+
+    for (const selector of uploadBtnSelectors) {
+      const btn = document.querySelector<HTMLElement>(selector);
+      if (btn && btn.offsetWidth > 0 && btn.offsetHeight > 0) {
+        btn.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+        break;
+      }
+    }
+  }
+
+  /**
+   * 策略 1: 扫描并触发原生 input[type="file"] 挂载
    */
   private static tryUploadViaFileInput(
     file: File,
     activeEl: HTMLElement | null,
     dataTransfer: DataTransfer,
   ): boolean {
+    // 尝试轻量唤起潜在的动态 input
+    this.tryWakeUploadInput();
+
+    const currentHost = window.location.hostname.toLowerCase();
+    const isDoubao = currentHost.includes("doubao.com");
+
     const searchScopes = [
       activeEl?.closest("form"),
       activeEl?.closest('[class*="chat"]'),
@@ -84,7 +131,7 @@ export class UniversalEditor {
         if (!this.isValidFileInput(fileInput, file)) continue;
 
         try {
-          // 通过原型链 Setter 绕过 React 16+ 受控组件属性劫持
+          // 通过原型链 Setter 绕过 React 受控组件拦截
           const descriptor = Object.getOwnPropertyDescriptor(
             HTMLInputElement.prototype,
             "files",
@@ -96,7 +143,7 @@ export class UniversalEditor {
             fileInput.files = dataTransfer.files;
           }
 
-          // 核心兼容：通知 React 内部 valueTracker，使 React 合成 onChange 正常响应
+          // 同步重置 React 内部 valueTracker
           const tracker = (
             fileInput as unknown as {
               _valueTracker?: { setValue: (val: string) => void };
@@ -106,13 +153,25 @@ export class UniversalEditor {
             tracker.setValue("");
           }
 
-          // 触发单个标准的 change 冒泡事件，绝不触发额外的 input 事件以防二次上传
-          fileInput.dispatchEvent(
-            new Event("change", { bubbles: true, composed: true }),
-          );
+          if (isDoubao) {
+            // 核心修复：针对豆包平台，必须使用 bubbles: false 派发原生 change 事件
+            // 阻止冒泡至 React #root 委托层，杜绝原生监听器与 React 合成事件各执行一次导致的二次重复上传
+            const changeEvent = new Event("change", {
+              bubbles: false,
+              cancelable: true,
+              composed: false,
+            });
+            fileInput.dispatchEvent(changeEvent);
+          } else {
+            // 其余平台派发标准冒泡 change 事件以驱动 React/Vue 合成事件流
+            fileInput.dispatchEvent(
+              new Event("change", { bubbles: true, composed: true }),
+            );
+          }
+
           return true;
         } catch {
-          // 遇到受限 DOM 继续尝试后续候选
+          // 遇到受限 DOM 节点静默切换下一候选
         }
       }
     }
@@ -121,13 +180,12 @@ export class UniversalEditor {
   }
 
   /**
-   * 策略 2: 单靶向精准模拟粘贴 ClipboardEvent('paste')
+   * 策略 2: 单靶向精准模拟 ClipboardEvent('paste') 携带 File 对象
    */
   private static tryPasteEvent(
     activeEl: HTMLElement | null,
     dataTransfer: DataTransfer,
   ): boolean {
-    // 选定唯一最精准的目标元素，避免向多层祖先重复派发
     const target =
       activeEl ||
       (document.querySelector(
@@ -137,6 +195,7 @@ export class UniversalEditor {
     if (!target) return false;
 
     try {
+      target.focus();
       const pasteEvent = new ClipboardEvent("paste", {
         bubbles: true,
         cancelable: true,
@@ -152,7 +211,7 @@ export class UniversalEditor {
   }
 
   /**
-   * 策略 3: 单靶向 Drag & Drop 状态机仿真
+   * 策略 3: 全局与局部穿透式 Drag & Drop 状态机多靶心仿真
    */
   private static tryDragAndDrop(
     activeEl: HTMLElement | null,
@@ -171,7 +230,7 @@ export class UniversalEditor {
       document.body,
     ].filter((el): el is HTMLElement => Boolean(el));
 
-    const target = candidateTargets[0] || document.body;
+    if (candidateTargets.length === 0) return false;
 
     try {
       const eventInit: DragEventInit = {
@@ -181,9 +240,15 @@ export class UniversalEditor {
         dataTransfer,
       };
 
-      target.dispatchEvent(new DragEvent("dragenter", eventInit));
-      target.dispatchEvent(new DragEvent("dragover", eventInit));
-      target.dispatchEvent(new DragEvent("drop", eventInit));
+      for (const target of candidateTargets) {
+        const dragEnter = new DragEvent("dragenter", eventInit);
+        const dragOver = new DragEvent("dragover", eventInit);
+        const drop = new DragEvent("drop", eventInit);
+
+        target.dispatchEvent(dragEnter);
+        target.dispatchEvent(dragOver);
+        target.dispatchEvent(drop);
+      }
       return true;
     } catch {
       return false;
@@ -191,13 +256,12 @@ export class UniversalEditor {
   }
 
   /**
-   * 互斥式挂载：增加时间锁与唯一靶向，一旦成功立刻熔断返回，绝不重复上传
+   * 互斥式文件挂载入口：增加 1500ms 任务指纹时间锁与精准熔断机制
    */
   public static attachVirtualFile(
     file: File,
     targetElement?: EventTarget | null,
   ): boolean {
-    // 1. 防重保护锁：1500ms 内对同一文件名的请求直接视为已挂载，彻底杜绝多次上传
     const now = Date.now();
     const uploadKey = `${file.name}-${file.size}`;
     if (now - this.lastUploadTime < 1500 && this.lastUploadKey === uploadKey) {
@@ -215,17 +279,17 @@ export class UniversalEditor {
     const dataTransfer = new DataTransfer();
     dataTransfer.items.add(file);
 
-    // 优先策略 1: 扫描并触发原生 input[type="file"]
+    // 优先策略 1: 扫描并触发 input[type="file"]
     if (this.tryUploadViaFileInput(file, activeEl, dataTransfer)) {
       return true;
     }
 
-    // 优先策略 2: 单靶向精准 Clipboard 粘贴事件
+    // 优先策略 2: 模拟粘贴 ClipboardEvent
     if (this.tryPasteEvent(activeEl, dataTransfer)) {
       return true;
     }
 
-    // 优先策略 3: 单靶向 Drag & Drop 仿真
+    // 优先策略 3: 模拟拖拽 Drag & Drop
     if (this.tryDragAndDrop(activeEl, dataTransfer)) {
       return true;
     }
@@ -234,7 +298,7 @@ export class UniversalEditor {
   }
 
   /**
-   * 轻量化文本注入：仅用于错误回退或简短元数据插入
+   * 轻量化文本光标注入
    */
   public static insertAtCursor(
     text: string,
@@ -296,7 +360,7 @@ export class UniversalEditor {
       return true;
     }
 
-    // 2. contenteditable 容器
+    // 2. contenteditable 富文本输入容器
     if (
       activeEl.isContentEditable ||
       activeEl.closest("[contenteditable='true']")
