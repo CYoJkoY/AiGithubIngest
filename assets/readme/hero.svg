@@ -1,0 +1,136 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 440" width="100%" height="100%">
+  <defs>
+    <style>
+      .hero-bg { fill: #f8fafc; stroke: #e2e8f0; stroke-width: 1.5; }
+      .grid-line { stroke: #e2e8f0; stroke-width: 1; stroke-dasharray: 4 4; opacity: 0.7; }
+      .pill-bg { fill: #e0f2fe; stroke: #38bdf8; stroke-width: 1; }
+      .pill-text { fill: #0284c7; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; }
+      .title { fill: #0f172a; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 50px; font-weight: 800; letter-spacing: -0.03em; }
+      .subtitle { fill: #475569; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 17px; line-height: 1.5; }
+      .feature-tag-bg { fill: #ffffff; stroke: #cbd5e1; stroke-width: 1; }
+      .feature-tag-text { fill: #334155; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 13px; font-weight: 600; }
+      .dot-accent { fill: #0284c7; }
+      
+      .panel-bg { fill: #ffffff; stroke: #cbd5e1; stroke-width: 1.5; }
+      .panel-header { fill: #f1f5f9; stroke: #cbd5e1; stroke-width: 1; }
+      .panel-title { fill: #64748b; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; font-size: 12px; font-weight: 600; }
+      .step-box { fill: #f8fafc; stroke: #e2e8f0; stroke-width: 1; }
+      .step-text-main { fill: #0f172a; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; font-weight: 700; }
+      .step-text-sub { fill: #64748b; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; font-size: 12px; }
+      .arrow-stroke { stroke: #0284c7; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+      .badge-success { fill: #ecfdf5; stroke: #10b981; stroke-width: 1; }
+      .badge-success-text { fill: #047857; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 13px; font-weight: 700; }
+
+      @media (prefers-color-scheme: dark) {
+        .hero-bg { fill: #0b0f19; stroke: #1e293b; }
+        .grid-line { stroke: #1e293b; opacity: 0.8; }
+        .pill-bg { fill: #0c4a6e; stroke: #0284c7; }
+        .pill-text { fill: #38bdf8; }
+        .title { fill: #f8fafc; }
+        .subtitle { fill: #94a3b8; }
+        .feature-tag-bg { fill: #131b2e; stroke: #1e293b; }
+        .feature-tag-text { fill: #cbd5e1; }
+        .dot-accent { fill: #38bdf8; }
+
+        .panel-bg { fill: #111827; stroke: #1f2937; }
+        .panel-header { fill: #1f2937; stroke: #374151; }
+        .panel-title { fill: #9ca3af; }
+        .step-box { fill: #1a2234; stroke: #2d3748; }
+        .step-text-main { fill: #f9fafb; }
+        .step-text-sub { fill: #94a3b8; }
+        .arrow-stroke { stroke: #38bdf8; }
+        .badge-success { fill: #064e3b; stroke: #059669; }
+        .badge-success-text { fill: #34d399; }
+      }
+    </style>
+  </defs>
+
+  <!-- Container Box -->
+  <rect class="hero-bg" x="2" y="2" width="1196" height="436" rx="20" />
+
+  <!-- Background Subtle Grid -->
+  <line class="grid-line" x1="60" y1="0" x2="60" y2="440" />
+  <line class="grid-line" x1="560" y1="0" x2="560" y2="440" />
+  <line class="grid-line" x1="0" y1="220" x2="1200" y2="220" />
+
+  <!-- LEFT COLUMN: Brand Identity & Value Statement -->
+  <g transform="translate(68, 64)">
+    <!-- Category Tag -->
+    <rect class="pill-bg" x="0" y="0" width="224" height="28" rx="14" />
+    <text class="pill-text" x="112" y="18" text-anchor="middle">MANIFEST V3 · ZERO-PROXY</text>
+
+    <!-- Main Title -->
+    <text class="title" x="0" y="80">AiGithubIngest</text>
+
+    <!-- Subtitle & Proposition -->
+    <text class="subtitle" x="0" y="122">Local, Zero-Proxy GitHub Ingestion Engine for AI Chats.</text>
+    <text class="subtitle" x="0" y="148">Paste a repo link — parse, filter, and attach clean context directly</text>
+    <text class="subtitle" x="0" y="174">in browser memory with zero intermediary cloud servers.</text>
+
+    <!-- Capability Feature Badges -->
+    <g transform="translate(0, 222)">
+      <!-- Feature 1 -->
+      <rect class="feature-tag-bg" x="0" y="0" width="210" height="34" rx="8" />
+      <circle class="dot-accent" cx="16" cy="17" r="4" />
+      <text class="feature-tag-text" x="28" y="22">100% In-Browser (RAM)</text>
+
+      <!-- Feature 2 -->
+      <rect class="feature-tag-bg" x="222" y="0" width="210" height="34" rx="8" />
+      <circle class="dot-accent" cx="238" cy="17" r="4" />
+      <text class="feature-tag-text" x="250" y="22">Virtual File Attachment</text>
+    </g>
+
+    <g transform="translate(0, 268)">
+      <!-- Feature 3 -->
+      <rect class="feature-tag-bg" x="0" y="0" width="210" height="34" rx="8" />
+      <circle class="dot-accent" cx="16" cy="17" r="4" />
+      <text class="feature-tag-text" x="28" y="22">Anti-Freeze Fallback</text>
+
+      <!-- Feature 4 -->
+      <rect class="feature-tag-bg" x="222" y="0" width="210" height="34" rx="8" />
+      <circle class="dot-accent" cx="238" cy="17" r="4" />
+      <text class="feature-tag-text" x="250" y="22">Private Repo &amp; PAT Ready</text>
+    </g>
+  </g>
+
+  <!-- RIGHT COLUMN: Workflow & Execution Schematic -->
+  <g transform="translate(620, 52)">
+    <rect class="panel-bg" x="0" y="0" width="510" height="336" rx="14" />
+    
+    <!-- Window Header -->
+    <rect class="panel-header" x="0" y="0" width="510" height="36" rx="14" />
+    <circle cx="20" cy="18" r="5" fill="#ef4444" />
+    <circle cx="36" cy="18" r="5" fill="#f59e0b" />
+    <circle cx="52" cy="18" r="5" fill="#10b981" />
+    <text class="panel-title" x="255" y="22" text-anchor="middle">Execution Flow · Client Pipeline</text>
+
+    <!-- Step 1: Input URL -->
+    <g transform="translate(24, 54)">
+      <rect class="step-box" x="0" y="0" width="462" height="54" rx="8" />
+      <text class="step-text-main" x="16" y="24">1. Paste GitHub URL</text>
+      <text class="step-text-sub" x="16" y="44">https://github.com/owner/repository</text>
+    </g>
+
+    <!-- Connector 1 -->
+    <path class="arrow-stroke" d="M255 116 L255 130" />
+    <polygon points="251 130 259 130 255 136" fill="#0284c7" />
+
+    <!-- Step 2: In-Memory Engine -->
+    <g transform="translate(24, 142)">
+      <rect class="step-box" x="0" y="0" width="462" height="66" rx="8" />
+      <text class="step-text-main" x="16" y="24">2. Decompress &amp; Synthesize (In-Memory)</text>
+      <text class="step-text-sub" x="16" y="44">fflate streaming unpack · path glob filter · ASCII tree builder</text>
+    </g>
+
+    <!-- Connector 2 -->
+    <path class="arrow-stroke" d="M255 216 L255 230" />
+    <polygon points="251 230 259 230 255 236" fill="#0284c7" />
+
+    <!-- Step 3: Mounted Attachment -->
+    <g transform="translate(24, 242)">
+      <rect class="badge-success" x="0" y="0" width="462" height="60" rx="8" />
+      <text class="badge-success-text" x="16" y="26">✓ Attached as Native Markdown File</text>
+      <text class="step-text-sub" x="16" y="46">📎 owner_repo.md (42 files · ~38.8k tokens mounted to prompt)</text>
+    </g>
+  </g>
+</svg>
