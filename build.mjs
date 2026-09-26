@@ -15,21 +15,18 @@ if (!existsSync(outDir)) {
 }
 
 try {
-  // 1. 版本一致性守护检查与自动补正
-  const pkg = JSON.parse(readFileSync(resolve("package.json"), "utf8"));
+  // 1. 版本一致性守护检查与自动补正（以 manifest.json 为权威单一真相源）
   const manifestPath = resolve("manifest.json");
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  const pkgPath = resolve("package.json");
+  const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
 
-  if (manifest.version !== pkg.version) {
+  if (pkg.version !== manifest.version) {
     console.log(
-      `[Version Guard] 同步 manifest.json 版本 (${manifest.version} -> ${pkg.version})`,
+      `[Version Guard] 同步 package.json 版本 (${pkg.version} -> ${manifest.version})`,
     );
-    manifest.version = pkg.version;
-    writeFileSync(
-      manifestPath,
-      JSON.stringify(manifest, null, 2) + "\n",
-      "utf8",
-    );
+    pkg.version = manifest.version;
+    writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n", "utf8");
   }
 
   // 2. 编译打包 TypeScript 入口为原生独立 bundle

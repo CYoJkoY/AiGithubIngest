@@ -45,11 +45,11 @@ jobs:
 
       - name: Verify Manifest & Package Version Consistency
         run: |
-          PKG_VERSION=$(node -p "require('./package.json').version")
           MANIFEST_VERSION=$(node -p "require('./manifest.json').version")
-          echo "🔍 检查版本同步状态: package.json (${PKG_VERSION}) vs manifest.json (${MANIFEST_VERSION})"
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          echo "🔍 检查版本同步状态: manifest.json (${MANIFEST_VERSION}) vs package.json (${PKG_VERSION})"
           if [ "$PKG_VERSION" != "$MANIFEST_VERSION" ]; then
-            echo "::error::manifest.json 版本 (${MANIFEST_VERSION}) 与 package.json 版本 (${PKG_VERSION}) 不一致！请更新并保持同步提交。"
+            echo "::error::package.json 版本 (${PKG_VERSION}) 与 manifest.json 版本 (${MANIFEST_VERSION}) 不一致！请更新 package.json 或运行本地构建同步提交。"
             exit 1
           fi
 

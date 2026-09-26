@@ -33,21 +33,21 @@ jobs:
       - name: Strict Typecheck
         run: pnpm exec tsc --noEmit
 
-      - name: Verify Tag Version matches package.json
+      - name: Verify Tag Version matches manifest.json
         run: |
           RAW_TAG="${{ github.ref_name }}"
           TAG_VERSION="${RAW_TAG#v}"
-          PKG_VERSION=$(node -p "require('./package.json').version")
           MANIFEST_VERSION=$(node -p "require('./manifest.json').version")
+          PKG_VERSION=$(node -p "require('./package.json').version")
 
           echo "🔍 开始版本一致性防御复核："
           echo "  - Git Tag:       ${RAW_TAG} (解析版本: ${TAG_VERSION})"
+          echo "  - manifest.json: ${MANIFEST_VERSION} (权威源)"
           echo "  - package.json:  ${PKG_VERSION}"
-          echo "  - manifest.json: ${MANIFEST_VERSION}"
 
-          if [ "${TAG_VERSION}" != "${PKG_VERSION}" ]; then
-            echo "❌ [Fatal] Git Tag 版本 (${TAG_VERSION}) 与 package.json 版本 (${PKG_VERSION}) 不一致！"
-            echo "::error::Tag 版本 (${TAG_VERSION}) 与 package.json (${PKG_VERSION}) 不一致，发布中断！请先更新版本号或纠正 Tag。"
+          if [ "${TAG_VERSION}" != "${MANIFEST_VERSION}" ]; then
+            echo "❌ [Fatal] Git Tag 版本 (${TAG_VERSION}) 与 manifest.json 版本 (${MANIFEST_VERSION}) 不一致！"
+            echo "::error::Tag 版本 (${TAG_VERSION}) 与 manifest.json (${MANIFEST_VERSION}) 不一致，发布中断！请先更新版本号或纠正 Tag。"
             exit 1
           fi
 
@@ -57,7 +57,7 @@ jobs:
             exit 1
           fi
 
-          echo "✅ 版本复核通过：Tag、package.json 与 manifest.json 版本一致 (${PKG_VERSION})"
+          echo "✅ 版本复核通过：Tag、manifest.json 与 package.json 版本一致 (${MANIFEST_VERSION})"
 
       - name: Build production bundle
         run: pnpm run build

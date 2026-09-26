@@ -1,11 +1,11 @@
-name: Sync Manifest Version
+name: Sync Package Version
 
 on:
   push:
     branches:
       - main
     paths:
-      - "package.json"
+      - "manifest.json"
   workflow_dispatch:
 
 permissions:
@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   sync-version:
-    name: Sync manifest.json with package.json
+    name: Sync package.json with manifest.json
     runs-on: ubuntu-latest
 
     steps:
@@ -31,11 +31,11 @@ jobs:
       - name: Synchronize Version
         id: sync
         run: |
-          PKG_VERSION=$(node -p "require('./package.json').version")
           MANIFEST_VERSION=$(node -p "require('./manifest.json').version")
+          PKG_VERSION=$(node -p "require('./package.json').version")
 
-          echo "当前 package.json 版本:  $PKG_VERSION"
-          echo "当前 manifest.json 版本: $MANIFEST_VERSION"
+          echo "当前 manifest.json 版本 (权威源): $MANIFEST_VERSION"
+          echo "当前 package.json 版本:           $PKG_VERSION"
 
           if [ "$PKG_VERSION" = "$MANIFEST_VERSION" ]; then
             echo "✅ 版本已一致，无需同步更新"
@@ -43,26 +43,26 @@ jobs:
             exit 0
           fi
 
-          echo "🔄 将 manifest.json 版本更新为: $PKG_VERSION"
+          echo "🔄 将 package.json 版本更新为: $MANIFEST_VERSION"
           node -e "
             const fs = require('fs');
-            const manifest = JSON.parse(fs.readFileSync('manifest.json', 'utf8'));
-            manifest.version = '$PKG_VERSION';
-            fs.writeFileSync('manifest.json', JSON.stringify(manifest, null, 2) + '\n', 'utf8');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            pkg.version = '$MANIFEST_VERSION';
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n', 'utf8');
           "
 
           echo "changed=true" >> $GITHUB_OUTPUT
-          echo "new_version=$PKG_VERSION" >> $GITHUB_OUTPUT
+          echo "new_version=$MANIFEST_VERSION" >> $GITHUB_OUTPUT
 
-      - name: Commit and Push Manifest Changes
+      - name: Commit and Push Package Changes
         if: steps.sync.outputs.changed == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add manifest.json
+          git add package.json
           if git diff --staged --quiet; then
             echo "无实际差异，跳过提交"
           else
-            git commit -m "chore(release): sync manifest.json version to ${{ steps.sync.outputs.new_version }} [skip ci]"
+            git commit -m "chore(release): sync package.json version to ${{ steps.sync.outputs.new_version }} [skip ci]"
             git push origin HEAD:${{ github.ref_name }}
           fi
