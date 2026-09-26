@@ -13,7 +13,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       return false;
     }
 
-    // 从存储获取可选的 PAT
+    // 从 Chrome Storage 获取用户配置的 Personal Access Token
     chrome.storage.sync.get("githubToken", (items) => {
       const token = (items as StorageSchema).githubToken;
 
@@ -29,13 +29,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
             success: false,
             error: {
               code: "INGEST_FAILED",
-              message: err.message || "仓库代码树提取失败",
+              message: err.message || "本地提取失败，请检查网络或配置 Token",
             },
           } as ExtensionResponse);
         });
     });
 
-    return true; // 保持长连接通道以支持异步回调
+    return true; // 保持长连接通道以支持异步回调响应
   }
 
   return false;

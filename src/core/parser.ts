@@ -1,9 +1,6 @@
 import { RepoTarget, ParseError } from "../types";
 import { Result, ok, err } from "./result";
 
-const GITHUB_REPO_PATTERN =
-  /https?:\/\/github\.com\/([a-zA-Z0-9_\-\.]+)\/([a-zA-Z0-9_\-\.]+)/;
-
 export const extractGitHubRepo = (
   rawText: string | null | undefined,
 ): Result<RepoTarget, ParseError> => {
@@ -11,20 +8,31 @@ export const extractGitHubRepo = (
     return err({ code: "EMPTY_INPUT", message: "输入内容为空" });
   }
 
-  const match = rawText.match(GITHUB_REPO_PATTERN);
+  const cleanText = rawText.trim();
+  const urlPattern =
+    /^(?:https?:\/\/github\.com\/)?([a-zA-Z0-9_\-\.]+)\/([a-zA-Z0-9_\-\.]+)(?:\/(tree|blob)\/([^/]+)(?:\/(.*))?)?/;
+
+  const match = cleanText.match(urlPattern);
   if (!match) {
     return err({
       code: "NOT_GITHUB_URL",
-      message: "未匹配到有效的 GitHub 仓库链接",
+      message: "未匹配到有效的 GitHub 仓库链接或 slug (例如 owner/repo)",
     });
   }
 
-  const [, owner, repo] = match;
-  const cleanRepo = repo.replace(/\.git$/, "");
+  const [, owner, rawRepo, , ref, subpath] = match;
+  const repo = rawRepo.replace(/\.git$/, "");
+
+  let canonicalUrl = `https://github.com/${owner}/${repo}`;
+  if (ref) {
+    canonicalUrl += `/tree/${ref}${subpath ? `/${subpath}` : ""}`;
+  }
 
   return ok({
     owner,
-    repo: cleanRepo,
-    canonicalUrl: `https://github.com/${owner}/${cleanRepo}`,
+    repo,
+    ref: ref || undefined,
+    subpath: subpath ? `/${subpath.replace(/^\/+|\/+$/g, "")}` : "/",
+    canonicalUrl,
   });
 };

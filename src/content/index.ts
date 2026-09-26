@@ -23,23 +23,36 @@ const initialize = async (): Promise<void> => {
       const parseResult = extractGitHubRepo(rawText);
       if (!parseResult.ok) return;
 
-      // 拦截命中仓库链接的粘贴，防止浏览器直接将纯文本乱序插入
+      // 拦截命中 GitHub 链接的粘贴事件
       event.preventDefault();
       event.stopPropagation();
 
-      const targetElement = event.target;
+      const targetElement = event.target as HTMLElement | null;
+
+      // 立即快照捕获当前输入框的光标位置，防止后台拉取期间光标丢失导致冲刷
+      let savedRange: { start: number; end: number } | undefined;
+      if (
+        targetElement instanceof HTMLTextAreaElement ||
+        targetElement instanceof HTMLInputElement
+      ) {
+        savedRange = {
+          start: targetElement.selectionStart ?? targetElement.value.length,
+          end: targetElement.selectionEnd ?? targetElement.value.length,
+        };
+      }
+
       if (isProcessing) {
-        showToast("已有提取任务正在进行中，已保持原样粘贴", "info");
-        UniversalEditor.insertAtCursor(rawText, targetElement);
+        showToast("已有提取任务正在进行中，已恢复原样粘贴", "info");
+        UniversalEditor.insertAtCursor(rawText, targetElement, savedRange);
         return;
       }
 
       const repo = parseResult.value;
       isProcessing = true;
       showToast(
-        `正在提取 ${repo.owner}/${repo.repo} 代码上下文...`,
+        `本地引擎正在提取 ${repo.owner}/${repo.repo} 代码树...`,
         "info",
-        5000,
+        4000,
       );
 
       try {
@@ -49,8 +62,12 @@ const initialize = async (): Promise<void> => {
             isProcessing = false;
 
             if (!response || !response.success) {
-              // 失败回退：原样插入剪贴板中的纯 URL，绝不冲刷用户在此期间打下的内容
-              UniversalEditor.insertAtCursor(rawText, targetElement);
+              // 失败回退：精准放回原链接，确保已有文本绝对不丢失
+              UniversalEditor.insertAtCursor(
+                rawText,
+                targetElement,
+                savedRange,
+              );
               showToast(
                 `提取失败: ${response?.error?.message ?? "扩展后台无响应"}，已回退为普通链接`,
                 "error",
@@ -65,16 +82,20 @@ const initialize = async (): Promise<void> => {
               `\`\`\`\n`,
             ].join("\n");
 
-            UniversalEditor.insertAtCursor(injectedText, targetElement);
+            UniversalEditor.insertAtCursor(
+              injectedText,
+              targetElement,
+              savedRange,
+            );
             showToast(
-              `已成功注入 ${repo.owner}/${repo.repo} 代码结构`,
+              `已成功注入 ${repo.owner}/${repo.repo} 代码上下文 (${summary.files.length} 个文件)`,
               "success",
             );
           },
         );
-      } catch (err: unknown) {
+      } catch {
         isProcessing = false;
-        UniversalEditor.insertAtCursor(rawText, targetElement);
+        UniversalEditor.insertAtCursor(rawText, targetElement, savedRange);
         showToast("与后台通信失败，已回退为普通链接", "error");
       }
     },

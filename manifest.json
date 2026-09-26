@@ -1,12 +1,12 @@
 {
   "manifest_version": 3,
   "name": "AI GitHub Ingest Engine",
-  "version": "1.0.0",
-  "description": "在 AI 站点粘贴 GitHub 链接时自动解析并注入代码树结构，支持自定义域名白名单。",
+  "version": "0.2.0",
+  "description": "在 AI 站点粘贴 GitHub 链接时，纯本地解析并注入结构化代码上下文，无需依赖第三方在线服务。",
   "permissions": ["activeTab", "scripting", "storage"],
   "host_permissions": [
-    "https://gitingest.com/*",
-    "https://*.gitingest.com/*"
+    "https://api.github.com/*",
+    "https://raw.githubusercontent.com/*"
   ],
   "action": {
     "default_popup": "popup.html"

@@ -12,11 +12,14 @@ export interface GitTreeItem {
   readonly type: "blob" | "tree";
   readonly sha: string;
   readonly size?: number;
+  readonly url?: string;
 }
 
 export interface IngestOptions {
   readonly token?: string;
   readonly maxFileSizeKb?: number;
+  readonly includePatterns?: readonly string[];
+  readonly excludePatterns?: readonly string[];
   readonly onProgress?: (msg: string, current: number, total: number) => void;
 }
 
@@ -26,12 +29,23 @@ export interface IngestFileResult {
   readonly size: number;
 }
 
+export interface FileSystemNode {
+  name: string;
+  type: "DIRECTORY" | "FILE";
+  path: string;
+  size: number;
+  fileCount: number;
+  dirCount: number;
+  children: FileSystemNode[];
+}
+
 export interface IngestSummary {
   readonly repoInfo: RepoTarget;
   readonly resolvedBranch: string;
   readonly treeVisual: string;
   readonly files: readonly IngestFileResult[];
   readonly formattedOutput: string;
+  readonly estimatedTokens: string;
 }
 
 export interface ParseError {
