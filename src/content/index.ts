@@ -10,15 +10,20 @@ let isProcessing = false;
 const initialize = async (): Promise<void> => {
   const currentHost = window.location.hostname;
   const storageData = await new Promise<StorageSchema>((resolve) => {
-    chrome.storage.sync.get(["userWhitelist", "lang"], (res) => {
-      resolve(res as StorageSchema);
-    });
+    chrome.storage.sync.get(
+      ["userWhitelist", "userBlacklist", "lang"],
+      (res) => {
+        resolve(res as StorageSchema);
+      },
+    );
   });
 
   const userWhitelist = storageData.userWhitelist ?? [];
+  const userBlacklist = storageData.userBlacklist ?? [];
   const lang: SupportedLang = storageData.lang || "zh-CN";
 
-  if (evaluateSitePolicy(currentHost, userWhitelist) === "DISABLED") return;
+  const policy = evaluateSitePolicy(currentHost, userWhitelist, userBlacklist);
+  if (policy === "DISABLED" || policy === "DISABLED_BLACKLIST") return;
 
   document.addEventListener(
     "paste",
@@ -27,8 +32,10 @@ const initialize = async (): Promise<void> => {
       const parseResult = extractGitHubRepo(rawText);
       if (!parseResult.ok) return;
 
+      // 核心修复：彻底阻断事件传播，防止宿主网站自身的粘贴监听器二次响应
       event.preventDefault();
       event.stopPropagation();
+      event.stopImmediatePropagation();
 
       const targetElement = event.target as HTMLElement | null;
 

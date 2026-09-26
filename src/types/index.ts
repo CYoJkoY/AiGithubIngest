@@ -58,6 +58,7 @@ export interface ParseError {
 export type SitePolicyStatus =
   | "ENABLED_BUILTIN"
   | "ENABLED_WHITELIST"
+  | "DISABLED_BLACKLIST"
   | "DISABLED";
 
 export interface IngestSuccessPayload {
@@ -81,6 +82,7 @@ export type SupportedLang = "zh-CN" | "en";
 
 export interface StorageSchema {
   readonly userWhitelist?: readonly string[];
+  readonly userBlacklist?: readonly string[];
   readonly githubToken?: string;
   readonly lang?: SupportedLang;
 }
