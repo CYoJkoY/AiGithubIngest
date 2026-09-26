@@ -28,6 +28,7 @@ try {
   // 2. 静态资源复制映射（包含 Manifest、UI 样式、Popup 模板与 SVG 图标）
   const staticAssets = [
     { from: "manifest.json", to: "dist/manifest.json" },
+    { from: "index.html", to: "dist/index.html" },
     { from: "src/popup/popup.html", to: "dist/popup.html" },
     { from: "src/popup/popup.css", to: "dist/popup.css" },
     { from: "src/ui/toast.css", to: "dist/toast.css" },
