@@ -1,14 +1,13 @@
 import { evaluateSitePolicy } from "../core/policy";
 import { extractGitHubRepo } from "../core/parser";
 import { isOk } from "../core/result";
-import { buildIngestPrompt, buildLoadingPlaceholder } from "../core/prompt";
-import {
-  detectUniversalEditor,
-  writeUniversalText,
-} from "../dom/universal-editor";
+import { buildIngestPrompt } from "../core/prompt";
+import { UniversalEditor } from "../dom/universal-editor";
 import { showToast } from "../ui/toast";
 import { ExtensionResponse, StorageSchema } from "../types";
 export type { Result, Ok, Err } from "../core/result";
+
+let isProcessing = false;
 
 const fetchUserWhitelist = (): Promise<readonly string[]> => {
   return new Promise((resolve) => {
@@ -57,32 +56,60 @@ const initialize = async (): Promise<void> => {
     const parseResult = extractGitHubRepo(rawText);
     if (!isOk(parseResult)) return;
 
-    const editor = detectUniversalEditor(event.target);
-    if (!editor) return;
-
-    // 掐断后续传播，防止被富文本编辑器转换为 Chip/徽标节点
+    // 命中 GitHub 链接，阻断默认粘贴/拖拽行为，防止被富文本编辑器转化为 Chip 节点或重复粘贴
     event.preventDefault();
     event.stopPropagation();
     event.stopImmediatePropagation();
 
-    const repo = parseResult.value;
-    writeUniversalText(editor, buildLoadingPlaceholder(repo.owner, repo.repo));
-    showToast(`正在提取 ${repo.owner}/${repo.repo} 代码树...`, "info");
+    const targetElement = event.target;
 
-    const ingestResult = await dispatchIngestRequest(repo.canonicalUrl);
-
-    if (!ingestResult.success) {
-      showToast(`提取失败: ${ingestResult.error.message}`, "error");
-      writeUniversalText(editor, repo.canonicalUrl);
+    // 并发防御：已有任务在提取中时，安全在光标处插入纯文本，杜绝丢字
+    if (isProcessing) {
+      showToast("已有提取任务正在进行中，请稍候...", "info");
+      UniversalEditor.insertAtCursor(rawText, targetElement);
       return;
     }
 
-    const promptText = buildIngestPrompt(ingestResult.payload);
-    writeUniversalText(editor, promptText);
-    showToast(
-      `已成功注入 ${repo.owner}/${repo.repo} 项目结构与代码`,
-      "success",
-    );
+    const repo = parseResult.value;
+    isProcessing = true;
+    showToast(`正在提取 ${repo.owner}/${repo.repo} 代码树...`, "info");
+
+    try {
+      const ingestResult = await dispatchIngestRequest(repo.canonicalUrl);
+
+      if (!ingestResult.success) {
+        // 防御式降级：网络或解析失败时，回退插入用户原始链接，输入框原有文字完全保留
+        UniversalEditor.insertAtCursor(rawText, targetElement);
+        showToast(
+          `提取失败 (${ingestResult.error.message})，已还原为原始链接`,
+          "error",
+        );
+        return;
+      }
+
+      // 提取成功：仅在光标处安全插入完整提示词与代码树，完全保留前后文本
+      const promptText = buildIngestPrompt(ingestResult.payload);
+      const inserted = UniversalEditor.insertAtCursor(
+        promptText,
+        targetElement,
+      );
+
+      if (inserted) {
+        showToast(
+          `已成功注入 ${repo.owner}/${repo.repo} 项目结构与代码`,
+          "success",
+        );
+      } else {
+        UniversalEditor.insertAtCursor(rawText, targetElement);
+        showToast("未能定位编辑焦点，已回退为普通链接", "error");
+      }
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : "未知异常";
+      UniversalEditor.insertAtCursor(rawText, targetElement);
+      showToast(`处理异常 (${errMsg})，已还原为原始链接`, "error");
+    } finally {
+      isProcessing = false;
+    }
   };
 
   document.addEventListener(

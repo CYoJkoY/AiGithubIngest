@@ -6,11 +6,21 @@ export class UniversalEditor {
   /**
    * 将文本安全插入到当前光标所在位置，绝不覆写已存在的前后文本
    */
-  public static insertAtCursor(text: string): boolean {
-    const activeEl = document.activeElement as HTMLElement | null;
-    if (!activeEl) return false;
+  public static insertAtCursor(
+    text: string,
+    fallbackTarget?: EventTarget | null,
+  ): boolean {
+    let activeEl = document.activeElement as HTMLElement | null;
 
-    // 优先使用标准命令，自动保留撤销历史，兼容各种 React 受控组件与富文本编辑器
+    if (
+      (!activeEl || activeEl === document.body) &&
+      fallbackTarget instanceof HTMLElement
+    ) {
+      fallbackTarget.focus();
+      activeEl = fallbackTarget;
+    }
+
+    // 优先使用标准命令，自动保留撤销历史，兼容受控组件与富文本输入框
     const success = document.execCommand("insertText", false, text);
     if (success) {
       return true;
@@ -38,3 +48,10 @@ export class UniversalEditor {
     return false;
   }
 }
+
+export const insertAtCursor = (
+  text: string,
+  fallbackTarget?: EventTarget | null,
+): boolean => {
+  return UniversalEditor.insertAtCursor(text, fallbackTarget);
+};

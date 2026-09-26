@@ -25,12 +25,10 @@ export class Toast {
 
     container.appendChild(toast);
 
-    // 触发渐入平移动画
     requestAnimationFrame(() => {
       toast.classList.add("show");
     });
 
-    // 定时移除
     setTimeout(() => {
       toast.classList.remove("show");
       setTimeout(() => {
@@ -43,3 +41,11 @@ export class Toast {
     }, duration);
   }
 }
+
+export const showToast = (
+  message: string,
+  type: ToastType = "info",
+  duration: number = 3000,
+): void => {
+  Toast.show(message, type, duration);
+};
