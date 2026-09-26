@@ -1,10 +1,19 @@
-import { IngestOptions, IngestSummary, IngestFileResult } from "../types";
+import { unzipSync } from "fflate";
+import { IngestFileResult, IngestOptions, IngestSummary } from "../types";
 import { extractGitHubRepo } from "./parser";
 import { GitHubEngine } from "./github-engine";
 import { shouldIncludeFile } from "./file-filter";
 import { TreeBuilder } from "./tree-builder";
 import { OutputFormatter } from "./output-formatter";
 import { formatTokenCount } from "./token-estimator";
+
+function isBinary(buffer: Uint8Array): boolean {
+  const checkLen = Math.min(buffer.length, 1024);
+  for (let i = 0; i < checkLen; i++) {
+    if (buffer[i] === 0) return true;
+  }
+  return false;
+}
 
 export async function ingestRepository(
   rawUrl: string,
@@ -14,118 +23,124 @@ export async function ingestRepository(
   if (!parseResult.ok) {
     throw new Error(parseResult.error.message);
   }
-  const target = parseResult.value;
 
-  options.onProgress?.("正在检索 GitHub 仓库元数据...", 0, 1);
+  const target = parseResult.value;
+  options.onProgress?.("正在解析分支信息...", 0, 100);
   const resolvedBranch = await GitHubEngine.resolveBranch(
     target,
     options.token,
   );
 
-  options.onProgress?.(`正在获取仓库树结构 [${resolvedBranch}]...`, 0, 1);
-  const rawTree = await GitHubEngine.fetchTree(
+  options.onProgress?.("正在单次流式下载完整代码包 (Zipball)...", 20, 100);
+  const zipBuffer = await GitHubEngine.fetchZipball(
     target,
     resolvedBranch,
     options.token,
   );
 
-  // 1. 过滤仅获取 Blob 文件节点
-  let blobs = rawTree.filter((item) => item.type === "blob");
+  options.onProgress?.("正在内存解压与过滤文件...", 60, 100);
+  const unzipped = unzipSync(new Uint8Array(zipBuffer));
+  const fileKeys = Object.keys(unzipped);
 
-  // 2. 子目录范围限定
-  if (target.subpath && target.subpath !== "/") {
-    const prefix = target.subpath.replace(/^\/+|\/+$/g, "") + "/";
-    blobs = blobs.filter((item) => item.path.startsWith(prefix));
+  if (fileKeys.length === 0) {
+    throw new Error("仓库压缩包内容为空");
   }
 
-  // 3. 执行 Ignore 与体积排除规则
-  const maxBytes = (options.maxFileSizeKb || 100) * 1024;
-  const eligible = blobs.filter((item) =>
-    shouldIncludeFile(
-      item.path,
-      item.size,
-      maxBytes,
-      options.includePatterns,
-      options.excludePatterns,
-    ),
-  );
+  // GitHub Zipball 根目录结构固定为：{owner}-{repo}-{commit_hash}/
+  const firstKey = fileKeys[0];
+  const rootPrefix = firstKey.includes("/")
+    ? firstKey.slice(0, firstKey.indexOf("/") + 1)
+    : "";
 
-  if (eligible.length === 0) {
-    throw new Error("经规则过滤后未匹配到任何符合条件的文本文件。");
-  }
+  const subpathPrefix =
+    target.subpath && target.subpath !== "/"
+      ? target.subpath.replace(/^\/+|\/+$/g, "") + "/"
+      : "";
 
-  // 4. 并发拉取文件内容（滑动窗口 6）
-  const total = eligible.length;
-  const files: IngestFileResult[] = [];
-  const concurrency = 6;
+  const treeFiles: Array<{ path: string; size: number }> = [];
+  const processedFiles: IngestFileResult[] = [];
+  const maxBytes = (options.maxFileSizeKb ?? 100) * 1024;
+  const utf8Decoder = new TextDecoder("utf-8", { fatal: false });
 
-  for (let i = 0; i < total; i += concurrency) {
-    const chunk = eligible.slice(i, i + concurrency);
-    const results = await Promise.all(
-      chunk.map(async (file, idx) => {
-        const current = i + idx + 1;
-        options.onProgress?.(
-          `提取代码文件中 (${current}/${total}): ${file.path}`,
-          current,
-          total,
-        );
-        try {
-          const content = await GitHubEngine.fetchRawFile(
-            target,
-            resolvedBranch,
-            file.path,
-            options.token,
-          );
-          return {
-            path: file.path,
-            content,
-            size: file.size ?? content.length,
-          };
-        } catch {
-          // 遇到单个读取错误时不阻断整个流程
-          return null;
-        }
-      }),
-    );
+  for (const rawKey of fileKeys) {
+    if (!rawKey.startsWith(rootPrefix)) continue;
 
-    for (const r of results) {
-      if (r) files.push(r);
+    const relativePath = rawKey.slice(rootPrefix.length);
+    // 忽略目录项或空路径
+    if (!relativePath || relativePath.endsWith("/")) continue;
+
+    // 子目录范围匹配
+    if (subpathPrefix && !relativePath.startsWith(subpathPrefix)) {
+      continue;
     }
+
+    const fileData = unzipped[rawKey];
+    const fileSize = fileData.length;
+
+    // 规则过滤（.gitignore 默认项、自定义 exclude/include、大文件截断）
+    if (
+      !shouldIncludeFile(
+        relativePath,
+        fileSize,
+        maxBytes,
+        options.includePatterns,
+        options.excludePatterns,
+      )
+    ) {
+      continue;
+    }
+
+    treeFiles.push({ path: relativePath, size: fileSize });
+
+    // 二进制文件安全处理
+    if (isBinary(fileData)) {
+      processedFiles.push({
+        path: relativePath,
+        content: "[Binary file]",
+        size: fileSize,
+      });
+      continue;
+    }
+
+    const textContent = utf8Decoder.decode(fileData);
+    processedFiles.push({
+      path: relativePath,
+      content: textContent,
+      size: fileSize,
+    });
   }
 
-  options.onProgress?.("正在构建结构树并估算 Token...", total, total);
+  options.onProgress?.("正在构建结构化目录树与上下文...", 90, 100);
 
-  // 5. 内存构造和排序 ASCII 树
   const rootSlug = `${target.owner}-${target.repo}`;
-  const treeRoot = TreeBuilder.build(
-    files.map((f) => ({ path: f.path, size: f.size })),
-    rootSlug,
-  );
-  const treeVisual = TreeBuilder.renderAscii(treeRoot);
+  const fileTree = TreeBuilder.build(treeFiles, rootSlug);
+  const treeVisual = TreeBuilder.renderAscii(fileTree);
 
-  // 6. Token 估算与格式化合并
-  const rawTextForToken =
-    treeVisual + "\n" + files.map((f) => f.content).join("\n");
-  const estimatedTokens = formatTokenCount(rawTextForToken);
+  // 预装配上下文大文本
+  let rawContentPart = "";
+  for (const f of processedFiles) {
+    rawContentPart += `\n================================================\nFILE: ${f.path}\n================================================\n${f.content}\n`;
+  }
 
+  const estimatedTokens = formatTokenCount(treeVisual + rawContentPart);
   const summaryPrefix = OutputFormatter.createSummaryPrefix(
     target,
     resolvedBranch,
-    files.length,
+    processedFiles.length,
     estimatedTokens,
   );
 
   const formattedOutput = OutputFormatter.buildFullDigest(
     summaryPrefix,
     treeVisual,
-    files,
+    processedFiles,
   );
 
   return {
     repoInfo: target,
     resolvedBranch,
     treeVisual,
-    files,
+    files: processedFiles,
     formattedOutput,
     estimatedTokens,
   };

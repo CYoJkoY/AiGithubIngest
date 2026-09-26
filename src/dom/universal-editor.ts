@@ -1,6 +1,78 @@
 export class UniversalEditor {
   /**
-   * 在指定元素安全插入文本。即使经过长时间异步等待，也绝不冲刷、不覆盖输入框原本已有的任何内容。
+   * 将生成的代码摘要打包为虚拟 File 对象，优先以“附件”形式挂载至宿主网页。
+   * 彻底避免向 contenteditable / rich-textarea 注入超巨量文本导致主线程死锁。
+   */
+  public static attachVirtualFile(
+    file: File,
+    targetElement?: EventTarget | null,
+  ): boolean {
+    const activeEl = (
+      targetElement instanceof HTMLElement
+        ? targetElement
+        : document.activeElement
+    ) as HTMLElement | null;
+
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(file);
+
+    // 策略 1: 扫描当前上下文是否存在文件上传 input（AI 站点的附件回形针原生控件）
+    const searchScopes = [
+      activeEl?.closest("form"),
+      activeEl?.closest('[class*="chat"]'),
+      activeEl?.parentElement?.parentElement,
+      document,
+    ];
+
+    for (const scope of searchScopes) {
+      if (!scope) continue;
+      const fileInput =
+        scope.querySelector<HTMLInputElement>('input[type="file"]');
+      if (fileInput) {
+        try {
+          fileInput.files = dataTransfer.files;
+          fileInput.dispatchEvent(new Event("change", { bubbles: true }));
+          fileInput.dispatchEvent(new Event("input", { bubbles: true }));
+          return true;
+        } catch {
+          // 部分站点可能有受控拦截，继续尝试事件模拟
+        }
+      }
+    }
+
+    // 策略 2: 向当前聚焦的输入容器分发模拟的 ClipboardEvent('paste')（ChatGPT / Claude / DeepSeek 原生支持）
+    if (activeEl) {
+      const pasteEvent = new ClipboardEvent("paste", {
+        bubbles: true,
+        cancelable: true,
+        clipboardData: dataTransfer,
+      });
+
+      const handled = !activeEl.dispatchEvent(pasteEvent);
+      if (handled) return true;
+
+      // 策略 3: 分发 Drag & Drop 事件
+      const dragOverEvent = new DragEvent("dragover", {
+        bubbles: true,
+        cancelable: true,
+        dataTransfer,
+      });
+      activeEl.dispatchEvent(dragOverEvent);
+
+      const dropEvent = new DragEvent("drop", {
+        bubbles: true,
+        cancelable: true,
+        dataTransfer,
+      });
+      const dropHandled = !activeEl.dispatchEvent(dropEvent);
+      if (dropHandled) return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * 轻量化文本注入：仅用于错误回退或简短元数据插入，绝不塞入全量大文本
    */
   public static insertAtCursor(
     text: string,
@@ -31,7 +103,6 @@ export class UniversalEditor {
       const updatedValue =
         originalValue.slice(0, start) + text + originalValue.slice(end);
 
-      // 通过原型链 Setter 绕过 React / Vue 的状态拦截
       const prototype =
         activeEl instanceof HTMLTextAreaElement
           ? HTMLTextAreaElement.prototype
@@ -47,12 +118,11 @@ export class UniversalEditor {
         activeEl.value = updatedValue;
       }
 
-      // 重设光标到插入文本末尾
       const newPos = start + text.length;
       try {
         activeEl.setSelectionRange(newPos, newPos);
       } catch {
-        // 部分 input 类型可能不支持 setSelectionRange，安全静默
+        // 静默捕获非文本输入框异常
       }
 
       activeEl.dispatchEvent(new Event("input", { bubbles: true }));
@@ -60,7 +130,7 @@ export class UniversalEditor {
       return true;
     }
 
-    // 2. contenteditable 容器 (ChatGPT / Claude / Gemini / DeepSeek 等)
+    // 2. contenteditable 容器
     if (
       activeEl.isContentEditable ||
       activeEl.closest("[contenteditable='true']")
@@ -71,7 +141,6 @@ export class UniversalEditor {
 
       container.focus();
 
-      // 优先派发标准的 beforeinput 事件
       if (typeof InputEvent === "function") {
         const inputEvent = new InputEvent("beforeinput", {
           bubbles: true,
@@ -83,7 +152,6 @@ export class UniversalEditor {
         if (!notCancelled) return true;
       }
 
-      // 降级使用 document.execCommand
       return document.execCommand("insertText", false, text);
     }
 

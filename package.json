@@ -1,12 +1,15 @@
 {
   "name": "ai-github-ingest",
   "private": true,
-  "version": "0.1.3",
+  "version": "0.2.1",
   "type": "module",
   "packageManager": "pnpm@9.15.4",
   "scripts": {
     "build": "tsc --noEmit && node build.mjs",
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "fflate": "^0.8.2"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.268",
