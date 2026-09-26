@@ -1,61 +1,41 @@
-import { GitIngestClient } from "./gitingest-client";
-import { ExtensionResponse } from "../types";
+import { ingestRepository } from "../core/ingest";
+import { ExtensionResponse, StorageSchema } from "../types";
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (
-    message.type === "FETCH_GITINGEST" ||
-    message.type === "INGEST_GITHUB_REPO"
-  ) {
-    const targetUrl =
-      typeof message.payload?.url === "string"
-        ? message.payload.url
-        : typeof message.url === "string"
-          ? message.url
-          : "";
+  if (message.type === "INGEST_REPO") {
+    const targetUrl = message.payload?.url;
 
-    if (!targetUrl) {
+    if (!targetUrl || typeof targetUrl !== "string") {
       sendResponse({
         success: false,
-        error: {
-          code: "EMPTY_PAYLOAD",
-          message: "请求 URL 不能为空",
-        },
+        error: { code: "INVALID_URL", message: "目标仓库 URL 不能为空" },
       } as ExtensionResponse);
       return false;
     }
 
-    GitIngestClient.fetchRepoContext(targetUrl)
-      .then((result) => {
-        if (result.success && result.data) {
+    // 从存储获取可选的 PAT
+    chrome.storage.sync.get("githubToken", (items) => {
+      const token = (items as StorageSchema).githubToken;
+
+      ingestRepository(targetUrl, { token })
+        .then((summary) => {
           sendResponse({
             success: true,
-            payload: {
-              repoUrl: targetUrl,
-              content: result.data,
-            },
+            payload: summary,
           } as ExtensionResponse);
-        } else {
+        })
+        .catch((err: Error) => {
           sendResponse({
             success: false,
             error: {
-              code: "HTTP_ERROR",
-              status: 500,
-              message: result.error || "GitIngest 服务不可用",
+              code: "INGEST_FAILED",
+              message: err.message || "仓库代码树提取失败",
             },
           } as ExtensionResponse);
-        }
-      })
-      .catch((err: Error) => {
-        sendResponse({
-          success: false,
-          error: {
-            code: "NETWORK_ERROR",
-            message: err.message || "网络请求异常",
-          },
-        } as ExtensionResponse);
-      });
+        });
+    });
 
-    return true; // 保持异步响应信道连通
+    return true; // 保持长连接通道以支持异步回调
   }
 
   return false;

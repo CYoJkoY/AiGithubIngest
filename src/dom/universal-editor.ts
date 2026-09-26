@@ -1,32 +1,20 @@
-/**
- * 现代输入框增量安全写入器
- * 适配 textarea、input 以及 contenteditable (ProseMirror / Monaco / Slate)
- */
 export class UniversalEditor {
   /**
-   * 将文本安全插入到当前光标所在位置，绝不覆写已存在的前后文本
+   * 在当前光标处安全插入文本，绝不冲刷、不修改已存在的任何字符
    */
   public static insertAtCursor(
     text: string,
     fallbackTarget?: EventTarget | null,
   ): boolean {
-    let activeEl = document.activeElement as HTMLElement | null;
-
-    if (
-      (!activeEl || activeEl === document.body) &&
+    const activeEl = (
       fallbackTarget instanceof HTMLElement
-    ) {
-      fallbackTarget.focus();
-      activeEl = fallbackTarget;
-    }
+        ? fallbackTarget
+        : document.activeElement
+    ) as HTMLElement | null;
 
-    // 优先使用标准命令，自动保留撤销历史，兼容受控组件与富文本输入框
-    const success = document.execCommand("insertText", false, text);
-    if (success) {
-      return true;
-    }
+    if (!activeEl) return false;
 
-    // 针对原生 textarea/input 在特定环境下 execCommand 失效的降级处理
+    // 1. 原生 Textarea / Input 元素（适配 React 受控组件）
     if (
       activeEl instanceof HTMLTextAreaElement ||
       activeEl instanceof HTMLInputElement
@@ -34,24 +22,59 @@ export class UniversalEditor {
       const start = activeEl.selectionStart ?? activeEl.value.length;
       const end = activeEl.selectionEnd ?? activeEl.value.length;
       const originalValue = activeEl.value;
-
-      activeEl.value =
+      const updatedValue =
         originalValue.slice(0, start) + text + originalValue.slice(end);
-      const newCursorPos = start + text.length;
-      activeEl.setSelectionRange(newCursorPos, newCursorPos);
 
+      // 通过原型链 Setter 绕过 React 拦截，促使 React 状态管理器正常响应
+      const prototype =
+        activeEl instanceof HTMLTextAreaElement
+          ? HTMLTextAreaElement.prototype
+          : HTMLInputElement.prototype;
+      const nativeSetter = Object.getOwnPropertyDescriptor(
+        prototype,
+        "value",
+      )?.set;
+
+      if (nativeSetter) {
+        nativeSetter.call(activeEl, updatedValue);
+      } else {
+        activeEl.value = updatedValue;
+      }
+
+      activeEl.selectionStart = activeEl.selectionEnd = start + text.length;
       activeEl.dispatchEvent(new Event("input", { bubbles: true }));
       activeEl.dispatchEvent(new Event("change", { bubbles: true }));
       return true;
     }
 
+    // 2. 现代 AI 站点的 contenteditable 容器 (ChatGPT / Claude / Gemini / DeepSeek)
+    if (
+      activeEl.isContentEditable ||
+      activeEl.closest("[contenteditable='true']")
+    ) {
+      const editableContainer = activeEl.isContentEditable
+        ? activeEl
+        : (activeEl.closest("[contenteditable='true']") as HTMLElement);
+
+      editableContainer.focus();
+
+      // 优先使用标准 beforeinput 事件（ProseMirror 与 Lexical 标准输入接口）
+      const canInputEvent = typeof InputEvent === "function";
+      if (canInputEvent) {
+        const inputEvent = new InputEvent("beforeinput", {
+          bubbles: true,
+          cancelable: true,
+          inputType: "insertText",
+          data: text,
+        });
+        const notCancelled = editableContainer.dispatchEvent(inputEvent);
+        if (!notCancelled) return true;
+      }
+
+      // 回退使用浏览器级命令
+      return document.execCommand("insertText", false, text);
+    }
+
     return false;
   }
 }
-
-export const insertAtCursor = (
-  text: string,
-  fallbackTarget?: EventTarget | null,
-): boolean => {
-  return UniversalEditor.insertAtCursor(text, fallbackTarget);
-};

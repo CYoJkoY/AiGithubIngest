@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AiGithubIngest - GitHub 仓库 AI 上下文提取器</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header class="app-header">
+        <h1>AiGithubIngest</h1>
+        <p class="subtitle">将 GitHub 仓库解析为适合 AI 大模型分析的聚合文本</p>
+      </header>
+
+      <main>
+        <!-- 表单区域：禁止默认提交，保护输入态 -->
+        <form id="ingest-form" class="card" novalidate>
+          <div class="form-group">
+            <label for="repo-url"
+              >GitHub 仓库 URL 或 Path <span class="required">*</span></label
+            >
+            <input
+              id="repo-url"
+              name="repoUrl"
+              type="text"
+              placeholder="例如: https://github.com/CYoJkoY/AiGithubIngest 或 owner/repo"
+              required
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="github-token">
+              GitHub Personal Access Token (可选，突破 60次/h 速率上限)
+            </label>
+            <input
+              id="github-token"
+              name="githubToken"
+              type="password"
+              placeholder="ghp_xxxxxxxxxxxxxxxxxxxx (仅在浏览器本地发起请求，不上传服务器)"
+              autocomplete="off"
+            />
+          </div>
+
+          <div class="form-actions">
+            <button id="submit-btn" type="submit" class="btn btn-primary">
+              <span class="btn-text">开始提取</span>
+            </button>
+          </div>
+        </form>
+
+        <!-- 独立状态挂载区：确保发生任何异常都不触碰表单输入框 -->
+        <div id="status-panel" class="status-panel hidden" aria-live="polite">
+          <div id="progress-indicator" class="progress-indicator hidden">
+            <div class="spinner"></div>
+            <span id="progress-text" class="progress-text">准备就绪...</span>
+          </div>
+          <div id="error-banner" class="error-banner hidden" role="alert"></div>
+        </div>
+
+        <!-- 提取结果呈现区 -->
+        <section id="result-section" class="card hidden">
+          <div class="result-header">
+            <div class="result-stats" id="result-stats"></div>
+            <button id="copy-btn" class="btn btn-secondary">
+              一键复制上下文
+            </button>
+          </div>
+          <textarea id="output-area" class="output-area" readonly></textarea>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>
