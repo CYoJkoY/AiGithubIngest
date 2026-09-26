@@ -13,10 +13,13 @@ const getCurrentTabHostname = async (): Promise<string | null> => {
 
 const getWhitelist = (): Promise<readonly string[]> => {
   return new Promise((resolve) => {
-    chrome.storage.sync.get("userWhitelist", (res) => {
-      const data = res as StorageSchema;
-      resolve(data.userWhitelist ?? []);
-    });
+    chrome.storage.sync.get(
+      "userWhitelist",
+      (res: { [key: string]: unknown }) => {
+        const data = res as Partial<StorageSchema>;
+        resolve(data.userWhitelist ?? []);
+      },
+    );
   });
 };
 

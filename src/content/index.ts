@@ -8,6 +8,7 @@ import {
 } from "../dom/universal-editor";
 import { showToast } from "../ui/toast";
 import { ExtensionResponse, StorageSchema } from "../types";
+export type { Result, Ok, Err } from "../core/result";
 
 const fetchUserWhitelist = (): Promise<readonly string[]> => {
   return new Promise((resolve) => {
