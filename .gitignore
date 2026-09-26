@@ -1,0 +1,33 @@
+# 依赖目录 (pnpm / npm)
+node_modules/
+.pnpm-store/
+
+# 构建与打包输出产物
+dist/
+build/
+*.zip
+*.crx
+
+# 扩展私钥证书与敏感配置
+*.pem
+.env
+.env.*
+!.env.example
+
+# 临时日志与缓存
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.eslintcache
+
+# 系统与 IDE 杂项
+.DS_Store
+Thumbs.db
+.idea/
+*.sublime-project
+*.sublime-workspace
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json

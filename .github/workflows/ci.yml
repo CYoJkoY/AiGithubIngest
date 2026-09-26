@@ -1,0 +1,58 @@
+name: CI & Extension Build
+
+on:
+  push:
+    branches:
+      - main
+      - "feature/**"
+      - "fix/**"
+  pull_request:
+    branches:
+      - main
+
+# 限制同一并发任务，重复提交时自动取消老任务
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-verify:
+    name: Typecheck & Build Extension
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js (with pnpm cache)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "pnpm"
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Strict Typecheck
+        run: pnpm exec tsc --noEmit
+
+      - name: Build Extension Artifacts
+        run: pnpm run build
+
+      - name: Archive Extension Zip
+        run: |
+          cd dist
+          zip -r ../ai-github-ingest-extension.zip ./*
+          cd ..
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-github-ingest-extension
+          path: ai-github-ingest-extension.zip
+          retention-days: 14

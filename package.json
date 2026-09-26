@@ -1,0 +1,32 @@
+{
+  "name": "ai-github-ingest-extension",
+  "version": "1.0.0",
+  "description": "Native TypeScript Chrome extension to seamlessly ingest GitHub repositories via Gitingest into AI platforms.",
+  "type": "module",
+  "private": true,
+  "icons": {
+    "16": "assets/icon.svg",
+    "32": "assets/icon.svg",
+    "48": "assets/icon.svg",
+    "128": "assets/icon.svg"
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "assets/icon.svg",
+      "32": "assets/icon.svg",
+      "48": "assets/icon.svg",
+      "128": "assets/icon.svg"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "node build.mjs",
+    "ci": "pnpm run typecheck && pnpm run build"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.268",
+    "esbuild": "^0.20.2",
+    "typescript": "^5.4.5"
+  }
+}
