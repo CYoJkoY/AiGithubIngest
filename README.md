@@ -1,6 +1,6 @@
-# AiGithubIngest
-
 <div align="center">
+
+# AiGithubIngest
 
 **Local, Zero-Proxy GitHub Ingestion Engine for AI Conversations.**
 
@@ -31,9 +31,10 @@ Parse public and private GitHub repositories entirely inside your browser and se
 ---
 
 <a name="readme-overview"></a>
+
 ## <img src="assets/readme/icons/overview.svg" width="24" height="24" alt=""> Overview
 
-Modern AI web applications (such as ChatGPT, Claude, and Gemini) struggle to digest full code repositories without tedious manual downloading or relying on risky third-party cloud ingestion proxies[cite: 1]. 
+Modern AI web applications (such as ChatGPT, Claude, and Gemini) struggle to digest full code repositories without tedious manual downloading or relying on risky third-party cloud ingestion proxies[cite: 1].
 
 **AiGithubIngest** solves this by running an end-to-end repository parser entirely inside your client browser[cite: 1]:
 
@@ -58,19 +59,21 @@ Everything executes inside your local browser runtime—no telemetry, no interme
 ---
 
 <a name="readme-features"></a>
+
 ## <img src="assets/readme/icons/features.svg" width="24" height="24" alt=""> Key Features
 
-* **100% Client-Side Parsing:** Repository zipballs are fetched and decompressed on the fly via `fflate` inside browser memory[cite: 1].
-* **Universal File Attachment Injection:** Automatically scans for native `<input type="file">` controls, Clipboard events, or Drag-and-Drop state machines to attach the repository digest as an authentic markdown file—bypassing React 16+ controlled input traps[cite: 1].
-* **Anti-Freeze Fallback Protection:** When direct file mounting is restricted by a host platform, it gracefully injects a lightweight ASCII directory tree and metadata header directly at the cursor, preventing browser hang caused by multi-megabyte raw text pasting[cite: 1].
-* **Private Repository & PAT Support:** Supports user-configured GitHub Personal Access Tokens (PAT) stored safely in `chrome.storage.sync` to access private repositories and elevate API limits from 60 to 5,000 req/h[cite: 1].
-* **Smart Filter & Heuristic Token Estimator:** Automatically excludes binaries, minified files, lockfiles, virtual environments, build artifacts, and oversized files (>100 KB default), and calculates token counts aligned with modern LLM tokenizers (GPT-4o / o200k_base)[cite: 1].
-* **Out-of-the-Box AI Site Policy:** Activates automatically on major AI platforms and allows custom domain whitelisting with one click from the popup interface[cite: 1].
-* **Standalone Web UI Included:** Features a standalone web interface (`index.html`) for manual pasting, token entry, and one-click clipboard copying without requiring extension background scripts[cite: 1].
+- **100% Client-Side Parsing:** Repository zipballs are fetched and decompressed on the fly via `fflate` inside browser memory[cite: 1].
+- **Universal File Attachment Injection:** Automatically scans for native `<input type="file">` controls, Clipboard events, or Drag-and-Drop state machines to attach the repository digest as an authentic markdown file—bypassing React 16+ controlled input traps[cite: 1].
+- **Anti-Freeze Fallback Protection:** When direct file mounting is restricted by a host platform, it gracefully injects a lightweight ASCII directory tree and metadata header directly at the cursor, preventing browser hang caused by multi-megabyte raw text pasting[cite: 1].
+- **Private Repository & PAT Support:** Supports user-configured GitHub Personal Access Tokens (PAT) stored safely in `chrome.storage.sync` to access private repositories and elevate API limits from 60 to 5,000 req/h[cite: 1].
+- **Smart Filter & Heuristic Token Estimator:** Automatically excludes binaries, minified files, lockfiles, virtual environments, build artifacts, and oversized files (>100 KB default), and calculates token counts aligned with modern LLM tokenizers (GPT-4o / o200k_base)[cite: 1].
+- **Out-of-the-Box AI Site Policy:** Activates automatically on major AI platforms and allows custom domain whitelisting with one click from the popup interface[cite: 1].
+- **Standalone Web UI Included:** Features a standalone web interface (`index.html`) for manual pasting, token entry, and one-click clipboard copying without requiring extension background scripts[cite: 1].
 
 ---
 
 <a name="readme-mechanism"></a>
+
 ## <img src="assets/readme/icons/mechanism.svg" width="24" height="24" alt=""> Architecture & Mechanism
 
 AiGithubIngest follows a strictly bounded, low-overhead WebExtension architecture[cite: 1, 2]:
@@ -109,6 +112,7 @@ AiGithubIngest follows a strictly bounded, low-overhead WebExtension architectur
 ### Tri-Level Universal Mounting Strategy
 
 To guarantee compatibility across diverse web app frameworks, the DOM driver applies three cascaded attachment strategies[cite: 1]:
+
 1. **Direct `HTMLInputElement` Prototype Injection:** Bypasses framework property shadowing (such as React's internal fiber state) to set the `files` property and fire native `input` / `change` events[cite: 1].
 2. **Synthetic Clipboard Dispatch:** Dispatches a structured `ClipboardEvent` carrying a generated `File` object in `clipboardData`[cite: 1].
 3. **Multi-Target Drag & Drop Simulation:** Emits `dragenter`, `dragover`, and `drop` events with synthetic `DataTransfer` payloads across outer form and dropzone boundaries[cite: 1].
@@ -116,27 +120,29 @@ To guarantee compatibility across diverse web app frameworks, the DOM driver app
 ---
 
 <a name="readme-supported-sites"></a>
+
 ## <img src="assets/readme/icons/sites.svg" width="24" height="24" alt=""> Supported Platforms
 
 Built-in support is active by default on leading AI chat platforms[cite: 1]:
 
-| Platform | Domain | Default Status |
-| :--- | :--- | :--- |
-| **ChatGPT** | `chatgpt.com`, `chat.openai.com` | Built-in (Always Active)[cite: 1] |
-| **Claude** | `claude.ai` | Built-in (Always Active)[cite: 1] |
-| **Google Gemini** | `gemini.google.com` | Built-in (Always Active)[cite: 1] |
-| **DeepSeek** | `chat.deepseek.com` | Built-in (Always Active)[cite: 1] |
-| **Poe** | `poe.com` | Built-in (Always Active)[cite: 1] |
-| **Perplexity** | `perplexity.ai` | Built-in (Always Active)[cite: 1] |
-| **Kimi** | `kimi.moonshot.cn` | Built-in (Always Active)[cite: 1] |
-| **ChatGLM** | `chatglm.cn` | Built-in (Always Active)[cite: 1] |
-| **Tongyi Qianwen** | `tongyi.aliyun.com` | Built-in (Always Active)[cite: 1] |
-| **Microsoft Copilot**| `copilot.microsoft.com` | Built-in (Always Active)[cite: 1] |
-| **Custom AI Sites** | *Any domain* | Whitelist via Extension Popup[cite: 1] |
+| Platform              | Domain                           | Default Status                         |
+| :-------------------- | :------------------------------- | :------------------------------------- |
+| **ChatGPT**           | `chatgpt.com`, `chat.openai.com` | Built-in (Always Active)[cite: 1]      |
+| **Claude**            | `claude.ai`                      | Built-in (Always Active)[cite: 1]      |
+| **Google Gemini**     | `gemini.google.com`              | Built-in (Always Active)[cite: 1]      |
+| **DeepSeek**          | `chat.deepseek.com`              | Built-in (Always Active)[cite: 1]      |
+| **Poe**               | `poe.com`                        | Built-in (Always Active)[cite: 1]      |
+| **Perplexity**        | `perplexity.ai`                  | Built-in (Always Active)[cite: 1]      |
+| **Kimi**              | `kimi.moonshot.cn`               | Built-in (Always Active)[cite: 1]      |
+| **ChatGLM**           | `chatglm.cn`                     | Built-in (Always Active)[cite: 1]      |
+| **Tongyi Qianwen**    | `tongyi.aliyun.com`              | Built-in (Always Active)[cite: 1]      |
+| **Microsoft Copilot** | `copilot.microsoft.com`          | Built-in (Always Active)[cite: 1]      |
+| **Custom AI Sites**   | _Any domain_                     | Whitelist via Extension Popup[cite: 1] |
 
 ---
 
 <a name="readme-quick-start"></a>
+
 ## <img src="assets/readme/icons/download.svg" width="24" height="24" alt=""> Quick Start
 
 ### Option A: Install Release Archive (Recommended)
@@ -168,17 +174,19 @@ Then load the resulting `dist/` directory as an unpacked extension in your brows
 ---
 
 <a name="readme-configuration"></a>
+
 ## <img src="assets/readme/icons/config.svg" width="24" height="24" alt=""> Configuration
 
 Click the extension icon in your browser toolbar to open the settings popup[cite: 1]:
 
-* **Site Policy:** Inspects current tab status. Toggle any domain into the custom whitelist[cite: 1].
-* **GitHub Token:** Enter a Personal Access Token (classic with `repo` scope or fine-grained read token). This allows accessing private repositories and raises API rate limits to 5,000 requests/hour[cite: 1].
-* **Language:** Switch between English and Simplified Chinese (`zh-CN`)[cite: 1].
+- **Site Policy:** Inspects current tab status. Toggle any domain into the custom whitelist[cite: 1].
+- **GitHub Token:** Enter a Personal Access Token (classic with `repo` scope or fine-grained read token). This allows accessing private repositories and raises API rate limits to 5,000 requests/hour[cite: 1].
+- **Language:** Switch between English and Simplified Chinese (`zh-CN`)[cite: 1].
 
 ---
 
 <a name="readme-development"></a>
+
 ## <img src="assets/readme/icons/engineering.svg" width="24" height="24" alt=""> Development & Quality Gates
 
 AiGithubIngest follows strict contract verification and zero-runtime-waste engineering standards[cite: 1, 2]:
@@ -192,13 +200,15 @@ node build.mjs
 ```
 
 ### CI / CD Workflows
-* **`ci.yml`**: Enforces strict semantic manifest version checks, executes `tsc --noEmit`, builds distribution artifacts, and validates worktree cleanliness[cite: 1].
-* **`release.yml`**: Verifies that git tags match `manifest.json` versions, verifies critical artifact files (`background.js`, `content.js`, `popup.html`, etc.), and packages both signed CRX3 and ZIP distributions[cite: 1].
-* **`sync-manifest-version.yml`**: Automatically syncs `package.json` to the authoritative `manifest.json` single source of truth upon main-branch updates[cite: 1].
+
+- **`ci.yml`**: Enforces strict semantic manifest version checks, executes `tsc --noEmit`, builds distribution artifacts, and validates worktree cleanliness[cite: 1].
+- **`release.yml`**: Verifies that git tags match `manifest.json` versions, verifies critical artifact files (`background.js`, `content.js`, `popup.html`, etc.), and packages both signed CRX3 and ZIP distributions[cite: 1].
+- **`sync-manifest-version.yml`**: Automatically syncs `package.json` to the authoritative `manifest.json` single source of truth upon main-branch updates[cite: 1].
 
 ---
 
 <a name="readme-support"></a>
+
 ## <img src="assets/readme/icons/heart.svg" width="24" height="24" alt=""> Support & Sponsorship
 
 Maintaining browser extension compatibility across rapidly evolving AI web applications, rate-limit defenses, and memory-safe streaming decompression requires continuous testing and maintenance[cite: 1, 2].
@@ -220,6 +230,7 @@ Maintaining browser extension compatibility across rapidly evolving AI web appli
 ---
 
 <a name="readme-license"></a>
+
 ## <img src="assets/readme/icons/license.svg" width="24" height="24" alt=""> License
 
 This project is open-source and released under the [MIT License](LICENSE)[cite: 1].
