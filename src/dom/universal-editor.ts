@@ -1,6 +1,11 @@
 export class UniversalEditor {
+  private static lastUploadTime = 0;
+  private static lastUploadKey = "";
+  private static isUploading = false;
+
   /**
    * 校验 file input 是否具备接收文本/文档附件的能力
+   * 采用宽松防御策略：只要不是明确仅限图片/音视频的输入框，均允许挂载 Markdown
    */
   private static isValidFileInput(
     input: HTMLInputElement,
@@ -12,7 +17,7 @@ export class UniversalEditor {
 
     const acceptLower = accept.toLowerCase();
 
-    // 排除明确仅限图片/音视频的专用控件
+    // 排除明确仅接受图片、音频、视频的专用控件（如头像上传、语音输入）
     const isPureMedia =
       (acceptLower.includes("image/") ||
         acceptLower.includes(".jpg") ||
@@ -63,6 +68,10 @@ export class UniversalEditor {
     });
   }
 
+  /**
+   * 查找页面中可能存在的附件上传按钮并尝试唤起隐藏的 input
+   * 兼顾中英文界面的 aria-label 与 title 属性
+   */
   private static tryWakeUploadInput(): void {
     const uploadBtnSelectors = [
       'button[aria-label*="上传"]',
@@ -98,7 +107,7 @@ export class UniversalEditor {
 
   /**
    * 策略 1: 扫描并触发原生 input[type="file"] 挂载
-   * 恢复 bubbles: true 保证 React 根委托捕获
+   * 严格单一靶向，全平台保持 bubbles: true 保证 React 根委托捕获
    */
   private static tryUploadViaFileInput(
     file: File,
@@ -122,55 +131,105 @@ export class UniversalEditor {
       document.body,
     ].filter((scope): scope is Element => Boolean(scope));
 
+    // 跨作用域收集并去重，杜绝相同 input 被重复扫描
+    const seenInputs = new Set<HTMLInputElement>();
+    const candidateInputs: HTMLInputElement[] = [];
+
     for (const scope of searchScopes) {
       const fileInputs = Array.from(
         scope.querySelectorAll<HTMLInputElement>('input[type="file"]'),
       );
-
-      for (const fileInput of fileInputs) {
-        if (!this.isValidFileInput(fileInput, file)) continue;
-
-        try {
-          // 清除可能缓存的历史值
-          fileInput.value = "";
-
-          const descriptor = Object.getOwnPropertyDescriptor(
-            HTMLInputElement.prototype,
-            "files",
-          );
-
-          if (descriptor?.set) {
-            descriptor.set.call(fileInput, dataTransfer.files);
-          } else {
-            fileInput.files = dataTransfer.files;
-          }
-
-          const tracker = (
-            fileInput as unknown as {
-              _valueTracker?: { setValue: (val: string) => void };
-            }
-          )._valueTracker;
-          if (tracker) {
-            tracker.setValue("");
-          }
-
-          // 必须冒泡以确保宿主框架事件委托层收到变更
-          fileInput.dispatchEvent(
-            new Event("change", { bubbles: true, composed: true }),
-          );
-
-          return true;
-        } catch {
-          // 遇到受限 DOM 继续尝试下一个
+      for (const input of fileInputs) {
+        if (!seenInputs.has(input) && this.isValidFileInput(input, file)) {
+          seenInputs.add(input);
+          candidateInputs.push(input);
         }
       }
     }
 
-    return false;
+    if (candidateInputs.length === 0) return false;
+
+    // 排序策略：专用于 Markdown/文档的控件 > 离当前输入框最近的控件 > 当前处于可见状态的控件
+    candidateInputs.sort((a, b) => {
+      const aAccept = (a.accept || "").toLowerCase();
+      const bAccept = (b.accept || "").toLowerCase();
+      const aExplicitMd =
+        aAccept.includes(".md") ||
+        aAccept.includes("markdown") ||
+        aAccept.includes("text");
+      const bExplicitMd =
+        bAccept.includes(".md") ||
+        bAccept.includes("markdown") ||
+        bAccept.includes("text");
+
+      if (aExplicitMd && !bExplicitMd) return -1;
+      if (!aExplicitMd && bExplicitMd) return 1;
+
+      if (activeEl) {
+        const aNear = Boolean(
+          a.closest('[class*="input"]') || a.closest('[class*="chat"]'),
+        );
+        const bNear = Boolean(
+          b.closest('[class*="input"]') || b.closest('[class*="chat"]'),
+        );
+        if (aNear && !bNear) return -1;
+        if (!aNear && bNear) return 1;
+      }
+
+      const aVisible = a.offsetWidth > 0 || a.offsetHeight > 0;
+      const bVisible = b.offsetWidth > 0 || b.offsetHeight > 0;
+      if (aVisible && !bVisible) return -1;
+      if (!aVisible && bVisible) return 1;
+
+      return 0;
+    });
+
+    // 严格限制为单一靶心：仅选定最优的一个控件，禁止向多个控件重复赋值
+    const fileInput = candidateInputs[0];
+
+    try {
+      // 预先重置 value，消除文件路径缓存干扰
+      try {
+        fileInput.value = "";
+      } catch {
+        // 部分浏览器安全策略可能限制直接设空，忽略
+      }
+
+      // 通过原型链 Setter 绕过 React 受控组件拦截
+      const descriptor = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "files",
+      );
+
+      if (descriptor?.set) {
+        descriptor.set.call(fileInput, dataTransfer.files);
+      } else {
+        fileInput.files = dataTransfer.files;
+      }
+
+      // 同步重置 React 内部 valueTracker 状态
+      const tracker = (
+        fileInput as unknown as {
+          _valueTracker?: { setValue: (val: string) => void };
+        }
+      )._valueTracker;
+      if (tracker) {
+        tracker.setValue("");
+      }
+
+      // 派发标准冒泡 change 事件，确保 React / Semi Design 根委托捕获
+      fileInput.dispatchEvent(
+        new Event("change", { bubbles: true, composed: true }),
+      );
+
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /**
-   * 策略 2: 单靶向模拟 ClipboardEvent('paste')
+   * 策略 2: 单靶向精准模拟 ClipboardEvent('paste') 携带 File 对象
    */
   private static tryPasteEvent(
     activeEl: HTMLElement | null,
@@ -201,13 +260,13 @@ export class UniversalEditor {
   }
 
   /**
-   * 策略 3: 单靶向 Drag & Drop 仿真（严禁多节点循环派发）
+   * 策略 3: 精准单靶心 Drag & Drop 状态机仿真
+   * 严格挑选单一最高优先级节点派发，杜绝祖先链重复触发
    */
   private static tryDragAndDrop(
     activeEl: HTMLElement | null,
     dataTransfer: DataTransfer,
   ): boolean {
-    // 仅选择唯一的最高优先级目标，避免多重派发
     const target =
       document.querySelector<HTMLElement>('[data-dropzone="true"]') ||
       document.querySelector<HTMLElement>('[class*="dropzone"]') ||
@@ -239,41 +298,59 @@ export class UniversalEditor {
   }
 
   /**
-   * 统一文件挂载入口
+   * 互斥式文件挂载入口：增加 1500ms 任务指纹时间锁与精准熔断机制
    */
   public static attachVirtualFile(
     file: File,
     targetElement?: EventTarget | null,
   ): boolean {
-    const activeEl = (
-      targetElement instanceof HTMLElement
-        ? targetElement
-        : document.activeElement
-    ) as HTMLElement | null;
+    const now = Date.now();
+    const uploadKey = `${file.name}-${file.size}`;
 
-    const dataTransfer = new DataTransfer();
-    dataTransfer.items.add(file);
-
-    const currentHost = window.location.hostname.toLowerCase();
-    const isDoubao = currentHost.includes("doubao.com");
-
-    if (isDoubao) {
-      // 豆包平台优先使用单靶向 Drag & Drop / Paste，避免其原生 file input 触发两次包装
-      if (this.tryDragAndDrop(activeEl, dataTransfer)) return true;
-      if (this.tryPasteEvent(activeEl, dataTransfer)) return true;
-      if (this.tryUploadViaFileInput(file, activeEl, dataTransfer)) return true;
-    } else {
-      // 其他 AI 平台标准优先级
-      if (this.tryUploadViaFileInput(file, activeEl, dataTransfer)) return true;
-      if (this.tryPasteEvent(activeEl, dataTransfer)) return true;
-      if (this.tryDragAndDrop(activeEl, dataTransfer)) return true;
+    if (this.isUploading) return true;
+    if (now - this.lastUploadTime < 1500 && this.lastUploadKey === uploadKey) {
+      return true;
     }
 
-    return false;
+    this.isUploading = true;
+    this.lastUploadTime = now;
+    this.lastUploadKey = uploadKey;
+
+    try {
+      const activeEl = (
+        targetElement instanceof HTMLElement
+          ? targetElement
+          : document.activeElement
+      ) as HTMLElement | null;
+
+      const dataTransfer = new DataTransfer();
+      dataTransfer.items.add(file);
+
+      // 优先策略 1: 扫描并触发 input[type="file"]
+      if (this.tryUploadViaFileInput(file, activeEl, dataTransfer)) {
+        return true;
+      }
+
+      // 优先策略 2: 模拟粘贴 ClipboardEvent
+      if (this.tryPasteEvent(activeEl, dataTransfer)) {
+        return true;
+      }
+
+      // 优先策略 3: 模拟拖拽 Drag & Drop
+      if (this.tryDragAndDrop(activeEl, dataTransfer)) {
+        return true;
+      }
+
+      return false;
+    } finally {
+      setTimeout(() => {
+        this.isUploading = false;
+      }, 500);
+    }
   }
 
   /**
-   * 轻量化文本光标注入
+   * 轻量化文本光标注入（降级回退通道）
    */
   public static insertAtCursor(
     text: string,
