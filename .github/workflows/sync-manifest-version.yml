@@ -1,0 +1,64 @@
+name: Sync Manifest Version
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "package.json"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync-version:
+    name: Sync manifest.json with package.json
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Synchronize Version
+        id: sync
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          MANIFEST_VERSION=$(node -p "require('./manifest.json').version")
+
+          echo "当前 package.json 版本:  $PKG_VERSION"
+          echo "当前 manifest.json 版本: $MANIFEST_VERSION"
+
+          if [ "$PKG_VERSION" = "$MANIFEST_VERSION" ]; then
+            echo "✅ 版本已一致，无需同步更新"
+            echo "changed=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "🔄 将 manifest.json 版本更新为: $PKG_VERSION"
+          node -e "
+            const fs = require('fs');
+            const manifest = JSON.parse(fs.readFileSync('manifest.json', 'utf8'));
+            manifest.version = '$PKG_VERSION';
+            fs.writeFileSync('manifest.json', JSON.stringify(manifest, null, 2) + '\n', 'utf8');
+          "
+
+          echo "changed=true" >> $GITHUB_OUTPUT
+          echo "new_version=$PKG_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Commit and Push Manifest Changes
+        if: steps.sync.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add manifest.json
+          git commit -m "chore(release): sync manifest.json version to ${{ steps.sync.outputs.new_version }} [skip ci]"
+          git push origin HEAD:${{ github.ref_name }}

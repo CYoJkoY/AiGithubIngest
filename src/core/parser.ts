@@ -20,18 +20,21 @@ export const extractGitHubRepo = (
     });
   }
 
-  const [, owner, rawRepo, , ref, subpath] = match;
+  const [, owner, rawRepo, rawType, ref, subpath] = match;
   const repo = rawRepo.replace(/\.git$/, "");
+  const targetType =
+    rawType === "blob" ? "blob" : rawType === "tree" ? "tree" : undefined;
 
   let canonicalUrl = `https://github.com/${owner}/${repo}`;
   if (ref) {
-    canonicalUrl += `/tree/${ref}${subpath ? `/${subpath}` : ""}`;
+    canonicalUrl += `/${targetType ?? "tree"}/${ref}${subpath ? `/${subpath}` : ""}`;
   }
 
   return ok({
     owner,
     repo,
     ref: ref || undefined,
+    type: targetType,
     subpath: subpath ? `/${subpath.replace(/^\/+|\/+$/g, "")}` : "/",
     canonicalUrl,
   });

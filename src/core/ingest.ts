@@ -46,16 +46,15 @@ export async function ingestRepository(
     throw new Error("仓库压缩包内容为空");
   }
 
-  // GitHub Zipball 根目录结构固定为：{owner}-{repo}-{commit_hash}/
-  const firstKey = fileKeys[0];
-  const rootPrefix = firstKey.includes("/")
-    ? firstKey.slice(0, firstKey.indexOf("/") + 1)
-    : "";
+  // 稳健提取 Zipball 根前缀 (首个包含 '/' 的目录段)
+  const sampleKey = fileKeys.find((k) => k.includes("/")) ?? fileKeys[0];
+  const slashIdx = sampleKey.indexOf("/");
+  const rootPrefix = slashIdx !== -1 ? sampleKey.slice(0, slashIdx + 1) : "";
 
-  const subpathPrefix =
-    target.subpath && target.subpath !== "/"
-      ? target.subpath.replace(/^\/+|\/+$/g, "") + "/"
-      : "";
+  const cleanSubpath = target.subpath
+    ? target.subpath.replace(/^\/+|\/+$/g, "")
+    : "";
+  const isBlob = target.type === "blob" && cleanSubpath.length > 0;
 
   const treeFiles: Array<{ path: string; size: number }> = [];
   const processedFiles: IngestFileResult[] = [];
@@ -63,21 +62,23 @@ export async function ingestRepository(
   const utf8Decoder = new TextDecoder("utf-8", { fatal: false });
 
   for (const rawKey of fileKeys) {
-    if (!rawKey.startsWith(rootPrefix)) continue;
+    if (rootPrefix && !rawKey.startsWith(rootPrefix)) continue;
 
-    const relativePath = rawKey.slice(rootPrefix.length);
-    // 忽略目录项或空路径
+    const relativePath = rootPrefix ? rawKey.slice(rootPrefix.length) : rawKey;
     if (!relativePath || relativePath.endsWith("/")) continue;
 
-    // 子目录范围匹配
-    if (subpathPrefix && !relativePath.startsWith(subpathPrefix)) {
-      continue;
+    // 路径范围过滤
+    if (cleanSubpath) {
+      if (isBlob) {
+        if (relativePath !== cleanSubpath) continue;
+      } else if (!relativePath.startsWith(`${cleanSubpath}/`)) {
+        continue;
+      }
     }
 
     const fileData = unzipped[rawKey];
     const fileSize = fileData.length;
 
-    // 规则过滤（.gitignore 默认项、自定义 exclude/include、大文件截断）
     if (
       !shouldIncludeFile(
         relativePath,
@@ -92,7 +93,6 @@ export async function ingestRepository(
 
     treeFiles.push({ path: relativePath, size: fileSize });
 
-    // 二进制文件安全处理
     if (isBinary(fileData)) {
       processedFiles.push({
         path: relativePath,
@@ -110,13 +110,16 @@ export async function ingestRepository(
     });
   }
 
+  if (processedFiles.length === 0) {
+    throw new Error("指定路径下未匹配到任何符合规则的文本文件");
+  }
+
   options.onProgress?.("正在构建结构化目录树与上下文...", 90, 100);
 
   const rootSlug = `${target.owner}-${target.repo}`;
   const fileTree = TreeBuilder.build(treeFiles, rootSlug);
   const treeVisual = TreeBuilder.renderAscii(fileTree);
 
-  // 预装配上下文大文本
   let rawContentPart = "";
   for (const f of processedFiles) {
     rawContentPart += `\n================================================\nFILE: ${f.path}\n================================================\n${f.content}\n`;

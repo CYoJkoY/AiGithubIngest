@@ -2,6 +2,7 @@ export interface RepoTarget {
   readonly owner: string;
   readonly repo: string;
   readonly ref?: string;
+  readonly type?: "tree" | "blob";
   readonly subpath?: string;
   readonly canonicalUrl: string;
 }
