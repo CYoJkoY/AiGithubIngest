@@ -1,9 +1,4 @@
-import {
-  IngestOptions,
-  IngestSummary,
-  IngestFileResult,
-  RepoTarget,
-} from "../types";
+import { IngestOptions, IngestSummary, IngestFileResult } from "../types";
 import { extractGitHubRepo } from "./parser";
 import { GitHubEngine } from "./github-engine";
 import { shouldIncludeFile } from "./file-filter";

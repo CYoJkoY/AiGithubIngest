@@ -1,10 +1,4 @@
-import {
-  RepoTarget,
-  GitTreeItem,
-  IngestFileResult,
-  IngestSummary,
-  IngestOptions,
-} from "../types";
+import { RepoTarget, GitTreeItem } from "../types";
 
 export class GitHubEngine {
   private static readonly RAW_BASE = "https://raw.githubusercontent.com";

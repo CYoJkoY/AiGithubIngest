@@ -1,5 +1,5 @@
-import { Result, RepoTarget, ParseError } from "../types";
-import { ok, err } from "./result";
+import { RepoTarget, ParseError } from "../types";
+import { Result, ok, err } from "./result";
 
 const GITHUB_REPO_PATTERN =
   /https?:\/\/github\.com\/([a-zA-Z0-9_\-\.]+)\/([a-zA-Z0-9_\-\.]+)/;

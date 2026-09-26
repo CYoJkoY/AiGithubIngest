@@ -1,5 +1,4 @@
-import { ingestRepository } from "./ingest";
-import { GitHubApiError } from "./github-client";
+import { ingestRepository } from "./core/ingest";
 
 document.addEventListener("DOMContentLoaded", () => {
   const form = document.getElementById("ingest-form") as HTMLFormElement;
@@ -46,11 +45,9 @@ document.addEventListener("DOMContentLoaded", () => {
     progressIndicator.classList.add("hidden");
     errorBanner.classList.remove("hidden");
     errorBanner.textContent = msg;
-    // 关键设计：严禁清空 repoUrlInput.value，完整保留用户输入以便重试或补充 Token
   }
 
   form.addEventListener("submit", async (e: Event) => {
-    // 关键防御：阻止原生表单提交引起的页面刷新与数据丢失
     e.preventDefault();
 
     const rawUrl = repoUrlInput.value.trim();
@@ -68,21 +65,18 @@ document.addEventListener("DOMContentLoaded", () => {
     try {
       const summary = await ingestRepository(rawUrl, {
         token: token || undefined,
-        onProgress: (status) => {
+        onProgress: (status: string) => {
           progressText.textContent = status;
         },
       });
 
-      // 提取成功处理
       outputArea.value = summary.formattedOutput;
       resultStats.innerHTML = `已提取 <strong>${summary.files.length}</strong> 个文件 | 默认分支: <code>${summary.resolvedBranch}</code>`;
       resultSection.classList.remove("hidden");
       statusPanel.classList.add("hidden");
     } catch (err: unknown) {
       let displayMsg = "提取失败：遇到未知错误";
-      if (err instanceof GitHubApiError) {
-        displayMsg = `提取失败 (${err.status || "API异常"}): ${err.message}`;
-      } else if (err instanceof Error) {
+      if (err instanceof Error) {
         displayMsg = `提取失败: ${err.message}`;
       }
       showError(displayMsg);
