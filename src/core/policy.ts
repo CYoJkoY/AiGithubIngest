@@ -10,6 +10,7 @@ export const BUILTIN_AI_DOMAINS: readonly string[] = [
   "poe.com",
   "perplexity.ai",
   "copilot.microsoft.com",
+  "grok.com",
 
   // 国内主流大模型（深度覆盖通义千问新老版、豆包、腾讯元宝、智谱清言所有主子域名）
   "kimi.moonshot.cn",
@@ -20,6 +21,7 @@ export const BUILTIN_AI_DOMAINS: readonly string[] = [
   "tongyi.aliyun.com",
   "chat.qwen.ai",
   "qwen.ai",
+  "qianwen.com",
   "doubao.com",
   "yuanbao.tencent.com",
   "yuanbao.com",
