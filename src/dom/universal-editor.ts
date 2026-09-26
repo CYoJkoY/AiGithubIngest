@@ -1,11 +1,6 @@
 export class UniversalEditor {
-  private static lastUploadTime = 0;
-  private static lastUploadKey = "";
-  private static isUploading = false;
-
   /**
    * 校验 file input 是否具备接收文本/文档附件的能力
-   * 采用宽松防御策略：只要不是明确仅限图片/音视频的输入框，均允许挂载 Markdown
    */
   private static isValidFileInput(
     input: HTMLInputElement,
@@ -17,7 +12,7 @@ export class UniversalEditor {
 
     const acceptLower = accept.toLowerCase();
 
-    // 排除明确仅接受图片、音频、视频的专用控件（如头像上传、语音输入）
+    // 排除明确仅限图片/音视频的专用控件
     const isPureMedia =
       (acceptLower.includes("image/") ||
         acceptLower.includes(".jpg") ||
@@ -68,10 +63,6 @@ export class UniversalEditor {
     });
   }
 
-  /**
-   * 查找页面中可能存在的附件上传按钮并尝试唤起隐藏的 input
-   * 兼顾中英文界面的 aria-label 与 title 属性
-   */
   private static tryWakeUploadInput(): void {
     const uploadBtnSelectors = [
       'button[aria-label*="上传"]',
@@ -107,6 +98,7 @@ export class UniversalEditor {
 
   /**
    * 策略 1: 扫描并触发原生 input[type="file"] 挂载
+   * 恢复 bubbles: true 保证 React 根委托捕获
    */
   private static tryUploadViaFileInput(
     file: File,
@@ -114,9 +106,6 @@ export class UniversalEditor {
     dataTransfer: DataTransfer,
   ): boolean {
     this.tryWakeUploadInput();
-
-    const currentHost = window.location.hostname.toLowerCase();
-    const isDoubao = currentHost.includes("doubao.com");
 
     const searchScopes = [
       activeEl?.closest("form"),
@@ -133,108 +122,55 @@ export class UniversalEditor {
       document.body,
     ].filter((scope): scope is Element => Boolean(scope));
 
-    // 跨作用域去重收集候选控件，杜绝多重 scope 命中同一个 DOM 节点时重复派发
-    const seenInputs = new Set<HTMLInputElement>();
-    const candidateInputs: HTMLInputElement[] = [];
-
     for (const scope of searchScopes) {
       const fileInputs = Array.from(
         scope.querySelectorAll<HTMLInputElement>('input[type="file"]'),
       );
-      for (const input of fileInputs) {
-        if (!seenInputs.has(input) && this.isValidFileInput(input, file)) {
-          seenInputs.add(input);
-          candidateInputs.push(input);
+
+      for (const fileInput of fileInputs) {
+        if (!this.isValidFileInput(fileInput, file)) continue;
+
+        try {
+          // 清除可能缓存的历史值
+          fileInput.value = "";
+
+          const descriptor = Object.getOwnPropertyDescriptor(
+            HTMLInputElement.prototype,
+            "files",
+          );
+
+          if (descriptor?.set) {
+            descriptor.set.call(fileInput, dataTransfer.files);
+          } else {
+            fileInput.files = dataTransfer.files;
+          }
+
+          const tracker = (
+            fileInput as unknown as {
+              _valueTracker?: { setValue: (val: string) => void };
+            }
+          )._valueTracker;
+          if (tracker) {
+            tracker.setValue("");
+          }
+
+          // 必须冒泡以确保宿主框架事件委托层收到变更
+          fileInput.dispatchEvent(
+            new Event("change", { bubbles: true, composed: true }),
+          );
+
+          return true;
+        } catch {
+          // 遇到受限 DOM 继续尝试下一个
         }
       }
     }
 
-    if (candidateInputs.length === 0) return false;
-
-    // 优先级排序：专属于 Markdown/文本的控件 > 临近当前输入区的控件 > 当前处于可见状态的控件
-    candidateInputs.sort((a, b) => {
-      const aAccept = (a.accept || "").toLowerCase();
-      const bAccept = (b.accept || "").toLowerCase();
-      const aExplicitMd =
-        aAccept.includes(".md") ||
-        aAccept.includes("markdown") ||
-        aAccept.includes("text");
-      const bExplicitMd =
-        bAccept.includes(".md") ||
-        bAccept.includes("markdown") ||
-        bAccept.includes("text");
-
-      if (aExplicitMd && !bExplicitMd) return -1;
-      if (!aExplicitMd && bExplicitMd) return 1;
-
-      if (activeEl) {
-        const aNear = Boolean(
-          a.closest('[class*="input"]') || a.closest('[class*="chat"]'),
-        );
-        const bNear = Boolean(
-          b.closest('[class*="input"]') || b.closest('[class*="chat"]'),
-        );
-        if (aNear && !bNear) return -1;
-        if (!aNear && bNear) return 1;
-      }
-
-      const aVisible = a.offsetWidth > 0 || a.offsetHeight > 0;
-      const bVisible = b.offsetWidth > 0 || b.offsetHeight > 0;
-      if (aVisible && !bVisible) return -1;
-      if (!aVisible && bVisible) return 1;
-
-      return 0;
-    });
-
-    // 严格限制为单一靶向操作：仅选定全局最优的一个控件，禁止循环向多个控件赋值
-    const fileInput = candidateInputs[0];
-
-    try {
-      // 通过原型链 Setter 绕过 React 受控组件拦截
-      const descriptor = Object.getOwnPropertyDescriptor(
-        HTMLInputElement.prototype,
-        "files",
-      );
-
-      if (descriptor?.set) {
-        descriptor.set.call(fileInput, dataTransfer.files);
-      } else {
-        fileInput.files = dataTransfer.files;
-      }
-
-      // 同步重置 React 内部 valueTracker
-      const tracker = (
-        fileInput as unknown as {
-          _valueTracker?: { setValue: (val: string) => void };
-        }
-      )._valueTracker;
-      if (tracker) {
-        tracker.setValue("");
-      }
-
-      if (isDoubao) {
-        // 豆包平台派发非冒泡 change 事件，防止 #root 委托层与原生监听器各执行一次导致双重上传
-        const changeEvent = new Event("change", {
-          bubbles: false,
-          cancelable: true,
-          composed: false,
-        });
-        fileInput.dispatchEvent(changeEvent);
-      } else {
-        fileInput.dispatchEvent(
-          new Event("change", { bubbles: true, composed: true }),
-        );
-      }
-
-      return true;
-    } catch {
-      // 一旦已触及原型链 Setter 赋值，说明该控件已接收到文件数据，阻断继续降级导致双重挂载
-      return isDoubao ? true : false;
-    }
+    return false;
   }
 
   /**
-   * 策略 2: 单靶向精准模拟 ClipboardEvent('paste') 携带 File 对象
+   * 策略 2: 单靶向模拟 ClipboardEvent('paste')
    */
   private static tryPasteEvent(
     activeEl: HTMLElement | null,
@@ -248,16 +184,12 @@ export class UniversalEditor {
 
     if (!target) return false;
 
-    const currentHost = window.location.hostname.toLowerCase();
-    const isDoubao = currentHost.includes("doubao.com");
-
     try {
       target.focus();
-      // 针对豆包等具备全局与局部双重 paste 监听器的平台，派发非冒泡 paste 事件，阻断向上冒泡至 window
       const pasteEvent = new ClipboardEvent("paste", {
-        bubbles: !isDoubao,
+        bubbles: true,
         cancelable: true,
-        composed: !isDoubao,
+        composed: true,
         clipboardData: dataTransfer,
       });
 
@@ -269,49 +201,37 @@ export class UniversalEditor {
   }
 
   /**
-   * 策略 3: 精准单靶心 Drag & Drop 状态机仿真
+   * 策略 3: 单靶向 Drag & Drop 仿真（严禁多节点循环派发）
    */
   private static tryDragAndDrop(
     activeEl: HTMLElement | null,
     dataTransfer: DataTransfer,
   ): boolean {
-    const currentHost = window.location.hostname.toLowerCase();
-    const isDoubao = currentHost.includes("doubao.com");
+    // 仅选择唯一的最高优先级目标，避免多重派发
+    const target =
+      document.querySelector<HTMLElement>('[data-dropzone="true"]') ||
+      document.querySelector<HTMLElement>('[class*="dropzone"]') ||
+      (activeEl?.closest("form") as HTMLElement | null) ||
+      (activeEl?.closest('[class*="chat"]') as HTMLElement | null) ||
+      (activeEl?.closest('[class*="input"]') as HTMLElement | null) ||
+      activeEl ||
+      (document.querySelector(
+        'textarea, [contenteditable="true"], [role="textbox"]',
+      ) as HTMLElement | null);
 
-    const candidateTargets = [
-      document.querySelector('[data-dropzone="true"]'),
-      document.querySelector('[class*="dropzone"]'),
-      document.querySelector('[class*="drop-target"]'),
-      activeEl?.closest('[class*="editor"]'),
-      activeEl?.closest('[class*="input"]'),
-      activeEl?.closest('[class*="chat"]'),
-      activeEl,
-      document.querySelector('[role="main"]'),
-      document.querySelector("main"),
-      document.body,
-    ].filter((el): el is HTMLElement => Boolean(el));
-
-    if (candidateTargets.length === 0) return false;
-
-    // 仅选取最接近输入意图的单个目标，禁止向整条祖先链所有节点重复派发事件
-    const bestTarget = candidateTargets[0];
+    if (!target) return false;
 
     try {
       const eventInit: DragEventInit = {
-        bubbles: !isDoubao,
+        bubbles: true,
         cancelable: true,
-        composed: !isDoubao,
+        composed: true,
         dataTransfer,
       };
 
-      const dragEnter = new DragEvent("dragenter", eventInit);
-      const dragOver = new DragEvent("dragover", eventInit);
-      const drop = new DragEvent("drop", eventInit);
-
-      bestTarget.dispatchEvent(dragEnter);
-      bestTarget.dispatchEvent(dragOver);
-      bestTarget.dispatchEvent(drop);
-
+      target.dispatchEvent(new DragEvent("dragenter", eventInit));
+      target.dispatchEvent(new DragEvent("dragover", eventInit));
+      target.dispatchEvent(new DragEvent("drop", eventInit));
       return true;
     } catch {
       return false;
@@ -319,55 +239,37 @@ export class UniversalEditor {
   }
 
   /**
-   * 互斥式文件挂载入口：增加并发锁、1500ms 任务指纹时间锁与精准熔断机制
+   * 统一文件挂载入口
    */
   public static attachVirtualFile(
     file: File,
     targetElement?: EventTarget | null,
   ): boolean {
-    const now = Date.now();
-    const uploadKey = `${file.name}-${file.size}`;
+    const activeEl = (
+      targetElement instanceof HTMLElement
+        ? targetElement
+        : document.activeElement
+    ) as HTMLElement | null;
 
-    if (this.isUploading) return true;
-    if (now - this.lastUploadTime < 1500 && this.lastUploadKey === uploadKey) {
-      return true;
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(file);
+
+    const currentHost = window.location.hostname.toLowerCase();
+    const isDoubao = currentHost.includes("doubao.com");
+
+    if (isDoubao) {
+      // 豆包平台优先使用单靶向 Drag & Drop / Paste，避免其原生 file input 触发两次包装
+      if (this.tryDragAndDrop(activeEl, dataTransfer)) return true;
+      if (this.tryPasteEvent(activeEl, dataTransfer)) return true;
+      if (this.tryUploadViaFileInput(file, activeEl, dataTransfer)) return true;
+    } else {
+      // 其他 AI 平台标准优先级
+      if (this.tryUploadViaFileInput(file, activeEl, dataTransfer)) return true;
+      if (this.tryPasteEvent(activeEl, dataTransfer)) return true;
+      if (this.tryDragAndDrop(activeEl, dataTransfer)) return true;
     }
 
-    this.isUploading = true;
-    this.lastUploadTime = now;
-    this.lastUploadKey = uploadKey;
-
-    try {
-      const activeEl = (
-        targetElement instanceof HTMLElement
-          ? targetElement
-          : document.activeElement
-      ) as HTMLElement | null;
-
-      const dataTransfer = new DataTransfer();
-      dataTransfer.items.add(file);
-
-      // 优先策略 1: 扫描并触发 input[type="file"]
-      if (this.tryUploadViaFileInput(file, activeEl, dataTransfer)) {
-        return true;
-      }
-
-      // 优先策略 2: 模拟粘贴 ClipboardEvent
-      if (this.tryPasteEvent(activeEl, dataTransfer)) {
-        return true;
-      }
-
-      // 优先策略 3: 模拟拖拽 Drag & Drop
-      if (this.tryDragAndDrop(activeEl, dataTransfer)) {
-        return true;
-      }
-
-      return false;
-    } finally {
-      setTimeout(() => {
-        this.isUploading = false;
-      }, 500);
-    }
+    return false;
   }
 
   /**
