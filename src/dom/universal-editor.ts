@@ -69,6 +69,7 @@ export class UniversalEditor {
 
   /**
    * 查找页面中可能存在的附件上传按钮并尝试唤起隐藏的 input
+   * 兼顾中英文界面的 aria-label 与 title 属性
    */
   private static tryWakeUploadInput(): void {
     const uploadBtnSelectors = [
@@ -80,6 +81,16 @@ export class UniversalEditor {
       'button[title*="附件"]',
       'div[role="button"][aria-label*="上传"]',
       'div[role="button"][title*="上传"]',
+      'button[aria-label*="upload" i]',
+      'button[aria-label*="attach" i]',
+      'button[aria-label*="file" i]',
+      'button[title*="upload" i]',
+      'button[title*="attach" i]',
+      'button[title*="file" i]',
+      'div[role="button"][aria-label*="upload" i]',
+      'div[role="button"][aria-label*="attach" i]',
+      'div[role="button"][title*="upload" i]',
+      'div[role="button"][title*="attach" i]',
       '[class*="upload-btn"]',
       '[class*="attach-btn"]',
     ];
@@ -101,7 +112,6 @@ export class UniversalEditor {
     activeEl: HTMLElement | null,
     dataTransfer: DataTransfer,
   ): boolean {
-    // 尝试轻量唤起潜在的动态 input
     this.tryWakeUploadInput();
 
     const currentHost = window.location.hostname.toLowerCase();
@@ -154,8 +164,7 @@ export class UniversalEditor {
           }
 
           if (isDoubao) {
-            // 核心修复：针对豆包平台，必须使用 bubbles: false 派发原生 change 事件
-            // 阻止冒泡至 React #root 委托层，杜绝原生监听器与 React 合成事件各执行一次导致的二次重复上传
+            // 豆包平台派发非冒泡 change 事件，防止 #root 委托层与原生监听器各执行一次导致双重上传
             const changeEvent = new Event("change", {
               bubbles: false,
               cancelable: true,
@@ -163,7 +172,6 @@ export class UniversalEditor {
             });
             fileInput.dispatchEvent(changeEvent);
           } else {
-            // 其余平台派发标准冒泡 change 事件以驱动 React/Vue 合成事件流
             fileInput.dispatchEvent(
               new Event("change", { bubbles: true, composed: true }),
             );
