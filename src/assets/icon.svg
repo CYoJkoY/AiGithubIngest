@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" fill="none">
+  <defs>
+    <!-- 背景底板：深邃曜石蓝黑，提供极致暗色衬托 -->
+    <linearGradient id="bgGrad" x1="64" y1="0" x2="64" y2="128" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0F172A"/>
+      <stop offset="100%" stop-color="#020617"/>
+    </linearGradient>
+
+    <!-- 边框微光：清亮电光青描边 -->
+    <linearGradient id="borderGrad" x1="0" y1="0" x2="128" y2="128" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#10B981" stop-opacity="0.4"/>
+    </linearGradient>
+
+    <!-- 左翼渐变：高饱和极速宝蓝 -> 荧光电青 -->
+    <linearGradient id="leftWing" x1="18" y1="26" x2="50" y2="102" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0066FF"/>
+      <stop offset="100%" stop-color="#00F2FE"/>
+    </linearGradient>
+
+    <!-- 右翼渐变：荧光电青 -> 生机翠绿 -->
+    <linearGradient id="rightWing" x1="110" y1="26" x2="78" y2="102" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00F2FE"/>
+      <stop offset="100%" stop-color="#10B981"/>
+    </linearGradient>
+
+    <!-- 中央核心渐变：钛白至冰蓝（极致高光） -->
+    <linearGradient id="centerCore" x1="64" y1="28" x2="64" y2="92" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="70%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#BAE6FD"/>
+    </linearGradient>
+
+    <!-- 底板内部的微光氛围核（驱散灰暗感） -->
+    <radialGradient id="auraGlow" cx="64" cy="64" r="50" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0066FF" stop-opacity="0.32"/>
+      <stop offset="55%" stop-color="#00F2FE" stop-opacity="0.14"/>
+      <stop offset="100%" stop-color="#020617" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- 1. 坚实通透的圆角底板 -->
+  <rect x="5" y="5" width="118" height="118" rx="28" fill="url(#bgGrad)"/>
+  <rect x="5" y="5" width="118" height="118" rx="28" stroke="url(#borderGrad)" stroke-width="2"/>
+
+  <!-- 2. 内部活力辐射光晕（保证无论在哪种底色下都不沉闷） -->
+  <circle cx="64" cy="64" r="48" fill="url(#auraGlow)"/>
+
+  <!-- 3. 左侧粗壮代码括号带 < (代表代码源流 GitHub Inflow) -->
+  <polygon points="50,26 30,64 50,102 37,102 17,64 37,26" fill="url(#leftWing)"/>
+
+  <!-- 4. 右侧粗壮代码括号带 > (代表结构化输出 Context Outflow) -->
+  <polygon points="78,26 98,64 78,102 91,102 111,64 91,26" fill="url(#rightWing)"/>
+
+  <!-- 5. 中央向下萃取与聚合核心 ↓ (Solid Ingest Arrow & Commit Node) -->
+  <!-- 顶部数据源 Commit 锚点 -->
+  <circle cx="64" cy="33" r="6.5" fill="#FFFFFF"/>
+  <circle cx="64" cy="33" r="2.8" fill="#0066FF"/>
+
+  <!-- 向下贯穿、收束的实体提取箭头 -->
+  <path d="M 60 42 
+           L 68 42 
+           L 68 62 
+           L 78 62 
+           L 64 82 
+           L 50 62 
+           L 60 62 
+           Z" 
+        fill="url(#centerCore)"/>
+
+  <!-- 底部聚合容器底托 (承托提取出的上下文包) -->
+  <rect x="53" y="90" width="22" height="4.5" rx="2.25" fill="#00F2FE"/>
+</svg>
