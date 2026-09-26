@@ -15,7 +15,6 @@ on:
     paths-ignore:
       - "**.md"
 
-# 限制同一并发任务，重复提交时自动取消老任务
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -31,8 +30,6 @@ jobs:
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - name: Setup Node.js (with pnpm cache)
         uses: actions/setup-node@v4
