@@ -1,9 +1,11 @@
-import { RepoTarget } from "../types";
+import { RepoTarget, SupportedLang } from "../types";
+import { t } from "./i18n";
 
 export class GitHubEngine {
   private static getHeaders(token?: string): Record<string, string> {
     const headers: Record<string, string> = {
       Accept: "application/vnd.github.v3+json",
+      "User-Agent": "AiGithubIngest-Extension",
     };
     if (token && token.trim()) {
       headers.Authorization = `Bearer ${token.trim()}`;
@@ -12,11 +14,12 @@ export class GitHubEngine {
   }
 
   /**
-   * 解析仓库默认分支或验证当前指定的分支
+   * 解析仓库默认分支或验证当前指定的分支（支持带 Token 访问私有仓库）
    */
   public static async resolveBranch(
     target: RepoTarget,
     token?: string,
+    lang: SupportedLang = "zh-CN",
   ): Promise<string> {
     if (target.ref) {
       return target.ref;
@@ -34,17 +37,21 @@ export class GitHubEngine {
       }
 
       if (response.status === 404) {
-        throw new Error(
-          `仓库 ${target.owner}/${target.repo} 不存在或为私有仓库（需在扩展 Popup 中配置 PAT）`,
-        );
+        throw new Error(t("privateRepoNotice", lang));
       }
 
-      if (response.status === 403) {
-        // 触发限流时，公共仓库降级返回 main
+      if (response.status === 401 || response.status === 403) {
+        if (token && token.trim()) {
+          throw new Error(
+            lang === "en"
+              ? `GitHub API Authentication failed (HTTP ${response.status}). Please check your PAT permissions.`
+              : `GitHub API 鉴权失败 (HTTP ${response.status})，请检查 Token 有效性及 repo 权限。`,
+          );
+        }
         return "main";
       }
     } catch (err) {
-      if (err instanceof Error && err.message.includes("私有仓库")) {
+      if (err instanceof Error) {
         throw err;
       }
     }
@@ -53,34 +60,39 @@ export class GitHubEngine {
   }
 
   /**
-   * 一次性获取全量代码 Zipball 二进制包（双通道：API 优先，公共直链兜底）
+   * 获取全量代码 Zipball（通道 1：官方 API，支持私有仓库及 Token；通道 2：公开直链兜底）
    */
   public static async fetchZipball(
     target: RepoTarget,
     branch: string,
     token?: string,
+    lang: SupportedLang = "zh-CN",
   ): Promise<ArrayBuffer> {
     const headers = this.getHeaders(token);
 
-    // 通道 1: GitHub REST API (带 Token 或支持私有库)
+    // 通道 1: GitHub REST API (带 Token 访问私有项目需使用此接口)
     const apiUrl = branch
       ? `https://api.github.com/repos/${target.owner}/${target.repo}/zipball/${encodeURIComponent(branch)}`
       : `https://api.github.com/repos/${target.owner}/${target.repo}/zipball`;
 
     try {
-      const response = await fetch(apiUrl, { headers });
+      const response = await fetch(apiUrl, {
+        headers,
+        redirect: "follow",
+      });
 
       if (response.ok) {
         return await response.arrayBuffer();
       }
 
       if (response.status === 404) {
-        throw new Error(`分支或 Commit ref [${branch}] 不存在或无访问权限`);
+        throw new Error(t("privateRepoNotice", lang));
       }
 
-      // 如果未配置 Token 且遭遇 403 限流，进入通道 2 兜底
-      if (response.status !== 403 || (token && token.trim())) {
-        throw new Error(`下载代码压缩包失败: HTTP ${response.status}`);
+      if (token && token.trim()) {
+        throw new Error(
+          t("downloadFailedWithStatus", lang, { status: response.status }),
+        );
       }
     } catch (apiErr) {
       if (token && token.trim()) {
@@ -88,7 +100,7 @@ export class GitHubEngine {
       }
     }
 
-    // 通道 2: codeload 公共直链兜底（不受 GitHub API 60次/h 速率限制）
+    // 通道 2: codeload 直链兜底（仅限无 Token 且为公共仓库时）
     const fallbackBranches = [branch, "main", "master"].filter(Boolean);
     for (const b of fallbackBranches) {
       const codeloadUrl = `https://codeload.github.com/${target.owner}/${target.repo}/legacy.zip/refs/heads/${encodeURIComponent(b)}`;
@@ -102,8 +114,6 @@ export class GitHubEngine {
       }
     }
 
-    throw new Error(
-      "获取仓库压缩包失败：已达到 GitHub 匿名限额或网络异常，请在扩展中配置 GitHub Token",
-    );
+    throw new Error(t("anonymousRateLimit", lang));
   }
 }

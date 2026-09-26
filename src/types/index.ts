@@ -21,6 +21,7 @@ export interface IngestOptions {
   readonly maxFileSizeKb?: number;
   readonly includePatterns?: readonly string[];
   readonly excludePatterns?: readonly string[];
+  readonly lang?: SupportedLang;
   readonly onProgress?: (msg: string, current: number, total: number) => void;
 }
 
@@ -76,7 +77,10 @@ export type ExtensionResponse =
       readonly error: { readonly code: string; readonly message: string };
     };
 
+export type SupportedLang = "zh-CN" | "en";
+
 export interface StorageSchema {
   readonly userWhitelist?: readonly string[];
   readonly githubToken?: string;
+  readonly lang?: SupportedLang;
 }

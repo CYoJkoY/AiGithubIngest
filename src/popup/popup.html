@@ -1,18 +1,67 @@
 <!doctype html>
-<html lang="zh-CN">
+<html>
   <head>
     <meta charset="UTF-8" />
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
     <div class="container">
-      <div class="header">
-        <span class="title">AI Ingest 策略管理</span>
-        <span id="site-badge" class="badge">Checking...</span>
+      <!-- 语言切换 -->
+      <div class="lang-row">
+        <label for="lang-select" id="lbl-language" class="setting-label"
+          >Language</label
+        >
+        <select id="lang-select" class="select-box">
+          <option value="zh-CN">简体中文</option>
+          <option value="en">English</option>
+        </select>
       </div>
-      <div class="current-site" id="current-domain">--</div>
-      <div class="action-row">
-        <button id="toggle-btn" class="btn" disabled>获取中...</button>
+
+      <!-- 站点策略 -->
+      <div class="card">
+        <div class="header">
+          <span class="title" id="lbl-title">AI Ingest 策略管理</span>
+          <span id="site-badge" class="badge">Checking...</span>
+        </div>
+        <div class="current-site" id="current-domain">--</div>
+        <div class="action-row">
+          <button id="toggle-btn" class="btn" disabled>...</button>
+        </div>
+      </div>
+
+      <!-- GitHub Token (私有项目支持) -->
+      <div class="card">
+        <div class="header">
+          <span class="title" id="lbl-token-title"
+            >GitHub Token (私有仓库)</span
+          >
+        </div>
+        <div class="token-input-wrapper">
+          <input
+            id="token-input"
+            type="password"
+            class="input-text"
+            placeholder="ghp_xxx (repo scope)"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <button
+            id="toggle-token-visibility"
+            class="btn-icon"
+            title="Toggle Visibility"
+          >
+            👁
+          </button>
+        </div>
+        <p class="hint-text" id="lbl-token-hint">
+          配置 Personal Access Token 可解析您的私有仓库并提升 API 限额至
+          5000次/h。
+        </p>
+        <div class="token-actions">
+          <button id="save-token-btn" class="btn btn-primary">保存</button>
+          <button id="clear-token-btn" class="btn btn-secondary">清除</button>
+        </div>
+        <div id="token-status" class="token-status"></div>
       </div>
     </div>
     <script type="module" src="popup.js"></script>

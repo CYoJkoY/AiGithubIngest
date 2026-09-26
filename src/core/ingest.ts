@@ -6,6 +6,7 @@ import { shouldIncludeFile } from "./file-filter";
 import { TreeBuilder } from "./tree-builder";
 import { OutputFormatter } from "./output-formatter";
 import { formatTokenCount } from "./token-estimator";
+import { t } from "./i18n";
 
 function isBinary(buffer: Uint8Array): boolean {
   const checkLen = Math.min(buffer.length, 1024);
@@ -19,34 +20,37 @@ export async function ingestRepository(
   rawUrl: string,
   options: IngestOptions = {},
 ): Promise<IngestSummary> {
+  const lang = options.lang || "zh-CN";
+
   const parseResult = extractGitHubRepo(rawUrl);
   if (!parseResult.ok) {
     throw new Error(parseResult.error.message);
   }
 
   const target = parseResult.value;
-  options.onProgress?.("正在解析分支信息...", 0, 100);
+  options.onProgress?.(t("stepResolvingBranch", lang), 0, 100);
   const resolvedBranch = await GitHubEngine.resolveBranch(
     target,
     options.token,
+    lang,
   );
 
-  options.onProgress?.("正在单次流式下载完整代码包 (Zipball)...", 20, 100);
+  options.onProgress?.(t("stepDownloadingZip", lang), 20, 100);
   const zipBuffer = await GitHubEngine.fetchZipball(
     target,
     resolvedBranch,
     options.token,
+    lang,
   );
 
-  options.onProgress?.("正在内存解压与过滤文件...", 60, 100);
+  options.onProgress?.(t("stepUnpacking", lang), 60, 100);
   const unzipped = unzipSync(new Uint8Array(zipBuffer));
   const fileKeys = Object.keys(unzipped);
 
   if (fileKeys.length === 0) {
-    throw new Error("仓库压缩包内容为空");
+    throw new Error(t("emptyZipError", lang));
   }
 
-  // 稳健提取 Zipball 根前缀 (首个包含 '/' 的目录段)
   const sampleKey = fileKeys.find((k) => k.includes("/")) ?? fileKeys[0];
   const slashIdx = sampleKey.indexOf("/");
   const rootPrefix = slashIdx !== -1 ? sampleKey.slice(0, slashIdx + 1) : "";
@@ -67,7 +71,6 @@ export async function ingestRepository(
     const relativePath = rootPrefix ? rawKey.slice(rootPrefix.length) : rawKey;
     if (!relativePath || relativePath.endsWith("/")) continue;
 
-    // 路径范围过滤
     if (cleanSubpath) {
       if (isBlob) {
         if (relativePath !== cleanSubpath) continue;
@@ -111,10 +114,10 @@ export async function ingestRepository(
   }
 
   if (processedFiles.length === 0) {
-    throw new Error("指定路径下未匹配到任何符合规则的文本文件");
+    throw new Error(t("noMatchFiles", lang));
   }
 
-  options.onProgress?.("正在构建结构化目录树与上下文...", 90, 100);
+  options.onProgress?.(t("stepBuildingTree", lang), 90, 100);
 
   const rootSlug = `${target.owner}-${target.repo}`;
   const fileTree = TreeBuilder.build(treeFiles, rootSlug);

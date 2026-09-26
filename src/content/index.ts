@@ -2,17 +2,21 @@ import { evaluateSitePolicy } from "../core/policy";
 import { extractGitHubRepo } from "../core/parser";
 import { UniversalEditor } from "../dom/universal-editor";
 import { showToast } from "../ui/toast";
-import { ExtensionResponse, StorageSchema } from "../types";
+import { ExtensionResponse, StorageSchema, SupportedLang } from "../types";
+import { t } from "../core/i18n";
 
 let isProcessing = false;
 
 const initialize = async (): Promise<void> => {
   const currentHost = window.location.hostname;
-  const userWhitelist = await new Promise<readonly string[]>((resolve) => {
-    chrome.storage.sync.get("userWhitelist", (res) => {
-      resolve((res as StorageSchema).userWhitelist ?? []);
+  const storageData = await new Promise<StorageSchema>((resolve) => {
+    chrome.storage.sync.get(["userWhitelist", "lang"], (res) => {
+      resolve(res as StorageSchema);
     });
   });
+
+  const userWhitelist = storageData.userWhitelist ?? [];
+  const lang: SupportedLang = storageData.lang || "zh-CN";
 
   if (evaluateSitePolicy(currentHost, userWhitelist) === "DISABLED") return;
 
@@ -40,14 +44,18 @@ const initialize = async (): Promise<void> => {
       }
 
       if (isProcessing) {
-        showToast("已有提取任务进行中，已恢复普通文本粘贴", "info");
+        showToast(t("taskInProgress", lang), "info");
         UniversalEditor.insertAtCursor(rawText, targetElement, savedRange);
         return;
       }
 
       const repo = parseResult.value;
       isProcessing = true;
-      showToast(`正在解析并提取 ${repo.owner}/${repo.repo}...`, "info", 3000);
+      showToast(
+        t("ingesting", lang, { repo: `${repo.owner}/${repo.repo}` }),
+        "info",
+        3000,
+      );
 
       try {
         chrome.runtime.sendMessage(
@@ -60,7 +68,7 @@ const initialize = async (): Promise<void> => {
                 chrome.runtime.lastError?.message ||
                 (response && !response.success
                   ? response.error.message
-                  : "扩展后台响应异常");
+                  : "Extension background response error");
 
               UniversalEditor.insertAtCursor(
                 rawText,
@@ -68,7 +76,7 @@ const initialize = async (): Promise<void> => {
                 savedRange,
               );
               showToast(
-                `提取失败: ${errorMsg}，已回退为普通链接`,
+                t("ingestFailed", lang, { err: errorMsg }),
                 "error",
                 4500,
               );
@@ -89,18 +97,21 @@ const initialize = async (): Promise<void> => {
 
             if (attached) {
               showToast(
-                `已成功作为文件附件挂载 ${fileName} (${summary.files.length} 个文件)`,
+                t("attachedSuccess", lang, {
+                  file: fileName,
+                  count: summary.files.length,
+                }),
                 "success",
                 4000,
               );
             } else {
               const safeFallbackText = [
-                `\n[已解析 GitHub 仓库: ${repo.owner}/${repo.repo}]`,
-                `> 包含文件数: ${summary.files.length} | 预估 Token: ${summary.estimatedTokens}`,
+                `\n${t("fallbackDigestHeader", lang, { repo: `${repo.owner}/${repo.repo}` })}`,
+                `> ${t("fallbackFileCount", lang, { count: summary.files.length, tokens: summary.estimatedTokens })}`,
                 "```",
                 summary.treeVisual.trim(),
                 "```",
-                "提示: 建议在输入框附带具体需求分析。\n",
+                `${t("fallbackHint", lang)}\n`,
               ].join("\n");
 
               UniversalEditor.insertAtCursor(
@@ -109,19 +120,15 @@ const initialize = async (): Promise<void> => {
                 savedRange,
               );
 
-              showToast(
-                "已挂载结构概览至输入框，已启用防卡死保护",
-                "info",
-                4000,
-              );
+              showToast(t("fallbackMounted", lang), "info", 4000);
             }
           },
         );
       } catch (err) {
         isProcessing = false;
         UniversalEditor.insertAtCursor(rawText, targetElement, savedRange);
-        const errMsg = err instanceof Error ? err.message : "通信异常";
-        showToast(`通信失败: ${errMsg}，已恢复原链接`, "error");
+        const errMsg = err instanceof Error ? err.message : "Error";
+        showToast(`${t("networkError", lang)} (${errMsg})`, "error");
       }
     },
     true,

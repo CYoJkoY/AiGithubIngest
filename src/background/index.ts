@@ -8,16 +8,21 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (!targetUrl || typeof targetUrl !== "string") {
       sendResponse({
         success: false,
-        error: { code: "INVALID_URL", message: "目标仓库 URL 不能为空" },
+        error: {
+          code: "INVALID_URL",
+          message: "Target repository URL is required.",
+        },
       } as ExtensionResponse);
       return false;
     }
 
-    // 从 Chrome Storage 获取用户配置的 Personal Access Token
-    chrome.storage.sync.get("githubToken", (items) => {
-      const token = (items as StorageSchema).githubToken;
+    // 从 Chrome Storage 获取用户设置的 Token 与语言偏好
+    chrome.storage.sync.get(["githubToken", "lang"], (items) => {
+      const config = items as StorageSchema;
+      const token = config.githubToken;
+      const lang = config.lang || "zh-CN";
 
-      ingestRepository(targetUrl, { token })
+      ingestRepository(targetUrl, { token, lang })
         .then((summary) => {
           sendResponse({
             success: true,
@@ -29,7 +34,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
             success: false,
             error: {
               code: "INGEST_FAILED",
-              message: err.message || "本地提取失败，请检查网络或配置 Token",
+              message: err.message,
             },
           } as ExtensionResponse);
         });
