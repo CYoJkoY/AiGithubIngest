@@ -15,11 +15,13 @@ export const BUILTIN_AI_DOMAINS: readonly string[] = [
   "kimi.moonshot.cn",
   "chatglm.cn",
   "chat.z.ai",
+  "z.ai",
   "tongyi.aliyun.com",
   "chat.qwen.ai",
   "qwen.ai",
   "doubao.com",
   "yuanbao.tencent.com",
+  "yuanbao.com",
 ];
 
 export const normalizeHostname = (host: string): string => {

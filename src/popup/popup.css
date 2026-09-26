@@ -95,6 +95,10 @@ body {
   background: #334155;
   color: #94a3b8;
 }
+.badge--blacklist {
+  background: #7f1d1d;
+  color: #f87171;
+}
 
 .current-site {
   font-family: monospace;
@@ -102,6 +106,11 @@ body {
   padding: 6px 0 10px 0;
   color: #f1f5f9;
   word-break: break-all;
+}
+
+.action-btn-group {
+  display: flex;
+  gap: 8px;
 }
 
 .btn {
@@ -115,6 +124,8 @@ body {
   font-size: 12px;
   font-weight: 500;
   transition: all 0.2s ease;
+  text-align: center;
+  box-sizing: border-box;
 }
 
 .btn:hover:not(:disabled) {
@@ -139,6 +150,72 @@ body {
 
 .btn-secondary {
   background: #334155;
+}
+
+.btn-danger {
+  background: #7f1d1d;
+  border-color: #991b1b;
+  color: #fecaca;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #991b1b;
+  border-color: #dc2626;
+  color: #ffffff;
+}
+
+.btn-inline {
+  width: auto;
+  white-space: nowrap;
+  padding: 6px 12px;
+}
+
+.blacklist-input-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.blacklist-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  max-height: 90px;
+  overflow-y: auto;
+}
+
+.blacklist-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #0f172a;
+  border: 1px solid #475569;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 11px;
+  color: #cbd5e1;
+  font-family: monospace;
+}
+
+.tag-remove-btn {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0;
+  line-height: 1;
+}
+
+.tag-remove-btn:hover {
+  color: #f87171;
+}
+
+.empty-tip {
+  font-size: 11px;
+  color: #64748b;
+  padding: 4px 0;
 }
 
 .token-input-wrapper {
@@ -193,4 +270,8 @@ body {
   font-size: 11px;
   color: #34d399;
   min-height: 16px;
+}
+
+.hidden {
+  display: none !important;
 }

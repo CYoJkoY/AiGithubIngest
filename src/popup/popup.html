@@ -27,9 +27,33 @@
           <span id="site-badge" class="badge">Checking...</span>
         </div>
         <div class="current-site" id="current-domain">--</div>
-        <div class="action-row">
+        <div class="action-btn-group">
           <button id="toggle-btn" class="btn" disabled>...</button>
+          <button id="blacklist-current-btn" class="btn btn-danger hidden">
+            加入黑名单
+          </button>
         </div>
+      </div>
+
+      <!-- 黑名单管理 -->
+      <div class="card">
+        <div class="header">
+          <span class="title" id="lbl-blacklist-title">黑名单快速管理</span>
+        </div>
+        <div class="blacklist-input-row">
+          <input
+            id="blacklist-input"
+            type="text"
+            class="input-text"
+            placeholder="输入要屏蔽的域名，如 doubao.com"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <button id="add-blacklist-btn" class="btn btn-secondary btn-inline">
+            拉黑
+          </button>
+        </div>
+        <div id="blacklist-tags" class="blacklist-tags"></div>
       </div>
 
       <!-- GitHub Token (私有项目支持) -->

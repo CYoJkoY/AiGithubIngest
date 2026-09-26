@@ -1,6 +1,9 @@
 export class UniversalEditor {
+  private static lastUploadTime = 0;
+  private static lastUploadKey = "";
+
   /**
-   * 校验 file input 是否接受指定文件类型（兼容处理仅写了 .txt 而未声明 .md 的 AI 平台）
+   * 校验 file input 是否接受指定文件类型（兼容处理仅写了 .txt/.doc/.pdf 等通用文档而未显式声明 .md 的 AI 平台）
    */
   private static isValidFileInput(
     input: HTMLInputElement,
@@ -11,8 +14,9 @@ export class UniversalEditor {
     if (!accept) return true;
 
     const acceptPatterns = accept
+      .toLowerCase()
       .split(",")
-      .map((item) => item.trim().toLowerCase())
+      .map((item) => item.trim())
       .filter(Boolean);
 
     if (acceptPatterns.length === 0) return true;
@@ -20,10 +24,21 @@ export class UniversalEditor {
     const fileName = file.name.toLowerCase();
     const fileType = file.type.toLowerCase();
 
+    // 针对 AI 聊天平台的附件上传入口（接受文档/通用文本）进行智能放行
     return acceptPatterns.some((pattern) => {
       if (pattern === "*/*" || pattern === "*") return true;
-      // 允许 .md 挂载至接受纯文本/文档的控件
-      if (pattern === ".txt" || pattern === "text/plain") return true;
+      if (
+        pattern === ".txt" ||
+        pattern === "text/plain" ||
+        pattern === ".md" ||
+        pattern === ".markdown" ||
+        pattern === "text/markdown" ||
+        pattern === ".doc" ||
+        pattern === ".docx" ||
+        pattern === ".pdf"
+      ) {
+        return true;
+      }
       if (pattern.startsWith(".")) {
         return fileName.endsWith(pattern);
       }
@@ -38,23 +53,26 @@ export class UniversalEditor {
   }
 
   /**
-   * 策略 1: 扫描并触发原生 input[type="file"] 挂载
+   * 策略 1: 扫描并触发原生 input[type="file"] 挂载（兼容 React 16/17/18 内部状态追踪）
    */
   private static tryUploadViaFileInput(
     file: File,
     activeEl: HTMLElement | null,
     dataTransfer: DataTransfer,
   ): boolean {
-    // 优先从就近容器、通用表单容器寻找
     const searchScopes = [
       activeEl?.closest("form"),
       activeEl?.closest('[class*="chat"]'),
       activeEl?.closest('[class*="input"]'),
+      activeEl?.closest('[class*="editor"]'),
+      activeEl?.closest('[class*="prompt"]'),
       activeEl?.closest('[role="presentation"]'),
       activeEl?.parentElement?.parentElement,
       document.querySelector('[role="main"]'),
       document.querySelector("main"),
-      document.body, // 全局兜底以应对 Tailwind 混淆类名
+      document.querySelector("#root"),
+      document.querySelector("#app"),
+      document.body,
     ].filter((scope): scope is Element => Boolean(scope));
 
     for (const scope of searchScopes) {
@@ -78,7 +96,17 @@ export class UniversalEditor {
             fileInput.files = dataTransfer.files;
           }
 
-          // 核心修复：仅触发 change 事件，严禁触发 input 事件以防止部分平台触发两次上传
+          // 核心兼容：通知 React 内部 valueTracker，使 React 合成 onChange 正常响应
+          const tracker = (
+            fileInput as unknown as {
+              _valueTracker?: { setValue: (val: string) => void };
+            }
+          )._valueTracker;
+          if (tracker) {
+            tracker.setValue("");
+          }
+
+          // 触发单个标准的 change 冒泡事件，绝不触发额外的 input 事件以防二次上传
           fileInput.dispatchEvent(
             new Event("change", { bubbles: true, composed: true }),
           );
@@ -93,23 +121,22 @@ export class UniversalEditor {
   }
 
   /**
-   * 策略 2: 模拟粘贴 ClipboardEvent('paste')
+   * 策略 2: 单靶向精准模拟粘贴 ClipboardEvent('paste')
    */
   private static tryPasteEvent(
     activeEl: HTMLElement | null,
     dataTransfer: DataTransfer,
   ): boolean {
-    if (!activeEl) return false;
+    // 选定唯一最精准的目标元素，避免向多层祖先重复派发
+    const target =
+      activeEl ||
+      (document.querySelector(
+        'textarea, [contenteditable="true"], [role="textbox"]',
+      ) as HTMLElement | null);
 
-    const pasteTargets = [
-      activeEl,
-      activeEl.isContentEditable
-        ? activeEl
-        : (activeEl.closest("[contenteditable='true']") as HTMLElement | null),
-      activeEl.closest("textarea"),
-    ].filter((el): el is HTMLElement => Boolean(el));
+    if (!target) return false;
 
-    for (const target of pasteTargets) {
+    try {
       const pasteEvent = new ClipboardEvent("paste", {
         bubbles: true,
         cancelable: true,
@@ -117,77 +144,68 @@ export class UniversalEditor {
         clipboardData: dataTransfer,
       });
 
-      const dispatched = target.dispatchEvent(pasteEvent);
-      // 若网站显式取消了事件，说明已被处理
-      if (!dispatched || pasteEvent.defaultPrevented) return true;
+      target.dispatchEvent(pasteEvent);
+      return true;
+    } catch {
+      return false;
     }
-
-    return false;
   }
 
   /**
-   * 策略 3: 完整的 Drag & Drop 状态机多靶心仿真
+   * 策略 3: 单靶向 Drag & Drop 状态机仿真
    */
   private static tryDragAndDrop(
     activeEl: HTMLElement | null,
     dataTransfer: DataTransfer,
   ): boolean {
-    const eventInit: DragEventInit = {
-      bubbles: true,
-      cancelable: true,
-      composed: true,
-      dataTransfer,
-    };
-
-    const dropTargets: EventTarget[] = [
-      ...(activeEl ? [activeEl] : []),
-      ...(activeEl?.closest("form") ? [activeEl.closest("form")!] : []),
-      ...Array.from(
-        document.querySelectorAll(
-          '[data-dropzone="true"], [class*="dropzone"], [class*="drop-target"]',
-        ),
-      ),
+    const candidateTargets = [
+      activeEl,
+      activeEl?.closest('[class*="chat"]'),
+      activeEl?.closest('[class*="input"]'),
+      activeEl?.closest('[class*="editor"]'),
+      document.querySelector('[data-dropzone="true"]'),
+      document.querySelector('[class*="dropzone"]'),
+      document.querySelector('[class*="drop-target"]'),
+      document.querySelector('[role="main"]'),
+      document.querySelector("main"),
       document.body,
-    ];
+    ].filter((el): el is HTMLElement => Boolean(el));
 
-    const uniqueDropTargets = Array.from(new Set(dropTargets));
+    const target = candidateTargets[0] || document.body;
 
-    let recognizedDropzone: EventTarget | null = null;
-    for (const target of uniqueDropTargets) {
-      const enterEvt = new DragEvent("dragenter", eventInit);
-      target.dispatchEvent(enterEvt);
+    try {
+      const eventInit: DragEventInit = {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        dataTransfer,
+      };
 
-      const overEvt = new DragEvent("dragover", eventInit);
-      const overPrevented = !target.dispatchEvent(overEvt);
-
-      if (overPrevented && !recognizedDropzone) {
-        recognizedDropzone = target;
-      }
+      target.dispatchEvent(new DragEvent("dragenter", eventInit));
+      target.dispatchEvent(new DragEvent("dragover", eventInit));
+      target.dispatchEvent(new DragEvent("drop", eventInit));
+      return true;
+    } catch {
+      return false;
     }
-
-    const prioritizedTargets = recognizedDropzone
-      ? [recognizedDropzone]
-      : uniqueDropTargets;
-
-    for (const target of prioritizedTargets) {
-      const dropEvt = new DragEvent("drop", eventInit);
-      const dropPrevented = !target.dispatchEvent(dropEvt);
-
-      if (dropPrevented || dropEvt.defaultPrevented) {
-        return true;
-      }
-    }
-
-    return Boolean(recognizedDropzone);
   }
 
   /**
-   * 互斥式挂载：按优先级依次尝试，一旦前驱成功，立刻熔断返回，绝不继续执行后续策略
+   * 互斥式挂载：增加时间锁与唯一靶向，一旦成功立刻熔断返回，绝不重复上传
    */
   public static attachVirtualFile(
     file: File,
     targetElement?: EventTarget | null,
   ): boolean {
+    // 1. 防重保护锁：1500ms 内对同一文件名的请求直接视为已挂载，彻底杜绝多次上传
+    const now = Date.now();
+    const uploadKey = `${file.name}-${file.size}`;
+    if (now - this.lastUploadTime < 1500 && this.lastUploadKey === uploadKey) {
+      return true;
+    }
+    this.lastUploadTime = now;
+    this.lastUploadKey = uploadKey;
+
     const activeEl = (
       targetElement instanceof HTMLElement
         ? targetElement
@@ -197,17 +215,17 @@ export class UniversalEditor {
     const dataTransfer = new DataTransfer();
     dataTransfer.items.add(file);
 
-    // 1. 尝试就近查找并驱动原生文件输入框
+    // 优先策略 1: 扫描并触发原生 input[type="file"]
     if (this.tryUploadViaFileInput(file, activeEl, dataTransfer)) {
       return true;
     }
 
-    // 2. 尝试标准 Clipboard 粘贴事件
+    // 优先策略 2: 单靶向精准 Clipboard 粘贴事件
     if (this.tryPasteEvent(activeEl, dataTransfer)) {
       return true;
     }
 
-    // 3. 尝试拖拽 (Drag & Drop) 仿真
+    // 优先策略 3: 单靶向 Drag & Drop 仿真
     if (this.tryDragAndDrop(activeEl, dataTransfer)) {
       return true;
     }
