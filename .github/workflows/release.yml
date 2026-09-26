@@ -5,28 +5,30 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
-
+    inputs:
+      tag_name:
+        description: "Release Tag"
+        required: true
+        type: string
 permissions:
   contents: write
 
 jobs:
   build-and-release:
-    name: Build & Publish Release
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v5
+        uses: pnpm/action-setup@v4
         with:
           run_install: false
 
       - name: Setup Node.js environment
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: "pnpm"
@@ -67,7 +69,7 @@ jobs:
         env:
           CRX_PRIVATE_KEY: ${{ secrets.CRX_PRIVATE_KEY }}
         run: |
-          TAG_NAME="${{ github.ref_name }}"
+          TAG_NAME="${{ inputs.tag_name || github.ref_name }}"
           ARCHIVE_NAME="ai-github-ingest-${TAG_NAME}.zip"
           CRX_NAME="ai-github-ingest-${TAG_NAME}.crx"
 
@@ -76,18 +78,15 @@ jobs:
           zip -r "../${ARCHIVE_NAME}" ./* -x "*.DS_Store*"
           cd ..
 
-          echo "📦 打包 CRX 产物..."
-          trap 'rm -f key.pem' EXIT
-
-          if [ -n "$CRX_PRIVATE_KEY" ]; then
-            echo "🔑 使用配置的 CRX_PRIVATE_KEY 签名..."
-            echo "$CRX_PRIVATE_KEY" > key.pem
-          else
-            echo "⚠️ 未配置 CRX_PRIVATE_KEY，生成临时 RSA 2048 私钥进行签名构建..."
-            openssl genrsa -out key.pem 2048
+          if [ -z "$CRX_PRIVATE_KEY" ]; then
+            echo "::error::CRX_PRIVATE_KEY 未配置，无法保证 Extension ID 稳定性，终止打包"
+            exit 1
           fi
 
-          npx --yes crx pack dist -p key.pem -o "${CRX_NAME}"
+          echo "🔑 使用 CRX_PRIVATE_KEY 签名打包 CRX3..."
+          trap 'rm -f key.pem' EXIT
+          echo "$CRX_PRIVATE_KEY" > key.pem
+          npx --yes crx3 pack dist -p key.pem -o "${CRX_NAME}"
           rm -f key.pem
 
           sha256sum "${ARCHIVE_NAME}" > "${ARCHIVE_NAME}.sha256"
@@ -97,18 +96,18 @@ jobs:
           echo "checksum_name=${ARCHIVE_NAME}.sha256" >> $GITHUB_OUTPUT
           echo "crx_name=${CRX_NAME}" >> $GITHUB_OUTPUT
           echo "crx_checksum_name=${CRX_NAME}.sha256" >> $GITHUB_OUTPUT
+          echo "release_tag=${TAG_NAME}" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: "Release ${{ github.ref_name }}"
+          tag_name: ${{ steps.package.outputs.release_tag }}
+          name: "Release ${{ steps.package.outputs.release_tag }}"
           files: |
             ${{ steps.package.outputs.archive_name }}
             ${{ steps.package.outputs.checksum_name }}
             ${{ steps.package.outputs.crx_name }}
             ${{ steps.package.outputs.crx_checksum_name }}
           draft: false
-          prerelease: ${{ contains(github.ref, '-alpha') || contains(github.ref, '-beta') || contains(github.ref, '-rc') }}
+          prerelease: ${{ contains(steps.package.outputs.release_tag, '-alpha') || contains(steps.package.outputs.release_tag, '-beta') || contains(steps.package.outputs.release_tag, '-rc') }}
           generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
