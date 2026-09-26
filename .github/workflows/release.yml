@@ -1,0 +1,93 @@
+name: Release Extension
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build & Publish Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Strict Typecheck
+        run: pnpm exec tsc --noEmit
+
+      - name: Build production bundle
+        run: pnpm run build
+
+      - name: Validate distribution integrity
+        run: |
+          echo "🔍 正在进行 Manifest V3 产物完整性防御审查..."
+          REQUIRED_FILES=(
+            "dist/manifest.json"
+            "dist/background/index.js"
+            "dist/content/index.js"
+            "dist/popup.html"
+            "dist/popup.js"
+            "dist/popup.css"
+            "dist/toast.css"
+            "dist/assets/icon.svg"
+          )
+
+          for assetPath in "${REQUIRED_FILES[@]}"; do
+            if [ ! -f "$assetPath" ]; then
+              echo "❌ 关键产物缺失: $assetPath"
+              exit 1
+            fi
+          done
+          echo "✅ 产物契约校验通过"
+
+      - name: Package extension archive
+        id: package
+        run: |
+          TAG_NAME="${{ github.ref_name }}"
+          ARCHIVE_NAME="ai-github-ingest-${TAG_NAME}.zip"
+
+          # 进入 dist 目录打包，确保 manifest.json 位于 zip 顶层根目录
+          cd dist
+          zip -r "../${ARCHIVE_NAME}" ./* -x "*.DS_Store*"
+          cd ..
+
+          # 生成 SHA-256 校验凭据
+          sha256sum "${ARCHIVE_NAME}" > "${ARCHIVE_NAME}.sha256"
+
+          echo "archive_name=${ARCHIVE_NAME}" >> $GITHUB_OUTPUT
+          echo "checksum_name=${ARCHIVE_NAME}.sha256" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Release ${{ github.ref_name }}"
+          files: |
+            ${{ steps.package.outputs.archive_name }}
+            ${{ steps.package.outputs.checksum_name }}
+          draft: false
+          prerelease: ${{ contains(github.ref, '-alpha') || contains(github.ref, '-beta') || contains(github.ref, '-rc') }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
