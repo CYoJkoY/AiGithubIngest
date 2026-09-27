@@ -75,6 +75,14 @@ const MULTI_SEGMENT_BRANCH_PREFIXES = new Set<string>([
   "refactor",
 ]);
 
+const safeDecodeUriComponent = (val: string): string => {
+  try {
+    return decodeURIComponent(val);
+  } catch {
+    return val;
+  }
+};
+
 /**
  * 规范化解析用户粘贴的文本，精准提取 GitHub 代码仓库与文件路径目标
  */
@@ -130,7 +138,10 @@ export const extractGitHubRepo = (
     });
   }
 
-  const [owner, rawRepo] = segments;
+  const rawOwner = segments[0];
+  const rawRepo = segments[1];
+  const owner = safeDecodeUriComponent(rawOwner);
+  const repo = safeDecodeUriComponent(rawRepo).replace(/\.git$/, "");
 
   // 5. 校验 Owner 与 Repo 有效性，杜绝 GitHub 顶层保留字
   if (
@@ -143,7 +154,6 @@ export const extractGitHubRepo = (
     });
   }
 
-  const repo = rawRepo.replace(/\.git$/, "");
   if (!repo || !/^[a-zA-Z0-9_\-\.]+$/.test(repo)) {
     return err({
       code: "NOT_GITHUB_URL",
@@ -192,27 +202,36 @@ export const extractGitHubRepo = (
 
   const targetType: "tree" | "blob" = action;
 
-  // 8. 智能解析 Ref 与 Subpath（兼顾 feature/* 等多段分支命名）
-  let ref: string;
-  let subpathParts: string[];
+  // 8. 智能解析 Ref 与 Subpath（兼顾 feature/* 等多段分支命名并做安全 URI 解码）
+  let rawRefSegments: string[];
+  let rawSubpathSegments: string[];
 
   if (
     segments.length >= 5 &&
     MULTI_SEGMENT_BRANCH_PREFIXES.has(segments[3].toLowerCase())
   ) {
-    ref = `${segments[3]}/${segments[4]}`;
-    subpathParts = segments.slice(5);
+    rawRefSegments = [segments[3], segments[4]];
+    rawSubpathSegments = segments.slice(5);
   } else {
-    ref = segments[3];
-    subpathParts = segments.slice(4);
+    rawRefSegments = [segments[3]];
+    rawSubpathSegments = segments.slice(4);
   }
 
-  const subpath = subpathParts.length > 0 ? `/${subpathParts.join("/")}` : "/";
+  const ref = rawRefSegments.map(safeDecodeUriComponent).join("/");
+  const decodedSubpathParts = rawSubpathSegments.map(safeDecodeUriComponent);
+  const subpath =
+    decodedSubpathParts.length > 0 ? `/${decodedSubpathParts.join("/")}` : "/";
 
-  let canonicalUrl = `https://github.com/${owner}/${repo}/${targetType}/${ref}`;
-  if (subpath !== "/") {
-    canonicalUrl += subpath;
-  }
+  // 构建规范化的 canonicalUrl，确保分支名中的保留字符（如 #）正确转义，避免被后续流程重新误切
+  const encodedRef = rawRefSegments
+    .map((seg) => encodeURIComponent(safeDecodeUriComponent(seg)))
+    .join("/");
+  const encodedSubpath =
+    decodedSubpathParts.length > 0
+      ? `/${decodedSubpathParts.map(encodeURIComponent).join("/")}`
+      : "";
+
+  const canonicalUrl = `https://github.com/${owner}/${repo}/${targetType}/${encodedRef}${encodedSubpath}`;
 
   return ok({
     owner,
