@@ -215,24 +215,21 @@ export class UniversalEditor {
   /**
    * 策略 2: 剪贴板事件仿真（关键修复版）
    *
-   * 背景：豆包等 tiptap / ProseMirror 平台的输入框是 contenteditable，
-   * 页面没有任何 input[type="file"]。一次合成的 paste 事件会被两层监听器消费：
-   *
-   *   1) ProseMirror view 在 contenteditable（target）自身的 DOM 上绑定的 paste 处理
-   *      —— 这一步消费掉 clipboardData.files，触发第一次上传。
-   *   2) React 委托层（挂载在 #root 上的 onPaste 合成事件）
-   *      —— 事件继续冒泡到 #root，被 React 委托再次分发，触发第二次上传。
+   * 背景：豆包输入框是 tiptap / ProseMirror contenteditable，页面没有
+   * 任何 input[type="file"]。一次合成的 paste 事件会被 React 的合成
+   * 事件系统分发给组件树中多个 onPaste 处理器，每个处理器都会读取
+   * event.clipboardData.files 并各自触发一次文件上传，表现为"上传两个
+   * 相同文件"。
    *
    * 修复思路：
-   *   在 target（ProseMirror 的 contenteditable）自身上注册一个冒泡阶段的停止传播监听器。
-   *   因为 content script 在 document_idle 注入，此监听器必然晚于 ProseMirror 的 DOM 监听器注册，
-   *   所以在同节点、同阶段的事件监听队列中它排在 ProseMirror 之后：
-   *     - dispatch 时 ProseMirror 先执行 → 正常消费文件，上传 1 次
-   *     - 本监听器随后执行 stopImmediatePropagation → 事件不再冒泡到 #root
-   *     - React 委托层收不到事件 → 第二次上传被彻底阻断
+   *   劫持派发出去的 ClipboardEvent.clipboardData，将 files 暴露为一个
+   *   一次性 getter —— 第一次读取返回真实 FileList，之后返回空 FileList。
+   *   这样：
+   *     - 第一个 onPaste 处理器读到真实文件 → 正常上传一次
+   *     - 第二个 onPaste 处理器读到空文件列表 → 静默跳过，不再重复上传
    *
-   * 注意：绝不能使用捕获阶段（第三个参数 true），否则会先于 ProseMirror 执行，
-   * 导致 ProseMirror 完全收不到 paste 事件，变成 0 次上传。
+   * 保留在 target 自身注册冒泡阶段的 stopPropagation 监听器，进一步
+   * 防止合成事件冒泡到 window / document 上的全局粘贴监听器。
    */
   private static tryPasteEvent(
     activeEl: HTMLElement | null,
@@ -249,6 +246,46 @@ export class UniversalEditor {
     try {
       target.focus();
 
+      // 快照真实文件列表，并准备一个空的 FileList 作为"已消耗"返回值
+      const realFiles = dataTransfer.files;
+      const emptyFiles = new DataTransfer().files;
+      let filesReadCount = 0;
+
+      // 构造一份代理 clipboardData：转发 DataTransfer 全部能力，
+      // 仅在 files 属性上做一次性消耗语义。
+      const clipboardProxy = {
+        get items() {
+          return dataTransfer.items;
+        },
+        get types() {
+          return dataTransfer.types;
+        },
+        get dropEffect() {
+          return dataTransfer.dropEffect;
+        },
+        get effectAllowed() {
+          return dataTransfer.effectAllowed;
+        },
+        getData: (format: string) => dataTransfer.getData(format),
+        setData: (format: string, data: string) =>
+          dataTransfer.setData(format, data),
+        clearData: (format?: string) => dataTransfer.clearData(format),
+        setDragImage: () => {
+          /* no-op */
+        },
+      };
+
+      Object.defineProperty(clipboardProxy, "files", {
+        configurable: true,
+        get() {
+          filesReadCount += 1;
+          return filesReadCount === 1 ? realFiles : emptyFiles;
+        },
+      });
+
+      // 先按标准方式构造 ClipboardEvent，再用 defineProperty 把 clipboardData
+      // 劫持为上面的代理对象，让所有监听器（React 合成事件层 + 原生层）都
+      // 拿到同一个代理，共享 files 的"一次性"语义。
       const pasteEvent = new ClipboardEvent("paste", {
         bubbles: true,
         cancelable: true,
@@ -256,7 +293,22 @@ export class UniversalEditor {
         clipboardData: dataTransfer,
       });
 
-      // 在 target 自身（ProseMirror contenteditable）注册冒泡阶段的停止传播监听器。
+      try {
+        Object.defineProperty(pasteEvent, "clipboardData", {
+          configurable: true,
+          get() {
+            return clipboardProxy;
+          },
+          set() {
+            /* 忽略框架内部对 clipboardData 的重新赋值 */
+          },
+        });
+      } catch {
+        // 某些运行环境禁止重定义，忽略并退回原始 dataTransfer
+      }
+
+      // 在 target 自身注册冒泡阶段的停止传播监听器，
+      // 让事件不再冒泡到 window / document 的全局粘贴监听器。
       const stopAtTarget = (e: Event): void => {
         e.stopPropagation();
         e.stopImmediatePropagation();
