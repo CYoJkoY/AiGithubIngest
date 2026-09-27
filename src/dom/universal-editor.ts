@@ -176,8 +176,8 @@ export class UniversalEditor {
   }
 
   /**
-   * 策略 2: 单靶向精准模拟 ClipboardEvent('paste') 携带 File 对象
-   * 配备单次消费熔断与生命周期即时清空，杜绝 ProseMirror 框架在 setTimeout 宏任务中触发二次上传
+   * 策略 2: 单靶向精准模拟 ClipboardEvent('paste')
+   * 构建 15ms 生命周期时钟门，彻底解决 ProseMirror 框架在 50ms setTimeout 宏任务中重复消费的缺陷
    */
   private static tryPasteEvent(
     activeEl: HTMLElement | null,
@@ -194,30 +194,9 @@ export class UniversalEditor {
     try {
       target.focus();
 
-      // 单次消费防御：防范豆包 ProseMirror 编辑器在未 preventDefault 时于 setTimeout(0) 中兜底重复消费
-      let consumed = false;
       const rawFiles = dataTransfer.files;
       const rawItems = dataTransfer.items;
-
-      try {
-        Object.defineProperty(dataTransfer, "files", {
-          get: () => {
-            if (consumed) return [] as unknown as FileList;
-            return rawFiles;
-          },
-          configurable: true,
-        });
-
-        Object.defineProperty(dataTransfer, "items", {
-          get: () => {
-            if (consumed) return [] as unknown as DataTransferItemList;
-            return rawItems;
-          },
-          configurable: true,
-        });
-      } catch {
-        // 环境不支持属性重定义则继续以原生 DataTransfer 执行
-      }
+      const emptyDT = new DataTransfer();
 
       const pasteEvent = new ClipboardEvent("paste", {
         bubbles: true,
@@ -226,15 +205,69 @@ export class UniversalEditor {
         clipboardData: dataTransfer,
       });
 
+      // 核心时钟门锁：由于 Chromium 会在构建 ClipboardEvent 时在底层深拷贝 DataTransfer，
+      // 我们直接在生成的 pasteEvent 及其内建 clipboardData 上注入双层属性拦截。
+      let isGateOpen = true;
+      const internalClipboardData =
+        (pasteEvent as unknown as { clipboardData?: DataTransfer })
+          .clipboardData || dataTransfer;
+
+      // 第一道防线：直接代理 event.clipboardData 自身
+      try {
+        const clipboardProxy = new Proxy(internalClipboardData, {
+          get(tgt, prop, receiver) {
+            if (!isGateOpen) {
+              if (prop === "files") return emptyDT.files;
+              if (prop === "items") return emptyDT.items;
+              if (prop === "getData") return () => "";
+            }
+            const val = Reflect.get(tgt, prop, receiver);
+            return typeof val === "function" ? val.bind(tgt) : val;
+          },
+        });
+
+        Object.defineProperty(pasteEvent, "clipboardData", {
+          get: () => clipboardProxy,
+          configurable: true,
+        });
+      } catch {
+        // 环境受限时静默跳过
+      }
+
+      // 第二道防线：防止某些框架在第一阶段缓存了 clipboardData 引用后直接读取 .files
+      try {
+        Object.defineProperty(internalClipboardData, "files", {
+          get: () => {
+            if (!isGateOpen) return emptyDT.files;
+            return rawFiles;
+          },
+          configurable: true,
+        });
+
+        Object.defineProperty(internalClipboardData, "items", {
+          get: () => {
+            if (!isGateOpen) return emptyDT.items;
+            return rawItems;
+          },
+          configurable: true,
+        });
+      } catch {
+        // 忽略非配置属性异常
+      }
+
+      // 同步派发：豆包业务层在此步骤内同步获取 files 并触发第一次正常上传
       target.dispatchEvent(pasteEvent);
 
-      // 同步调用结束，立即将数据标记为已消费并清空数据槽，模拟原生剪贴板生命周期失效行为
-      consumed = true;
-      try {
-        dataTransfer.items.clear();
-      } catch {
-        // 忽略不支持 clear 的边缘场景
-      }
+      // 15ms 延迟关闭时钟门：既给当前宏任务/微任务留足消费窗口，
+      // 又能赶在 ProseMirror 的 50ms setTimeout 后备宏任务执行前关死阀门
+      setTimeout(() => {
+        isGateOpen = false;
+        try {
+          dataTransfer.items.clear();
+        } catch {
+          // 忽略
+        }
+      }, 15);
 
       return true;
     } catch {
@@ -243,7 +276,7 @@ export class UniversalEditor {
   }
 
   /**
-   * 策略 3: 全局与局部穿透式 Drag & Drop 状态机多靶心仿真
+   * 策略 3: 全局与局部穿透式 Drag & Drop 状态机仿真
    */
   private static tryDragAndDrop(
     activeEl: HTMLElement | null,
@@ -313,7 +346,7 @@ export class UniversalEditor {
 
     const currentHost = window.location.hostname.toLowerCase();
 
-    // 豆包平台优先且唯一使用带有单次消费防护的 Paste 策略
+    // 豆包平台优先且唯一使用带有双层时钟门防护的 Paste 策略
     if (currentHost.includes("doubao.com")) {
       if (this.tryPasteEvent(activeEl, dataTransfer)) {
         return true;
