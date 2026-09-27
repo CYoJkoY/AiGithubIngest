@@ -104,7 +104,7 @@ export class UniversalEditor {
   }
 
   /**
-   * 核心重置清理器：彻底释放物理 input 节点上的挂载，防止文件残留与重复提交
+   * 清理并解绑物理 input 节点上的文件常驻状态，防止文件持续悬挂导致后续操作重复提交
    */
   private static cleanUpFileInput(fileInput: HTMLInputElement): void {
     try {
@@ -138,7 +138,6 @@ export class UniversalEditor {
 
   /**
    * 策略 1: 扫描并触发原生 input[type="file"] 挂载
-   * 触发后立即安排微延迟解绑，杜绝 DOM 驻留
    */
   private static tryUploadViaFileInput(
     file: File,
@@ -191,7 +190,6 @@ export class UniversalEditor {
             tracker.setValue("");
           }
 
-          // 派发标准事件促使宿主框架（如 React/Vue）捕获并读取文件
           fileInput.dispatchEvent(
             new Event("change", { bubbles: true, composed: true }),
           );
@@ -199,10 +197,10 @@ export class UniversalEditor {
             new Event("input", { bubbles: true, composed: true }),
           );
 
-          // 关键修复：给宿主框架 80ms 同步读取窗口，随后彻底清空物理 DOM，防止残留
+          // 留出 300ms 异步读取窗口，随后清空物理 DOM 节点，防止发送后文件常驻挂载
           setTimeout(() => {
             UniversalEditor.cleanUpFileInput(fileInput);
-          }, 80);
+          }, 300);
 
           return true;
         } catch {
@@ -215,7 +213,7 @@ export class UniversalEditor {
   }
 
   /**
-   * 策略 2: 剪贴板事件仿真（互斥单次消费代理 + 非冒泡穿透）
+   * 策略 2: 剪贴板事件仿真（保留冒泡供 React 捕获，并在 document/window 冒泡截断杜绝全局二次上传）
    */
   private static tryPasteEvent(
     activeEl: HTMLElement | null,
@@ -232,105 +230,32 @@ export class UniversalEditor {
     try {
       target.focus();
 
-      const rawFiles = dataTransfer.files;
-      const rawItems = dataTransfer.items;
-      const emptyDT = new DataTransfer();
-
-      let isGateOpen = true;
-      let filesAccessed = false;
-      let itemsAccessed = false;
-
-      // 禁用冒泡，防止事件穿透到外层容器或 window 全局监听器导致二次上传
+      // bubbles 必须为 true，否则 React 18 根节点 (#root) 无法捕获合成事件
       const pasteEvent = new ClipboardEvent("paste", {
-        bubbles: false,
+        bubbles: true,
         cancelable: true,
         composed: true,
         clipboardData: dataTransfer,
       });
 
-      // 互斥单次消费代理：
-      // 1. 若宿主先读取 files，则后续对 items 的读取立即屏蔽返回空
-      // 2. 若宿主先读取 items，则后续对 files 的读取立即屏蔽返回空
-      // 3. 彻底根除同一事件中同时消费 items 和 files 造成的双重上传
-      const clipboardProxy = new Proxy(dataTransfer, {
-        get(tgt, prop, receiver) {
-          if (!isGateOpen) {
-            if (prop === "files") return emptyDT.files;
-            if (prop === "items") return emptyDT.items;
-            if (prop === "types") return [];
-            if (prop === "getData") return () => "";
-          }
+      // 冒泡阶段隔离阻断器：
+      // 当事件冒泡经过 #root 时，豆包的聊天输入框完成第一次正常上传；
+      // 一旦事件离开 #root 到达 document 时立即截断，杜绝其继续冒泡到 window 触发全局上传监听器
+      const stopGlobalBubble = (e: Event): void => {
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+      };
 
-          if (prop === "files") {
-            if (itemsAccessed) {
-              return emptyDT.files;
-            }
-            filesAccessed = true;
-            return rawFiles;
-          }
-
-          if (prop === "items") {
-            if (filesAccessed) {
-              return emptyDT.items;
-            }
-            itemsAccessed = true;
-
-            let fileExtracted = false;
-            return new Proxy(rawItems, {
-              get(itemsTgt, itemProp, itemReceiver) {
-                const itemVal = Reflect.get(itemsTgt, itemProp, itemReceiver);
-                if (typeof itemProp === "string" && !isNaN(Number(itemProp))) {
-                  const originalItem = rawItems[Number(itemProp)];
-                  if (originalItem && originalItem.kind === "file") {
-                    return new Proxy(originalItem, {
-                      get(fileItemTgt, fileItemProp) {
-                        if (fileItemProp === "getAsFile") {
-                          return () => {
-                            if (fileExtracted) return null;
-                            fileExtracted = true;
-                            return originalItem.getAsFile();
-                          };
-                        }
-                        const val = Reflect.get(fileItemTgt, fileItemProp);
-                        return typeof val === "function"
-                          ? val.bind(fileItemTgt)
-                          : val;
-                      },
-                    });
-                  }
-                }
-                return typeof itemVal === "function"
-                  ? itemVal.bind(itemsTgt)
-                  : itemVal;
-              },
-            });
-          }
-
-          const val = Reflect.get(tgt, prop, receiver);
-          return typeof val === "function" ? val.bind(tgt) : val;
-        },
-      });
+      document.addEventListener("paste", stopGlobalBubble, false);
+      window.addEventListener("paste", stopGlobalBubble, false);
 
       try {
-        Object.defineProperty(pasteEvent, "clipboardData", {
-          get: () => clipboardProxy,
-          configurable: true,
-        });
-      } catch {
-        // 忽略受限环境
+        target.dispatchEvent(pasteEvent);
+      } finally {
+        // 同步注销拦截器，确保不影响后续用户的正常粘贴操作
+        document.removeEventListener("paste", stopGlobalBubble, false);
+        window.removeEventListener("paste", stopGlobalBubble, false);
       }
-
-      target.dispatchEvent(pasteEvent);
-
-      // 微任务周期内迅速关门，阻止任何异步宏任务（如 50ms setTimeout）二次读取
-      queueMicrotask(() => {
-        isGateOpen = false;
-        try {
-          dataTransfer.items.clear();
-        } catch {
-          // 忽略
-        }
-      });
 
       return true;
     } catch {
@@ -339,52 +264,33 @@ export class UniversalEditor {
   }
 
   /**
-   * 策略 3: 拖拽仿真
+   * 策略 3: 单靶向 Drag & Drop 状态机仿真
    */
   private static tryDragAndDrop(
     activeEl: HTMLElement | null,
     dataTransfer: DataTransfer,
   ): boolean {
-    const candidateTargets = [
-      activeEl,
-      activeEl?.closest('[class*="chat"]'),
-      activeEl?.closest('[class*="input"]'),
-      activeEl?.closest('[class*="editor"]'),
-      document.querySelector('[data-dropzone="true"]'),
-      document.querySelector('[class*="dropzone"]'),
-      document.querySelector('[class*="drop-target"]'),
-      document.querySelector('[role="main"]'),
-      document.querySelector("main"),
-      document.body,
-    ].filter((el): el is HTMLElement => Boolean(el));
+    const candidateTarget =
+      activeEl?.closest('[class*="chat"]') ||
+      activeEl?.closest('[class*="input"]') ||
+      activeEl ||
+      document.querySelector('[data-dropzone="true"]') ||
+      document.querySelector('[class*="dropzone"]') ||
+      document.querySelector("main");
 
-    if (candidateTargets.length === 0) return false;
+    if (!candidateTarget) return false;
 
     try {
       const eventInit: DragEventInit = {
-        bubbles: false,
+        bubbles: true,
         cancelable: true,
         composed: true,
         dataTransfer,
       };
 
-      for (const target of candidateTargets) {
-        const dragEnter = new DragEvent("dragenter", eventInit);
-        const dragOver = new DragEvent("dragover", eventInit);
-        const drop = new DragEvent("drop", eventInit);
-
-        target.dispatchEvent(dragEnter);
-        target.dispatchEvent(dragOver);
-        target.dispatchEvent(drop);
-      }
-
-      queueMicrotask(() => {
-        try {
-          dataTransfer.items.clear();
-        } catch {
-          // 忽略
-        }
-      });
+      candidateTarget.dispatchEvent(new DragEvent("dragenter", eventInit));
+      candidateTarget.dispatchEvent(new DragEvent("dragover", eventInit));
+      candidateTarget.dispatchEvent(new DragEvent("drop", eventInit));
 
       return true;
     } catch {
@@ -418,14 +324,14 @@ export class UniversalEditor {
 
     const currentHost = window.location.hostname.toLowerCase();
 
-    // 豆包平台优先使用带有单次互斥时钟门的 Paste 策略
+    // 豆包平台优先使用带有冒泡隔离防护的 Paste 策略
     if (currentHost.includes("doubao.com")) {
       if (this.tryPasteEvent(activeEl, dataTransfer)) {
         return true;
       }
     }
 
-    // 优先策略 1: 扫描并触发 input[type="file"]（自带 80ms 自动解绑机制）
+    // 优先策略 1: 扫描并触发 input[type="file"]（自带 300ms 自动解绑机制）
     if (this.tryUploadViaFileInput(file, activeEl, dataTransfer)) {
       return true;
     }
