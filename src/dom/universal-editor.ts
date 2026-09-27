@@ -4,6 +4,7 @@ export class UniversalEditor {
 
   /**
    * 校验 file input 是否具备接收文本/文档附件的能力
+   * 采用宽松防御策略：只要不是明确仅限图片/音视频的输入框，均允许挂载 Markdown
    */
   private static isValidFileInput(
     input: HTMLInputElement,
@@ -15,6 +16,7 @@ export class UniversalEditor {
 
     const acceptLower = accept.toLowerCase();
 
+    // 排除明确仅接受图片、音频、视频的专用控件（如头像上传、语音输入）
     const isPureMedia =
       (acceptLower.includes("image/") ||
         acceptLower.includes(".jpg") ||
@@ -66,7 +68,8 @@ export class UniversalEditor {
   }
 
   /**
-   * 清理并解绑物理 input 节点上的文件常驻状态
+   * 清理并解绑物理 input 节点上的文件常驻状态，
+   * 防止文件持续悬挂导致后续操作重复提交
    */
   private static cleanUpFileInput(fileInput: HTMLInputElement): void {
     try {
@@ -99,7 +102,7 @@ export class UniversalEditor {
   }
 
   /**
-   * 将文件挂载到指定 input
+   * 将文件挂载到指定 input，并派发 input / change 事件通知宿主框架
    */
   private static mountFileToInput(
     input: HTMLInputElement,
@@ -133,18 +136,17 @@ export class UniversalEditor {
         new Event("change", { bubbles: true, composed: true }),
       );
 
-      console.log("[AiIngest] mountFileToInput: dispatched input/change");
-
+      // 留出异步读取窗口后清空物理 DOM 节点，防止文件常驻挂载
       setTimeout(() => {
         UniversalEditor.cleanUpFileInput(input);
       }, 1000);
-    } catch (e) {
-      console.log("[AiIngest] mountFileToInput failed", e);
+    } catch {
+      // 容错处理
     }
   }
 
   /**
-   * 策略 1: 通用 file input 扫描（用于非豆包站点）
+   * 策略 1: 扫描并触发原生 input[type="file"] 挂载
    */
   private static tryUploadViaFileInput(
     file: File,
@@ -182,7 +184,7 @@ export class UniversalEditor {
   }
 
   /**
-   * 策略 2: 剪贴板事件仿真（保留给非豆包站点）
+   * 策略 2: 剪贴板事件仿真
    */
   private static tryPasteEvent(
     activeEl: HTMLElement | null,
@@ -221,7 +223,7 @@ export class UniversalEditor {
   }
 
   /**
-   * 策略 3: 拖放事件仿真（保留给非豆包站点）
+   * 策略 3: 单靶向 Drag & Drop 状态机仿真
    */
   private static tryDragAndDrop(
     activeEl: HTMLElement | null,
@@ -256,63 +258,51 @@ export class UniversalEditor {
   }
 
   /**
-   * 豆包专用：通过 data-testid 精确定位 input / 触发按钮
+   * 豆包专用文件挂载流程
    *
-   * 从用户提供的豆包 DOM 得出精确选择器：
-   *   - 附件按钮：button[data-testid="upload_file_button"]
-   *   - 文件输入：input[data-testid="upload-file-input"] 或 input[type="file"]
+   * 豆包输入框是 tiptap / ProseMirror contenteditable，页面初始没有任何
+   * input[type="file"]，只有在点击附件按钮后才动态创建隐藏 input。
    *
-   * 关键难点与最终解决方案：
+   * paste / drop 路径在豆包上均被实测证明不可行（sync-input-engine 会剥离
+   * clipboardData，tiptap handleDrop 只处理图片），唯一可行路径是：
    *
-   *   诊断日志证明：豆包不是通过 HTMLInputElement.prototype.click() 打开
-   *   文件选择器（否则我们的 prototype patch 会命中并打印 suppressed 日志），
-   *   也不是通过 showPicker()。它走的是**直接向 input 元素派发 click 事件**
-   *   （input.dispatchEvent(new MouseEvent('click')) 或类似），
-   *   浏览器识别为 trusted click 后弹出系统文件选择器，绕过所有 prototype 方法。
-   *
-   *   解决方案：在 document 上以**捕获阶段**监听 click 事件，一旦发现事件
-   *   目标是 type="file" 的 input，立即 preventDefault + stopImmediatePropagation，
-   *   阻止浏览器的默认"打开文件选择器"行为。
-   *
-   *   捕获阶段在 document 上，会先于豆包任何监听器执行，因此 100% 拦截。
-   *   拦截窗口为 1 秒，覆盖豆包所有同步 + 异步的 click 派发。
-   *   1 秒后自动移除拦截器，用户后续手动操作完全正常。
+   *   1. 精确定位附件按钮 button[data-testid="upload_file_button"]
+   *   2. 在 document 上安装捕获阶段的 click 拦截器，阻止浏览器弹出系统文件
+   *      选择器（豆包内部通过向 input 元素派发 click 事件触发，绕过
+   *      HTMLInputElement.prototype.click / showPicker）
+   *   3. 派发合成 click 触发 React onClick，让豆包渲染出隐藏 input
+   *   4. 挂载文件到 input 并派发 input / change 事件
+   *   5. 1 秒后移除拦截器，恢复用户后续正常操作
    */
   private static tryDoubaoUpload(
     file: File,
     dataTransfer: DataTransfer,
   ): boolean {
-    console.log("[AiIngest] doubao: tryDoubaoUpload start");
-
     // 1. 快路径：input 可能已经在 DOM 中
     const directInput = document.querySelector<HTMLInputElement>(
       'input[data-testid="upload-file-input"], input[type="file"]',
     );
 
     if (directInput && this.isValidFileInput(directInput, file)) {
-      console.log("[AiIngest] doubao: direct input found, mounting");
       this.mountFileToInput(directInput, dataTransfer);
       return true;
     }
 
-    // 2. 慢路径：安装 click 捕获拦截器 → 派发 click → 挂载文件
+    // 2. 慢路径：点击附件按钮触发 input 渲染
     const attachBtn = document.querySelector<HTMLElement>(
       'button[data-testid="upload_file_button"]',
     );
 
     if (!attachBtn) {
-      console.log("[AiIngest] doubao: no attach button found");
       return false;
     }
 
-    // 安装捕获阶段的 click 拦截器：阻止浏览器弹出系统文件选择器
-    // 只拦截 input[type="file"] 上的 click，不影响其他元素
+    // 安装捕获阶段的 click 拦截器：阻止浏览器弹出系统文件选择器。
+    // 捕获阶段在 document 上会先于豆包任何监听器执行，因此 100% 拦截。
+    // 仅拦截目标为 file input 的 click，不影响其他元素。
     const clickBlocker = (e: Event): void => {
       const target = e.target;
       if (target instanceof HTMLInputElement && target.type === "file") {
-        console.log(
-          "[AiIngest] doubao: blocked click on file input (capture phase)",
-        );
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation();
@@ -321,7 +311,7 @@ export class UniversalEditor {
 
     document.addEventListener("click", clickBlocker, true);
 
-    // 兼容 patch：也拦截 showPicker（部分 Chrome 版本会走这条路径）
+    // 兼容 patch：部分 Chrome 版本可能走 showPicker 路径
     const originalShowPicker = (
       HTMLInputElement.prototype as unknown as {
         showPicker?: () => void;
@@ -336,24 +326,16 @@ export class UniversalEditor {
             showPicker: () => void;
           }
         ).showPicker = function (this: HTMLInputElement): void {
-          if (this.type === "file") {
-            console.log("[AiIngest] doubao: blocked showPicker on file input");
-            return;
-          }
+          if (this.type === "file") return;
           return originalShowPicker.call(this);
         };
         showPickerPatched = true;
-      } catch (e) {
-        console.log("[AiIngest] doubao: showPicker patch failed", e);
+      } catch {
+        // 容错处理
       }
     }
 
-    console.log("[AiIngest] doubao: click blocker installed");
-
     // 派发合成 click 触发 React onClick，让豆包渲染出 input
-    console.log(
-      "[AiIngest] doubao: dispatching synthetic click on attach button",
-    );
     try {
       attachBtn.dispatchEvent(
         new MouseEvent("click", {
@@ -362,8 +344,8 @@ export class UniversalEditor {
           view: window,
         }),
       );
-    } catch (e) {
-      console.log("[AiIngest] doubao: click dispatch failed", e);
+    } catch {
+      // 容错处理
     }
 
     // 3. 延迟扫描新出现的 input 并挂载文件
@@ -373,14 +355,7 @@ export class UniversalEditor {
       );
 
       if (newInput && this.isValidFileInput(newInput, file)) {
-        console.log(
-          "[AiIngest] doubao: input appeared after click, mounting file",
-        );
         this.mountFileToInput(newInput, dataTransfer);
-      } else {
-        console.log("[AiIngest] doubao: no valid input appeared after click", {
-          found: !!newInput,
-        });
       }
     }, 200);
 
@@ -395,9 +370,8 @@ export class UniversalEditor {
             }
           ).showPicker = originalShowPicker;
         }
-        console.log("[AiIngest] doubao: click blocker removed (after 1s)");
-      } catch (e) {
-        console.log("[AiIngest] doubao: cleanup failed", e);
+      } catch {
+        // 容错处理
       }
     }, 1000);
 
@@ -414,7 +388,6 @@ export class UniversalEditor {
     const now = Date.now();
     const uploadKey = `${file.name}-${file.size}`;
     if (now - this.lastUploadTime < 1500 && this.lastUploadKey === uploadKey) {
-      console.log("[AiIngest] attachVirtualFile: deduped");
       return true;
     }
     this.lastUploadTime = now;
@@ -466,6 +439,7 @@ export class UniversalEditor {
 
     if (!activeEl) return false;
 
+    // 1. Textarea / Input 元素
     if (
       activeEl instanceof HTMLTextAreaElement ||
       activeEl instanceof HTMLInputElement
@@ -512,6 +486,7 @@ export class UniversalEditor {
       return true;
     }
 
+    // 2. contenteditable 富文本输入容器
     if (
       activeEl.isContentEditable ||
       activeEl.closest("[contenteditable='true']")
