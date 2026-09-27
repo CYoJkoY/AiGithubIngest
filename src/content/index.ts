@@ -8,6 +8,17 @@ import { showToast } from "../ui/toast";
 import { ExtensionResponse, StorageSchema, SupportedLang } from "../types";
 import { t } from "../core/i18n";
 
+// ============================================================
+// 诊断探针：验证 content script 是否成功注入。
+// 问题定位完成后可删除。
+// ============================================================
+console.log(
+  "[AiGithubIngest] content script loaded @",
+  location.hostname,
+  "| readyState:",
+  document.readyState,
+);
+
 let isProcessing = false;
 let processingWatchdogTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -21,12 +32,16 @@ let cachedLang: SupportedLang = "zh-CN";
  */
 const refreshStorageConfig = async (): Promise<void> => {
   const storageData = await new Promise<StorageSchema>((resolve) => {
-    chrome.storage.sync.get(
-      ["userWhitelist", "userBlacklist", "lang"],
-      (res) => {
-        resolve(res as StorageSchema);
-      },
-    );
+    try {
+      chrome.storage.sync.get(
+        ["userWhitelist", "userBlacklist", "lang"],
+        (res) => {
+          resolve((res as StorageSchema) ?? {});
+        },
+      );
+    } catch {
+      resolve({});
+    }
   });
 
   cachedWhitelist = storageData.userWhitelist ?? [];
@@ -104,7 +119,6 @@ const resolveActiveEditor = (
     return targetElement;
   }
 
-  // 降级探测当前可见的活跃编辑器
   const candidates = Array.from(
     document.querySelectorAll<HTMLElement>(
       'textarea, [contenteditable="true"], [role="textbox"]',
@@ -118,8 +132,7 @@ const resolveActiveEditor = (
 };
 
 /**
- * 从 event.composedPath() 中提取真正的可编辑节点，
- * 以支持 Shadow DOM / Quill / Lexical / ProseMirror 等嵌套编辑器。
+ * 从 event.composedPath() 中提取真正的可编辑节点
  */
 const resolveEventTarget = (event: ClipboardEvent): HTMLElement | null => {
   const path =
@@ -151,14 +164,13 @@ const handlePasteEvent = async (event: ClipboardEvent): Promise<void> => {
     cachedBlacklist,
   );
 
-  // 严格遵循黑名单最高裁决权与非启用阻断
   if (policy === "DISABLED" || policy === "DISABLED_BLACKLIST") return;
 
   const rawText = event.clipboardData?.getData("text/plain")?.trim() ?? "";
   const parseResult = extractGitHubRepo(rawText);
   if (!parseResult.ok) return;
 
-  // 核心拦截：彻底阻断宿主网站自带的普通文本粘贴与处理
+  // 核心拦截
   event.preventDefault();
   event.stopPropagation();
   event.stopImmediatePropagation();
@@ -185,7 +197,6 @@ const handlePasteEvent = async (event: ClipboardEvent): Promise<void> => {
   const repo = parseResult.value;
   isProcessing = true;
 
-  // 15 秒看门狗保护：即使后台无响应或网络中断，强制解开锁，防止新会话卡死
   processingWatchdogTimer = setTimeout(() => {
     resetProcessingLock();
   }, 15000);
@@ -276,7 +287,7 @@ const handlePasteEvent = async (event: ClipboardEvent): Promise<void> => {
 };
 
 /**
- * 监听 SPA 路由变化，确保新开对话不刷新即可保持可用
+ * 监听 SPA 路由变化
  */
 const setupSpaRouteListener = (): void => {
   const onLocationChange = (): void => {
@@ -284,53 +295,69 @@ const setupSpaRouteListener = (): void => {
     void refreshStorageConfig();
   };
 
-  window.addEventListener("popstate", onLocationChange);
-  window.addEventListener("hashchange", onLocationChange);
+  try {
+    window.addEventListener("popstate", onLocationChange);
+    window.addEventListener("hashchange", onLocationChange);
 
-  const originalPushState = history.pushState;
-  history.pushState = function (...args) {
-    const result = originalPushState.apply(this, args);
-    onLocationChange();
-    return result;
-  };
+    const originalPushState = history.pushState;
+    history.pushState = function (...args) {
+      const result = originalPushState.apply(this, args);
+      onLocationChange();
+      return result;
+    };
 
-  const originalReplaceState = history.replaceState;
-  history.replaceState = function (...args) {
-    const result = originalReplaceState.apply(this, args);
-    onLocationChange();
-    return result;
-  };
+    const originalReplaceState = history.replaceState;
+    history.replaceState = function (...args) {
+      const result = originalReplaceState.apply(this, args);
+      onLocationChange();
+      return result;
+    };
+  } catch {
+    // history 劫持失败不影响主链路
+  }
 };
 
 /**
- * 监听 Storage 动态变更，Popup 调整黑名单/白名单立即生效
+ * 安全注册 storage 变更监听器
+ * 放到 initialize 内部，避免 document_start 阶段可能的 API 不可用
+ * 导致整个脚本中断。
  */
-chrome.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName === "sync") {
-    if (changes.userWhitelist) {
-      cachedWhitelist = changes.userWhitelist.newValue ?? [];
-    }
-    if (changes.userBlacklist) {
-      cachedBlacklist = changes.userBlacklist.newValue ?? [];
-    }
-    if (changes.lang) {
-      cachedLang = changes.lang.newValue || "zh-CN";
-    }
+const setupStorageListener = (): void => {
+  try {
+    chrome.storage.onChanged.addListener((changes, areaName) => {
+      if (areaName === "sync") {
+        if (changes.userWhitelist) {
+          cachedWhitelist = changes.userWhitelist.newValue ?? [];
+        }
+        if (changes.userBlacklist) {
+          cachedBlacklist = changes.userBlacklist.newValue ?? [];
+        }
+        if (changes.lang) {
+          cachedLang = changes.lang.newValue || "zh-CN";
+        }
+      }
+    });
+  } catch (err) {
+    console.warn("[AiGithubIngest] storage.onChanged listener failed:", err);
   }
-});
+};
 
 const initialize = (): void => {
-  // 1. 同步注册捕获监听 —— 必须在任何 await 之前执行，
-  //    否则宿主 SPA 的 stopImmediatePropagation 会吃掉事件。
-  //    同时挂 window 与 document 作为双保险。
+  // 1. 注册 paste 捕获监听器 —— 必须在最前面同步执行，
+  //    任何 await 或可能抛异常的调用都会让监听器注册被推迟或跳过。
   window.addEventListener("paste", handlePasteEvent, true);
   document.addEventListener("paste", handlePasteEvent, true);
 
-  // 2. SPA 路由监听（同步即可完成，不需要 await）
+  // 2. SPA 路由监听（内部已有 try/catch）
   setupSpaRouteListener();
 
-  // 3. 异步刷新 storage 缓存，不阻塞监听注册
+  // 3. Storage 变更监听（内部已有 try/catch）
+  setupStorageListener();
+
+  // 4. 异步刷新 storage 缓存，不阻塞监听注册
   void refreshStorageConfig();
+
+  console.log("[AiGithubIngest] listeners registered @", location.hostname);
 };
 
 void initialize();
