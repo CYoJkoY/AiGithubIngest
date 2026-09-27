@@ -1,5 +1,4 @@
 import { SiteAdapter } from './types';
-import type { Logger } from '../../core/logger';
 
 /**
  * drop target 优先级：最内层优先。
