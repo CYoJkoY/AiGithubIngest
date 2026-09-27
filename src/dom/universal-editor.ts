@@ -264,15 +264,19 @@ export class UniversalEditor {
    *   - 文件输入：input[data-testid="upload-file-input"] 或 input[type="file"]
    *   - input 的 accept 明确包含 .md，可直接上传 Markdown
    *
-   * 关键难点与解决方案：
+   * 关键难点与解决方案（最终版）：
+   *
    *   合成 click 到附件按钮时，我们仍处于 paste 事件的 user gesture 上下文，
    *   豆包 React onClick 内部会调用 input.click()，Chrome 判定为"用户主动点击"，
    *   于是弹出系统文件选择器——但我们其实不需要它弹窗，因为文件我们直接挂载。
    *
-   *   解决方案：在派发 click 期间临时 patch HTMLInputElement.prototype.click 和
-   *   showPicker，让 type="file" 的 input 静默失败（阻止系统弹窗），同时让 React
-   *   onClick 正常执行、input 正常渲染到 DOM。派发结束后立即恢复原型链，
-   *   保证用户后续手动点击加号按钮时系统选择器仍正常弹出。
+   *   诊断日志表明：补丁在 dispatch 返回后立即恢复，但豆包实际是在
+   *   dispatch 返回之后的**异步阶段**（Promise 微任务 / rAF / setTimeout）
+   *   才调用 input.click()。导致我们的补丁已经恢复，系统选择器照常弹出。
+   *
+   *   解决方案：补丁**延迟 2 秒恢复**，覆盖豆包任何异步触发的 click / showPicker。
+   *   在这 2 秒窗口内，用户手动点击附件按钮会被静默忽略；2 秒后一切恢复正常。
+   *   该窗口对用户体验影响可忽略（用户刚刚完成粘贴，不会立即手动点击）。
    */
   private static tryDoubaoUpload(
     file: File,
@@ -291,7 +295,7 @@ export class UniversalEditor {
       return true;
     }
 
-    // 2. 慢路径：点击附件按钮触发 input 渲染（需临时 patch click / showPicker）
+    // 2. 慢路径：点击附件按钮触发 input 渲染（延迟恢复补丁）
     const attachBtn = document.querySelector<HTMLElement>(
       'button[data-testid="upload_file_button"]',
     );
@@ -309,43 +313,35 @@ export class UniversalEditor {
       }
     ).showPicker;
 
-    let patched = false;
+    // 安装补丁：拦截 type="file" 的 input，阻止系统文件选择器弹出
+    // 注意：补丁不会立即恢复，会在下方 setTimeout 里延迟恢复
+    HTMLInputElement.prototype.click = function (this: HTMLInputElement): void {
+      if (this.type === "file") {
+        console.log("[AiIngest] doubao: suppressed native file picker (click)");
+        return;
+      }
+      return originalClick.call(this);
+    };
 
-    // 临时 patch：拦截 type="file" 的 input，阻止系统文件选择器弹出
-    try {
-      HTMLInputElement.prototype.click = function (
-        this: HTMLInputElement,
-      ): void {
+    if (typeof originalShowPicker === "function") {
+      (
+        HTMLInputElement.prototype as unknown as {
+          showPicker: () => void;
+        }
+      ).showPicker = function (this: HTMLInputElement): void {
         if (this.type === "file") {
           console.log(
-            "[AiIngest] doubao: suppressed native file picker (click)",
+            "[AiIngest] doubao: suppressed native file picker (showPicker)",
           );
           return;
         }
-        return originalClick.call(this);
+        return originalShowPicker.call(this);
       };
-
-      if (typeof originalShowPicker === "function") {
-        (
-          HTMLInputElement.prototype as unknown as {
-            showPicker: () => void;
-          }
-        ).showPicker = function (this: HTMLInputElement): void {
-          if (this.type === "file") {
-            console.log(
-              "[AiIngest] doubao: suppressed native file picker (showPicker)",
-            );
-            return;
-          }
-          return originalShowPicker.call(this);
-        };
-      }
-
-      patched = true;
-      console.log("[AiIngest] doubao: click/showPicker patched");
-    } catch (e) {
-      console.log("[AiIngest] doubao: patch failed", e);
     }
+
+    console.log(
+      "[AiIngest] doubao: click/showPicker patched (will restore after 2s)",
+    );
 
     // 派发合成 click 触发 React onClick，让豆包渲染出 input
     console.log(
@@ -361,23 +357,6 @@ export class UniversalEditor {
       );
     } catch (e) {
       console.log("[AiIngest] doubao: click dispatch failed", e);
-    } finally {
-      // 立即恢复原始方法，避免影响后续用户正常操作
-      if (patched) {
-        try {
-          HTMLInputElement.prototype.click = originalClick;
-          if (typeof originalShowPicker === "function") {
-            (
-              HTMLInputElement.prototype as unknown as {
-                showPicker: () => void;
-              }
-            ).showPicker = originalShowPicker;
-          }
-          console.log("[AiIngest] doubao: click/showPicker restored");
-        } catch (e) {
-          console.log("[AiIngest] doubao: restore failed", e);
-        }
-      }
     }
 
     // 3. 延迟扫描新出现的 input 并挂载文件
@@ -397,6 +376,25 @@ export class UniversalEditor {
         });
       }
     }, 200);
+
+    // 4. 延迟 2 秒后恢复原始方法，覆盖豆包的异步 click / showPicker 调用
+    setTimeout(() => {
+      try {
+        HTMLInputElement.prototype.click = originalClick;
+        if (typeof originalShowPicker === "function") {
+          (
+            HTMLInputElement.prototype as unknown as {
+              showPicker: () => void;
+            }
+          ).showPicker = originalShowPicker;
+        }
+        console.log(
+          "[AiIngest] doubao: click/showPicker fully restored (after 2s)",
+        );
+      } catch (e) {
+        console.log("[AiIngest] doubao: restore failed", e);
+      }
+    }, 2000);
 
     return true;
   }
