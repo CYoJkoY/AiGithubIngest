@@ -1,5 +1,6 @@
 import { t } from '../core/i18n';
 import { StorageSchema, SupportedLang } from '../types';
+import { StorageService } from './storage-service';
 
 export function setupTokenView(
   getStorage: () => Promise<StorageSchema>,
@@ -23,7 +24,7 @@ export function setupTokenView(
 
   saveTokenBtn.addEventListener('click', async () => {
     const token = tokenInput.value.trim();
-    await chrome.storage.sync.set({ githubToken: token });
+    await StorageService.saveGitHubToken(token);
     tokenInput.dataset.dirty = '';
     const storage = await getStorage();
     const currentLang: SupportedLang = storage.lang || 'zh-CN';
@@ -37,7 +38,7 @@ export function setupTokenView(
   clearTokenBtn.addEventListener('click', async () => {
     tokenInput.value = '';
     tokenInput.dataset.dirty = '';
-    await chrome.storage.sync.set({ githubToken: '' });
+    await StorageService.clearGitHubToken();
     const storage = await getStorage();
     const currentLang: SupportedLang = storage.lang || 'zh-CN';
     statusEl.textContent = t('tokenCleared', currentLang);

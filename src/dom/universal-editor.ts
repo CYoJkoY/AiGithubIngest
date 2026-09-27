@@ -8,21 +8,9 @@ import { genericDndAdapter } from './adapters/generic-dnd';
 import { genericPasteAdapter } from './adapters/generic-paste';
 import { logger } from '../core/logger';
 import { ADAPTER_TIMEOUT_MS } from '../core/constants';
+import { EditorWriter, SavedRange } from './editor-writer';
+import { makeFileDataTransfer } from './dom-utils';
 
-/**
- * 适配器链（命中即返回，后续不再执行）：
- *   1. 平台专属适配器（豆包 / 通义 / 元宝）
- *   2. 原生 <input type="file"> 挂载
- *   3. 点击上传入口 → 等待宿主创建 input → 挂载（含两步菜单流程）
- *   4. 合成 drag & drop
- *   5. 合成 paste（兜底）
- *
- * 为什么把第 3 项排到 dnd / paste 之前：
- *   - 它是「宿主需要用户主动点击入口」类站点（Gemini 等）唯一可靠的路径。
- *   - 合成 drag & drop 和合成 paste 都会触发宿主可见的 UI 状态
- *     （拖拽覆盖层、粘贴提示），耗时且闪烁。既然第 3 项更有可能命中，
- *     就应当先执行它，避免白白等待 2~4 秒。
- */
 const adapters: readonly SiteAdapter[] = [
   doubaoAdapter,
   qwenAdapter,
@@ -50,8 +38,7 @@ export class UniversalEditor {
     const activeEl = (
       targetElement instanceof HTMLElement ? targetElement : document.activeElement
     ) as HTMLElement | null;
-    const dataTransfer = new DataTransfer();
-    dataTransfer.items.add(file);
+    const dataTransfer = makeFileDataTransfer(file);
 
     const url = new URL(window.location.href);
     const host = url.hostname.toLowerCase();
@@ -74,109 +61,8 @@ export class UniversalEditor {
   public static insertAtCursor(
     text: string,
     targetElement?: EventTarget | null,
-    savedRange?: { start: number; end: number },
+    savedRange?: SavedRange,
   ): boolean {
-    const activeEl = (
-      targetElement instanceof HTMLElement ? targetElement : document.activeElement
-    ) as HTMLElement | null;
-    if (!activeEl) return false;
-
-    if (activeEl instanceof HTMLTextAreaElement || activeEl instanceof HTMLInputElement) {
-      return insertIntoFormField(activeEl, text, savedRange);
-    }
-
-    if (activeEl.isContentEditable || activeEl.closest("[contenteditable='true']")) {
-      return insertIntoContentEditable(activeEl, text);
-    }
-    return false;
+    return EditorWriter.insertAtCursor(text, targetElement, savedRange);
   }
-}
-
-function insertIntoFormField(
-  el: HTMLTextAreaElement | HTMLInputElement,
-  text: string,
-  savedRange?: { start: number; end: number },
-): boolean {
-  const originalValue = el.value;
-  const start = savedRange
-    ? Math.min(savedRange.start, originalValue.length)
-    : (el.selectionStart ?? originalValue.length);
-  const end = savedRange
-    ? Math.min(savedRange.end, originalValue.length)
-    : (el.selectionEnd ?? originalValue.length);
-
-  const updated = originalValue.slice(0, start) + text + originalValue.slice(end);
-  const proto =
-    el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-  const nativeSetter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-  if (nativeSetter) nativeSetter.call(el, updated);
-  else el.value = updated;
-
-  const newPos = start + text.length;
-  try {
-    el.setSelectionRange(newPos, newPos);
-  } catch (err) {
-    logger.debug('setSelectionRange failed', err);
-  }
-  el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
-  el.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
-  return true;
-}
-
-/**
- * 向 contenteditable 插入文本。
- *
- * 之前实现为「先派发合成 beforeinput，若事件被 preventDefault 就 return true，
- * 否则再走 execCommand」。这在真实编辑器中是错误的：
- * 以 Quill（Gemini / 许多站点的编辑器内核）为例，它确实会监听 beforeinput
- * 并 preventDefault，但对**合成事件**只做「取消掉，防止重复输入」的处理，
- * 并不会真的走自己的输入管线。于是 dispatchEvent 返回 false，
- * 函数提前 return true，而文本根本没被插入。
- *
- * 现在的策略：
- *   1. 优先走 document.execCommand('insertText')——同步返回布尔值、可判定真实结果。
- *   2. execCommand 失败时，再派发合成 beforeinput 作为最后尝试。
- *   3. 用 textContent 长度变化做最终验证，避免再次出现「假装成功」。
- */
-function insertIntoContentEditable(el: HTMLElement, text: string): boolean {
-  const container = el.isContentEditable
-    ? el
-    : (el.closest("[contenteditable='true']") as HTMLElement | null);
-  if (!container) return false;
-
-  container.focus();
-
-  const beforeLen = container.textContent?.length ?? 0;
-
-  // 路径 1：execCommand（同步、可判定）
-  try {
-    if (typeof document.execCommand === 'function') {
-      const ok = document.execCommand('insertText', false, text);
-      if (ok) {
-        const afterLen = container.textContent?.length ?? 0;
-        if (afterLen > beforeLen) return true;
-      }
-    }
-  } catch (err) {
-    logger.debug('insertIntoContentEditable: execCommand threw', err);
-  }
-
-  // 路径 2：合成 beforeinput（仅当 execCommand 无效时使用）
-  if (typeof InputEvent === 'function') {
-    try {
-      const inputEvent = new InputEvent('beforeinput', {
-        bubbles: true,
-        cancelable: true,
-        composed: true,
-        inputType: 'insertText',
-        data: text,
-      });
-      container.dispatchEvent(inputEvent);
-    } catch (err) {
-      logger.debug('insertIntoContentEditable: beforeinput dispatch threw', err);
-    }
-  }
-
-  const finalLen = container.textContent?.length ?? 0;
-  return finalLen > beforeLen;
 }

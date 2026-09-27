@@ -3,21 +3,10 @@ import { StorageSchema, SupportedLang } from '../types';
 import { renderBlacklistTags } from './blacklist-view';
 import { renderSitePolicy } from './site-policy-view';
 import { renderSiteLimits } from './site-limits-view';
+import { StorageService } from './storage-service';
 
 export async function getStorage(): Promise<StorageSchema> {
-  return new Promise((resolve) => {
-    chrome.storage.sync.get(
-      [
-        'userWhitelist',
-        'userBlacklist',
-        'githubToken',
-        'lang',
-        'siteFileSizeLimits',
-        'defaultFileSizeLimit',
-      ],
-      (res) => resolve(res as StorageSchema),
-    );
-  });
+  return StorageService.load();
 }
 
 export async function render(): Promise<void> {
@@ -62,6 +51,6 @@ export async function render(): Promise<void> {
   }
 
   renderBlacklistTags(blacklist, currentLang, render);
-  renderSiteLimits(storage, currentLang, render);
+  await renderSiteLimits(storage, currentLang, render);
   await renderSitePolicy(storage, currentLang, render);
 }

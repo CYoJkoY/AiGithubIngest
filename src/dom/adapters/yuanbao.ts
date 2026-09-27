@@ -1,5 +1,6 @@
 import { SiteAdapter } from './types';
 import { driveMenuUpload } from './menu-upload-driver';
+import { safeClick } from '../dom-utils';
 
 const UPLOAD_KEYWORDS = [
   '本地文件',
@@ -43,13 +44,8 @@ export const yuanbaoAdapter: SiteAdapter = {
           '[data-new-input-control="add-tools-trigger"]',
         );
         if (!btn) return false;
-        try {
-          btn.click();
-          return true;
-        } catch (err) {
-          ctx.logger.warn('yuanbao add-btn click failed', err);
-          return false;
-        }
+        safeClick(btn, ctx.logger, 'yuanbao-add-btn');
+        return true;
       },
       findMenuItem: findYuanbaoUploadItem,
       timeoutMs: 5000,

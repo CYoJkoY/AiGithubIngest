@@ -1,7 +1,7 @@
 import { t } from '../core/i18n';
-import { StorageSchema, SupportedLang } from '../types';
-import { normalizeHostname } from '../core/policy';
+import { SupportedLang } from '../types';
 import { logger } from '../core/logger';
+import { StorageService } from './storage-service';
 
 export function renderBlacklistTags(
   blacklist: readonly string[],
@@ -31,8 +31,7 @@ export function renderBlacklistTags(
     delBtn.textContent = '×';
     delBtn.title = t('removeFromBlacklistBtn', currentLang);
     delBtn.onclick = async () => {
-      const updated = blacklist.filter((d) => d !== domain);
-      await chrome.storage.sync.set({ userBlacklist: updated });
+      await StorageService.removeBlacklist(domain);
       await onUpdate();
     };
     tag.appendChild(delBtn);
@@ -54,23 +53,9 @@ export async function handleAddBlacklist(
     logger.debug('handleAddBlacklist: URL parse fallback', err);
   }
 
-  const clean = normalizeHostname(targetDomain);
-  if (!clean || clean.length < 3) return;
-
-  const storage = await new Promise<StorageSchema>((resolve) => {
-    chrome.storage.sync.get(['userWhitelist', 'userBlacklist'], (res) =>
-      resolve(res as StorageSchema),
-    );
-  });
-
-  const currentBlacklist = storage.userBlacklist ?? [];
-  if (!currentBlacklist.includes(clean)) {
-    await chrome.storage.sync.set({
-      userBlacklist: [...currentBlacklist, clean],
-      userWhitelist: (storage.userWhitelist ?? []).filter((d) => d !== clean),
-    });
+  const added = await StorageService.addBlacklist(targetDomain);
+  if (added) {
+    input.value = '';
+    await onUpdate();
   }
-
-  input.value = '';
-  await onUpdate();
 }
