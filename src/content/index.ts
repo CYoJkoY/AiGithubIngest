@@ -129,67 +129,74 @@ const handlePasteEvent = async (event: ClipboardEvent): Promise<void> => {
     chrome.runtime.sendMessage(
       { type: "INGEST_REPO", payload: { url: repo.canonicalUrl } },
       (response: ExtensionResponse) => {
-        try {
-          if (chrome.runtime.lastError || !response || !response.success) {
-            const errorMsg =
-              chrome.runtime.lastError?.message ||
-              (response && !response.success
-                ? response.error.message
-                : "Extension background response error");
+        // 使用 async IIFE 包装，以便 await 异步的文件挂载流程
+        void (async () => {
+          try {
+            if (chrome.runtime.lastError || !response || !response.success) {
+              const errorMsg =
+                chrome.runtime.lastError?.message ||
+                (response && !response.success
+                  ? response.error.message
+                  : "Extension background response error");
 
-            UniversalEditor.insertAtCursor(rawText, targetElement, savedRange);
-            showToast(
-              t("ingestFailed", cachedLang, { err: errorMsg }),
-              "error",
-              4500,
-            );
-            return;
-          }
+              UniversalEditor.insertAtCursor(
+                rawText,
+                targetElement,
+                savedRange,
+              );
+              showToast(
+                t("ingestFailed", cachedLang, { err: errorMsg }),
+                "error",
+                4500,
+              );
+              return;
+            }
 
-          const summary = response.payload;
-          const fileName = `${repo.owner}_${repo.repo}.md`;
+            const summary = response.payload;
+            const fileName = `${repo.owner}_${repo.repo}.md`;
 
-          const virtualFile = new File([summary.formattedOutput], fileName, {
-            type: "text/markdown",
-          });
+            const virtualFile = new File([summary.formattedOutput], fileName, {
+              type: "text/markdown",
+            });
 
-          const attached = UniversalEditor.attachVirtualFile(
-            virtualFile,
-            targetElement,
-          );
-
-          if (attached) {
-            showToast(
-              t("attachedSuccess", cachedLang, {
-                file: fileName,
-                count: summary.files.length,
-              }),
-              "success",
-              4000,
-            );
-          } else {
-            // 降级回退：插入 ASCII 目录树概览，激活防卡死机制
-            const safeFallbackText = [
-              `\n${t("fallbackDigestHeader", cachedLang, { repo: `${repo.owner}/${repo.repo}` })}`,
-              `> ${t("fallbackFileCount", cachedLang, { count: summary.files.length, tokens: summary.estimatedTokens })}`,
-              "```",
-              summary.treeVisual.trim(),
-              "```",
-              `${t("fallbackHint", cachedLang)}\n`,
-            ].join("\n");
-
-            UniversalEditor.insertAtCursor(
-              safeFallbackText,
+            const attached = await UniversalEditor.attachVirtualFile(
+              virtualFile,
               targetElement,
-              savedRange,
             );
 
-            showToast(t("fallbackMounted", cachedLang), "info", 4000);
+            if (attached) {
+              showToast(
+                t("attachedSuccess", cachedLang, {
+                  file: fileName,
+                  count: summary.files.length,
+                }),
+                "success",
+                4000,
+              );
+            } else {
+              // 降级回退：插入 ASCII 目录树概览，激活防卡死机制
+              const safeFallbackText = [
+                `\n${t("fallbackDigestHeader", cachedLang, { repo: `${repo.owner}/${repo.repo}` })}`,
+                `> ${t("fallbackFileCount", cachedLang, { count: summary.files.length, tokens: summary.estimatedTokens })}`,
+                "```",
+                summary.treeVisual.trim(),
+                "```",
+                `${t("fallbackHint", cachedLang)}\n`,
+              ].join("\n");
+
+              UniversalEditor.insertAtCursor(
+                safeFallbackText,
+                targetElement,
+                savedRange,
+              );
+
+              showToast(t("fallbackMounted", cachedLang), "info", 4000);
+            }
+          } finally {
+            // 确保整个挂载或降级流程全部执行完毕后再释放锁，防止异步重入
+            resetProcessingLock();
           }
-        } finally {
-          // 确保整个挂载或降级流程全部执行完毕后再释放锁，防止异步重入
-          resetProcessingLock();
-        }
+        })();
       },
     );
   } catch (err) {
