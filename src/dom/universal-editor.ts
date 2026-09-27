@@ -146,6 +146,73 @@ export class UniversalEditor {
   }
 
   /**
+   * 派发完整的鼠标/指针事件序列
+   *
+   * Ant Design 的 Dropdown / Menu 组件监听的是 pointerdown + click 组合，
+   * 单独派发 click 事件在部分版本上无法触发下拉展开或菜单项点击。
+   */
+  private static dispatchFullClickSequence(el: HTMLElement): void {
+    let rect: DOMRect;
+    try {
+      rect = el.getBoundingClientRect();
+    } catch {
+      rect = new DOMRect(0, 0, 0, 0);
+    }
+
+    const x = Math.round(rect.left + rect.width / 2);
+    const y = Math.round(rect.top + rect.height / 2);
+
+    const baseInit: MouseEventInit = {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      view: window,
+      clientX: x,
+      clientY: y,
+      screenX: x,
+      screenY: y,
+      button: 0,
+      buttons: 1,
+    };
+
+    const pointerInit: PointerEventInit = {
+      ...baseInit,
+      pointerId: 1,
+      pointerType: "mouse",
+      isPrimary: true,
+    };
+
+    // 依次派发完整事件序列，每一步独立 try 避免 PointerEvent 缺失导致全断
+    try {
+      el.dispatchEvent(new PointerEvent("pointerdown", pointerInit));
+    } catch {
+      // 某些环境可能不支持 PointerEvent
+    }
+    try {
+      el.dispatchEvent(new MouseEvent("mousedown", baseInit));
+    } catch {
+      // 忽略
+    }
+    try {
+      el.dispatchEvent(
+        new PointerEvent("pointerup", { ...pointerInit, buttons: 0 }),
+      );
+    } catch {
+      // 忽略
+    }
+    try {
+      el.dispatchEvent(new MouseEvent("mouseup", { ...baseInit, buttons: 0 }));
+    } catch {
+      // 忽略
+    }
+    try {
+      el.dispatchEvent(new MouseEvent("click", { ...baseInit, buttons: 0 }));
+    } catch {
+      // 忽略
+    }
+  }
+
+  /**
    * 策略 1: 扫描并触发原生 input[type="file"] 挂载
    */
   private static tryUploadViaFileInput(
@@ -297,9 +364,6 @@ export class UniversalEditor {
       return false;
     }
 
-    // 安装捕获阶段的 click 拦截器：阻止浏览器弹出系统文件选择器。
-    // 捕获阶段在 document 上会先于豆包任何监听器执行，因此 100% 拦截。
-    // 仅拦截目标为 file input 的 click，不影响其他元素。
     const clickBlocker = (e: Event): void => {
       const target = e.target;
       if (target instanceof HTMLInputElement && target.type === "file") {
@@ -311,7 +375,6 @@ export class UniversalEditor {
 
     document.addEventListener("click", clickBlocker, true);
 
-    // 兼容 patch：部分 Chrome 版本可能走 showPicker 路径
     const originalShowPicker = (
       HTMLInputElement.prototype as unknown as {
         showPicker?: () => void;
@@ -335,7 +398,6 @@ export class UniversalEditor {
       }
     }
 
-    // 派发合成 click 触发 React onClick，让豆包渲染出 input
     try {
       attachBtn.dispatchEvent(
         new MouseEvent("click", {
@@ -348,7 +410,6 @@ export class UniversalEditor {
       // 容错处理
     }
 
-    // 3. 延迟扫描新出现的 input 并挂载文件
     setTimeout(() => {
       const newInput = document.querySelector<HTMLInputElement>(
         'input[data-testid="upload-file-input"], input[type="file"]',
@@ -359,7 +420,6 @@ export class UniversalEditor {
       }
     }, 200);
 
-    // 4. 1 秒后移除拦截器和恢复 patch，保证用户后续操作完全正常
     setTimeout(() => {
       try {
         document.removeEventListener("click", clickBlocker, true);
@@ -493,10 +553,12 @@ export class UniversalEditor {
    *   2. 点击菜单项 "上传附件" (role="menuitem") → 宿主创建 input[type="file"]
    *      并立即调用 .click() 弹系统文件选择器
    *
-   * 必须模拟完整的两步链路，否则 input 永远不会被创建。
-   *
-   * 同时安装捕获阶段 click 拦截器 + showPicker patch，阻止系统文件选择
-   * 器真正弹出，保证自动化流程对用户完全静默。
+   * 关键改进（相比硬编码延迟版本）：
+   *   - 使用 dispatchFullClickSequence 派发完整 pointer + mouse 事件序列，
+   *     确保 Ant Design 的 onPointerDown / onClick 处理器被触发
+   *   - 用 MutationObserver 精准等待菜单项、file input 出现，而非猜测时间
+   *   - 保留多段定时兜底扫描，防止 Observer 漏掉某些异步渲染
+   *   - 5 秒后无论成败强制清理拦截器与 patch
    */
   private static tryQwenUpload(
     file: File,
@@ -557,48 +619,13 @@ export class UniversalEditor {
       ),
     );
 
-    // 5. 派发合成 click 到 "+" 按钮 → 触发 Ant Design dropdown 展开
-    try {
-      modeBtn.dispatchEvent(
-        new MouseEvent("click", {
-          bubbles: true,
-          cancelable: true,
-          view: window,
-        }),
-      );
-    } catch {
-      // 容错处理
-    }
-
-    // 6. 等待菜单渲染后点击 "上传附件" 菜单项
+    // 状态标记
     let menuItemClicked = false;
-    const clickMenuItem = (): void => {
-      if (menuItemClicked) return;
-      const menuItem = this.findQwenUploadMenuItem();
-      if (!menuItem) return;
-      menuItemClicked = true;
-      try {
-        menuItem.dispatchEvent(
-          new MouseEvent("click", {
-            bubbles: true,
-            cancelable: true,
-            view: window,
-          }),
-        );
-      } catch {
-        // 容错处理
-      }
-    };
+    let mounted = false;
 
-    const timers: Array<ReturnType<typeof setTimeout>> = [];
-
-    // 6a. 300ms 首次点击（覆盖同步渲染）
-    timers.push(setTimeout(clickMenuItem, 300));
-    // 6b. 700ms 二次点击（覆盖异步 chunk 渲染）
-    timers.push(setTimeout(clickMenuItem, 700));
-
-    // 7. 多段扫描新创建的 input 并挂载
-    const tryMount = (): void => {
+    // 尝试挂载的函数（供 Observer 与定时器复用）
+    const tryMount = (): boolean => {
+      if (mounted) return true;
       const allInputs = Array.from(
         document.querySelectorAll<HTMLInputElement>('input[type="file"]'),
       );
@@ -609,19 +636,62 @@ export class UniversalEditor {
       for (const input of ordered) {
         if (this.isValidFileInput(input, file)) {
           this.mountFileToInput(input, dataTransfer);
-          return;
+          mounted = true;
+          return true;
         }
       }
+      return false;
     };
-    timers.push(setTimeout(tryMount, 500)); // 对应首次点击
-    timers.push(setTimeout(tryMount, 900)); // 对应二次点击
-    timers.push(setTimeout(tryMount, 1400)); // 慢速兜底
-    timers.push(setTimeout(tryMount, 2000)); // 最慢路径
 
-    // 8. 2.5s 后统一清理拦截器与 patch，恢复用户后续手动操作
+    // 尝试点击"上传附件"菜单项
+    const clickMenuItem = (): boolean => {
+      if (menuItemClicked) return true;
+      const menuItem = this.findQwenUploadMenuItem();
+      if (!menuItem) return false;
+      menuItemClicked = true;
+      this.dispatchFullClickSequence(menuItem);
+      return true;
+    };
+
+    // 5. 使用 MutationObserver 精确等待菜单项与 file input 出现
+    const observer = new MutationObserver(() => {
+      if (!menuItemClicked) {
+        clickMenuItem();
+      }
+      if (menuItemClicked && !mounted) {
+        tryMount();
+      }
+    });
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
+
+    // 6. 派发完整鼠标事件序列到 "+" 按钮 → 触发展开下拉菜单
+    this.dispatchFullClickSequence(modeBtn);
+
+    // 7. 时间点兜底（防止某些异步渲染没触发 observer 或 observer 被过早阻塞）
+    const timers: Array<ReturnType<typeof setTimeout>> = [];
+
+    // 菜单项点击兜底
+    timers.push(setTimeout(clickMenuItem, 150));
+    timers.push(setTimeout(clickMenuItem, 400));
+    timers.push(setTimeout(clickMenuItem, 800));
+    timers.push(setTimeout(clickMenuItem, 1500));
+
+    // input 挂载兜底
+    timers.push(setTimeout(tryMount, 300));
+    timers.push(setTimeout(tryMount, 600));
+    timers.push(setTimeout(tryMount, 1000));
+    timers.push(setTimeout(tryMount, 1600));
+    timers.push(setTimeout(tryMount, 2400));
+    timers.push(setTimeout(tryMount, 3200));
+
+    // 8. 5 秒后统一清理
     timers.push(
       setTimeout(() => {
         try {
+          observer.disconnect();
           document.removeEventListener("click", clickBlocker, true);
           if (showPickerPatched) {
             (
@@ -633,7 +703,7 @@ export class UniversalEditor {
         } catch {
           // 容错处理
         }
-      }, 2500),
+      }, 5000),
     );
 
     return true;
