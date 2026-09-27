@@ -1,6 +1,6 @@
 const TOKEN_THRESHOLDS: readonly [number, string][] = [
-  [1_000_000, "M"],
-  [1_000, "k"],
+  [1_000_000, 'M'],
+  [1_000, 'k'],
 ];
 
 /**

@@ -3,12 +3,12 @@ name: Release Extension
 on:
   push:
     tags:
-      - "v*.*.*"
-      - "v*.*.*.dev*"
+      - 'v*.*.*'
+      - 'v*.*.*.dev*'
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing release tag to build (for example v0.5.0 or v0.5.0.dev01)"
+        description: 'Existing release tag to build (for example v0.5.0 or v0.5.0.dev01)'
         required: true
         type: string
 
@@ -37,7 +37,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: "pnpm"
+          cache: 'pnpm'
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -164,7 +164,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
-          name: "Release ${{ steps.version.outputs.tag }}"
+          name: 'Release ${{ steps.version.outputs.tag }}'
           files: |
             ai-github-ingest-v${{ steps.version.outputs.version }}.zip
             ai-github-ingest-v${{ steps.version.outputs.version }}.zip.sha256

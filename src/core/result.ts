@@ -22,13 +22,10 @@ export const err = <E>(error: E): Err<E> => ({ ok: false, error });
 
 export const isOk = <T, E>(result: Result<T, E>): result is Ok<T> => result.ok;
 
-export const isErr = <T, E>(result: Result<T, E>): result is Err<E> =>
-  !result.ok;
+export const isErr = <T, E>(result: Result<T, E>): result is Err<E> => !result.ok;
 
-export const map = <T, U, E>(
-  result: Result<T, E>,
-  fn: (value: T) => U,
-): Result<U, E> => (result.ok ? ok(fn(result.value)) : result);
+export const map = <T, U, E>(result: Result<T, E>, fn: (value: T) => U): Result<U, E> =>
+  result.ok ? ok(fn(result.value)) : result;
 
 export const flatMap = <T, U, E>(
   result: Result<T, E>,

@@ -1,7 +1,7 @@
-name: "Feature Request"
-description: "Suggest a new capability, file filter enhancement, token estimator improvement, or UX optimization."
-title: "[Feature]: <short summary>"
-labels: ["type: feature", "status: triage"]
+name: 'Feature Request'
+description: 'Suggest a new capability, file filter enhancement, token estimator improvement, or UX optimization.'
+title: '[Feature]: <short summary>'
+labels: ['type: feature', 'status: triage']
 body:
   - type: dropdown
     id: category
@@ -24,7 +24,7 @@ body:
     attributes:
       label: Problem Statement
       description: What limitation or friction do you encounter with the current implementation?
-      placeholder: "When ingesting repositories with monorepo structures or specific lockfiles..."
+      placeholder: 'When ingesting repositories with monorepo structures or specific lockfiles...'
     validations:
       required: true
 
@@ -33,7 +33,7 @@ body:
     attributes:
       label: Proposed Solution
       description: Describe the expected behavior and implementation direction.
-      placeholder: "Add default exclusion patterns in file-filter.ts for..."
+      placeholder: 'Add default exclusion patterns in file-filter.ts for...'
     validations:
       required: true
 
@@ -42,7 +42,7 @@ body:
     attributes:
       label: Alternatives Considered
       description: Are there any workarounds or alternative approaches you have evaluated?
-      placeholder: "Currently, users must manually configure exclusion tokens or delete sections..."
+      placeholder: 'Currently, users must manually configure exclusion tokens or delete sections...'
     validations:
       required: false
 
