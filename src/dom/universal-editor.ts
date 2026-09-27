@@ -213,7 +213,7 @@ export class UniversalEditor {
   }
 
   /**
-   * 策略 2: 剪贴板事件仿真（豆包关键修复版）
+   * 策略 2: 剪贴板事件仿真（豆包最终修复版）
    *
    * 背景与实测：
    *   - 豆包输入框是 tiptap / ProseMirror contenteditable，页面没有任何
@@ -225,14 +225,25 @@ export class UniversalEditor {
    *     合成事件层直接收不到 paste 事件，表现为"0 个文件上传"。
    *     所以绝不能阻断冒泡。
    *
-   * 修复策略：
-   *   让事件正常冒泡，但把 pasteEvent.clipboardData 替换为"一次性交付"代理：
-   *   - files 属性：第一次读取返回真实 FileList，之后返回空 FileList。
-   *   - items 属性：与 files 共享同一个 delivered 标志，避免某些处理器改读 items。
-   *   - 其他属性/方法（getData / setData / clearData / types ...）原样转发。
+   * 修复策略（三重保险）：
    *
-   *   最终效果：第一个 onPaste 处理器读到真实文件 → 正常上传 1 次；
-   *   其余 onPaste 处理器读到空列表 → 静默跳过，不再重复上传。
+   *   1. 覆盖实例属性：不使用 ClipboardEvent 构造函数的 clipboardData 选项
+   *      （该选项在部分 Chrome 版本 / MV3 content script 环境下会被忽略，
+   *      导致 pasteEvent.clipboardData 为 null），改为在实例上直接
+   *      Object.defineProperty 覆盖，保证 getter 一定被使用。
+   *
+   *   2. 一次性交付代理：把 clipboardData 替换为 Object.create(DataTransfer.prototype, ...)
+   *      的代理对象。files / items 共享同一个 delivered 标志：第一次读取返回真实
+   *      FileList / DataTransferItemList，后续读取返回空列表。这解决了"同步多次读取"
+   *      的场景（React 分发给多个同步 onPaste handler）。
+   *
+   *   3. 底层清空：dispatchEvent 同步返回后，立即调用 dataTransfer.items.clear()，
+   *      并在微任务与宏任务阶段再各清空一次。这解决了"异步多次读取"的场景
+   *      （某些 handler 会在 dispatchEvent 之后通过 setTimeout / Promise 再读一次）。
+   *      已经同步读到 File 引用的 handler 不受影响，因为它们的引用是快照。
+   *
+   *   最终效果：第一个 handler 读到真实文件 → 正常上传 1 次；
+   *   其余 handler 无论同步还是异步，均读到空列表 → 静默跳过。
    */
   private static tryPasteEvent(
     activeEl: HTMLElement | null,
@@ -314,14 +325,15 @@ export class UniversalEditor {
         proxyDescriptorMap,
       );
 
+      // 关键：不使用构造函数的 clipboardData 选项，避免在某些环境下被忽略，
+      // 导致 pasteEvent.clipboardData 为 null。
       const pasteEvent = new ClipboardEvent("paste", {
         bubbles: true,
         cancelable: true,
         composed: true,
-        clipboardData: dataTransfer,
       });
 
-      // 用代理对象替换 pasteEvent.clipboardData
+      // 直接在实例上覆盖 clipboardData 属性
       try {
         Object.defineProperty(pasteEvent, "clipboardData", {
           configurable: true,
@@ -330,12 +342,46 @@ export class UniversalEditor {
           },
         });
       } catch {
-        // 某些运行环境禁止重定义，忽略并退回原始 dataTransfer
+        // 极端环境下若禁止重定义，退回构造函数选项
+        try {
+          Object.defineProperty(pasteEvent, "clipboardData", {
+            configurable: true,
+            value: dataTransfer,
+          });
+        } catch {
+          // 彻底失败则保持为 null（此时豆包会读空）
+        }
       }
 
       // 关键：不做任何冒泡阻断，让 React 合成事件系统正常分发。
-      // files / items 的一次性交付语义会自动保证只上传一次。
       target.dispatchEvent(pasteEvent);
+
+      // dispatchEvent 同步返回后，所有同步 handler 已执行完毕。
+      // 立即清空底层 dataTransfer 的 items，阻止任何异步 handler 再次读取。
+      // 已经同步读到 File 引用的 handler 不受影响（它们的引用是快照）。
+      try {
+        dataTransfer.items.clear();
+      } catch {
+        /* no-op */
+      }
+
+      // 微任务阶段再清一次，兜底 Promise.then 中的读取
+      queueMicrotask(() => {
+        try {
+          dataTransfer.items.clear();
+        } catch {
+          /* no-op */
+        }
+      });
+
+      // 宏任务阶段再清一次，兜底 setTimeout(0) 中的读取
+      setTimeout(() => {
+        try {
+          dataTransfer.items.clear();
+        } catch {
+          /* no-op */
+        }
+      }, 0);
 
       return true;
     } catch {
@@ -405,8 +451,9 @@ export class UniversalEditor {
     const currentHost = window.location.hostname.toLowerCase();
 
     // 豆包：输入框为 ProseMirror contenteditable，页面无任何 input[type="file"]。
-    // 直接走修复后的 paste 策略（不阻断冒泡，改用一次性 files 交付防止 React
-    // 合成事件层被多个 onPaste 处理器重复消费）。
+    // 直接走修复后的 paste 策略（不阻断冒泡，改用一次性 files 交付 +
+    // dispatch 后清空底层 DataTransfer，防止 React 合成事件层被多个 onPaste
+    // 处理器重复消费）。
     if (currentHost.includes("doubao.com")) {
       if (this.tryPasteEvent(activeEl, dataTransfer)) {
         return true;
