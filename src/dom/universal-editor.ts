@@ -4,7 +4,6 @@ export class UniversalEditor {
 
   /**
    * 校验 file input 是否具备接收文本/文档附件的能力
-   * 采用宽松防御策略：只要不是明确仅限图片/音视频的输入框，均允许挂载 Markdown
    */
   private static isValidFileInput(
     input: HTMLInputElement,
@@ -16,7 +15,6 @@ export class UniversalEditor {
 
     const acceptLower = accept.toLowerCase();
 
-    // 排除明确仅接受图片、音频、视频的专用控件（如头像上传、语音输入）
     const isPureMedia =
       (acceptLower.includes("image/") ||
         acceptLower.includes(".jpg") ||
@@ -68,7 +66,7 @@ export class UniversalEditor {
   }
 
   /**
-   * 查找页面中可能存在的附件上传按钮并尝试唤起隐藏的 input
+   * 查找页面中可能存在的附件上传按钮（仅 mouseenter 唤起）
    */
   private static tryWakeUploadInput(): void {
     const uploadBtnSelectors = [
@@ -97,7 +95,6 @@ export class UniversalEditor {
     for (const selector of uploadBtnSelectors) {
       const btn = document.querySelector<HTMLElement>(selector);
       if (btn && btn.offsetWidth > 0 && btn.offsetHeight > 0) {
-        console.log("[AiIngest] tryWakeUploadInput matched:", selector);
         btn.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
         break;
       }
@@ -214,11 +211,6 @@ export class UniversalEditor {
 
   /**
    * 策略 2: 剪贴板事件仿真（保留给非豆包站点）
-   *
-   * 注意：豆包不适用此策略。豆包内部的 tiptap/ProseMirror 事件系统
-   * （t1.emit + M.handlePaste）会把 ClipboardEvent 重新包装成一个内部事件，
-   * 该包装对象丢失了 clipboardData，导致 sync-input-engine 读到的
-   * e.clipboardData 恒为 null。此路径在豆包上无论怎么包装都无法生效。
    */
   private static tryPasteEvent(
     activeEl: HTMLElement | null,
@@ -257,63 +249,199 @@ export class UniversalEditor {
   }
 
   /**
-   * 策略 3: 拖放事件仿真（豆包首选策略）
-   *
-   * 与 paste 不同，drop 事件不经过 tiptap 的 paste 事件包装，
-   * 走的是 ProseMirror 的 handleDrop + 豆包自己的文件上传管线。
-   * 绝大多数现代聊天界面都支持拖放文件上传。
-   *
-   * 完整的 drop 状态机序列：
-   *   dragenter → dragover → drop
-   * 有些框架要求 dragenter / dragover 的 preventDefault 返回 true，
-   * 我们统一设置 cancelable: true 以便让框架侧决定是否消费。
+   * 策略 3: 拖放事件仿真（保留给非豆包站点）
    */
   private static tryDragAndDrop(
     activeEl: HTMLElement | null,
     dataTransfer: DataTransfer,
   ): boolean {
-    // 定位最合适的目标：优先 contenteditable 编辑器，其次聊天容器
-    const candidateTargets = [
-      activeEl,
-      activeEl?.closest('[contenteditable="true"]'),
-      document.querySelector('[contenteditable="true"]'),
-      activeEl?.closest('[class*="chat"]'),
-      activeEl?.closest('[class*="input"]'),
-      activeEl?.closest('[class*="editor"]'),
-      document.querySelector('[class*="dropzone"]'),
-      document.querySelector("main"),
-      document.body,
-    ].filter((el): el is HTMLElement => el instanceof HTMLElement);
+    const candidateTarget =
+      activeEl?.closest('[class*="chat"]') ||
+      activeEl?.closest('[class*="input"]') ||
+      activeEl ||
+      document.querySelector('[data-dropzone="true"]') ||
+      document.querySelector('[class*="dropzone"]') ||
+      document.querySelector("main");
 
-    for (const candidate of candidateTargets) {
-      try {
-        const eventInit: DragEventInit = {
-          bubbles: true,
-          cancelable: true,
-          composed: true,
-          dataTransfer,
-        };
+    if (!candidateTarget) return false;
 
-        const dragEnterEvent = new DragEvent("dragenter", eventInit);
-        const dragOverEvent = new DragEvent("dragover", eventInit);
-        const dropEvent = new DragEvent("drop", eventInit);
+    try {
+      const eventInit: DragEventInit = {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        dataTransfer,
+      };
 
-        candidate.dispatchEvent(dragEnterEvent);
-        candidate.dispatchEvent(dragOverEvent);
-        candidate.dispatchEvent(dropEvent);
+      candidateTarget.dispatchEvent(new DragEvent("dragenter", eventInit));
+      candidateTarget.dispatchEvent(new DragEvent("dragover", eventInit));
+      candidateTarget.dispatchEvent(new DragEvent("drop", eventInit));
 
-        console.log("[AiIngest] tryDragAndDrop dispatched on", {
-          tag: candidate.tagName,
-          className: candidate.className,
-        });
-        return true;
-      } catch (e) {
-        console.log("[AiIngest] tryDragAndDrop candidate failed:", e);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * 豆包专用：合成点击附件按钮 → 等 input 出现 → 挂载文件
+   *
+   * 背景与实测（见 DevTools Console 日志）：
+   *   1. 豆包输入框是 tiptap / ProseMirror contenteditable，页面初始状态
+   *      没有任何 input[type="file"]。
+   *   2. paste 事件在豆包上完全无效：豆包内部的 sync-input-engine 会把
+   *      ClipboardEvent 剥离掉 clipboardData，导致 e.clipboardData 恒为
+   *      null，最终 0 上传。
+   *   3. drop 事件在豆包上也被静默忽略：tiptap 的 handleDrop 只处理图片，
+   *      Markdown 文件被丢弃。
+   *   4. 唯一可行路径：走豆包官方的附件按钮 → 让框架动态创建 input
+   *      [type="file"] → 挂载文件。
+   *
+   * 实现：
+   *   - 使用 dispatchEvent(new MouseEvent('click', ...)) 而不是 .click()，
+   *     因为合成 click 不满足 transient activation，不会弹出系统文件选择
+   *     对话框，但仍会触发 React 的 onClick 处理器让框架准备好 input。
+   *   - 记录点击前已存在的 input 集合，点击后延迟扫描新增的 input。
+   *   - 找到合适 input 后设置 files 并触发 input / change。
+   */
+  private static tryDoubaoAttachmentFlow(
+    file: File,
+    dataTransfer: DataTransfer,
+  ): boolean {
+    console.log("[AiIngest] doubao attachment flow start");
+
+    // 1. 定位附件按钮
+    const attachBtnSelectors = [
+      'button[aria-label*="上传"]',
+      'button[aria-label*="附件"]',
+      'button[aria-label*="文件"]',
+      'button[title*="上传"]',
+      'button[title*="附件"]',
+      'button[title*="文件"]',
+      'button[aria-label*="upload" i]',
+      'button[aria-label*="attach" i]',
+      'button[aria-label*="file" i]',
+      'button[title*="upload" i]',
+      'button[title*="attach" i]',
+      'button[title*="file" i]',
+      '[role="button"][aria-label*="上传"]',
+      '[role="button"][aria-label*="附件"]',
+      '[role="button"][aria-label*="upload" i]',
+      '[role="button"][aria-label*="attach" i]',
+    ];
+
+    let attachBtn: HTMLElement | null = null;
+    let matchedSelector = "";
+    for (const sel of attachBtnSelectors) {
+      const el = document.querySelector<HTMLElement>(sel);
+      if (el && el.offsetWidth > 0 && el.offsetHeight > 0) {
+        attachBtn = el;
+        matchedSelector = sel;
+        break;
       }
     }
 
-    console.log("[AiIngest] tryDragAndDrop: all candidates failed");
-    return false;
+    if (!attachBtn) {
+      console.log("[AiIngest] doubao: no attachment button matched");
+      return false;
+    }
+
+    console.log(
+      "[AiIngest] doubao: matched attachment button",
+      matchedSelector,
+    );
+
+    // 2. 记录点击前已有的 file input
+    const beforeInputs = new Set<HTMLInputElement>(
+      Array.from(
+        document.querySelectorAll<HTMLInputElement>('input[type="file"]'),
+      ),
+    );
+
+    // 3. 合成 click（不会弹出系统文件选择器）
+    try {
+      attachBtn.dispatchEvent(
+        new MouseEvent("click", {
+          bubbles: true,
+          cancelable: true,
+          view: window,
+        }),
+      );
+      console.log("[AiIngest] doubao: dispatched synthetic click");
+    } catch (e) {
+      console.log("[AiIngest] doubao: dispatch click failed", e);
+      return false;
+    }
+
+    // 4. 延迟扫描新出现的 input 并挂载文件
+    setTimeout(() => {
+      const allInputs = Array.from(
+        document.querySelectorAll<HTMLInputElement>('input[type="file"]'),
+      );
+      const newInputs = allInputs.filter((el) => !beforeInputs.has(el));
+      const candidates = newInputs.length > 0 ? newInputs : allInputs;
+
+      console.log("[AiIngest] doubao: scanned inputs after click", {
+        total: allInputs.length,
+        newCount: newInputs.length,
+      });
+
+      for (const fileInput of candidates) {
+        if (!this.isValidFileInput(fileInput, file)) {
+          console.log("[AiIngest] doubao: input not valid, skip", {
+            accept: fileInput.accept,
+          });
+          continue;
+        }
+
+        try {
+          const descriptor = Object.getOwnPropertyDescriptor(
+            HTMLInputElement.prototype,
+            "files",
+          );
+          if (descriptor?.set) {
+            descriptor.set.call(fileInput, dataTransfer.files);
+          } else {
+            fileInput.files = dataTransfer.files;
+          }
+
+          const tracker = (
+            fileInput as unknown as {
+              _valueTracker?: { setValue: (val: string) => void };
+            }
+          )._valueTracker;
+          if (tracker) {
+            tracker.setValue("");
+          }
+
+          fileInput.dispatchEvent(
+            new Event("input", { bubbles: true, composed: true }),
+          );
+          fileInput.dispatchEvent(
+            new Event("change", { bubbles: true, composed: true }),
+          );
+
+          console.log(
+            "[AiIngest] doubao: dispatched input/change on file input",
+          );
+
+          // 800ms 后清空物理 input，避免文件常驻
+          setTimeout(() => {
+            UniversalEditor.cleanUpFileInput(fileInput);
+          }, 800);
+
+          return;
+        } catch (e) {
+          console.log("[AiIngest] doubao: input dispatch failed", e);
+        }
+      }
+
+      console.log(
+        "[AiIngest] doubao: attachment flow finished, no suitable input",
+      );
+    }, 250);
+
+    return true;
   }
 
   /**
@@ -323,8 +451,6 @@ export class UniversalEditor {
     file: File,
     targetElement?: EventTarget | null,
   ): boolean {
-    console.log("[AiIngest] attachVirtualFile:", file.name, file.size);
-
     const now = Date.now();
     const uploadKey = `${file.name}-${file.size}`;
     if (now - this.lastUploadTime < 1500 && this.lastUploadKey === uploadKey) {
@@ -344,21 +470,17 @@ export class UniversalEditor {
     dataTransfer.items.add(file);
 
     const currentHost = window.location.hostname.toLowerCase();
-    console.log("[AiIngest] currentHost =", currentHost);
 
-    // 豆包分支：完全跳过 paste（tiptap 事件包装会让 clipboardData 丢失），
-    // 直接走 drop 上传；drop 失败时兜底 file input。
+    // 豆包：paste 和 drop 都已被实测证明不可行，改走"合成点击附件按钮"
     if (currentHost.includes("doubao.com")) {
-      console.log("[AiIngest] doubao branch: tryDragAndDrop first");
-      if (this.tryDragAndDrop(activeEl, dataTransfer)) {
-        console.log("[AiIngest] doubao: tryDragAndDrop returned true");
+      console.log("[AiIngest] doubao branch: tryDoubaoAttachmentFlow");
+      if (this.tryDoubaoAttachmentFlow(file, dataTransfer)) {
         return true;
       }
-      console.log("[AiIngest] doubao: tryDragAndDrop failed, fallback input");
-      if (this.tryUploadViaFileInput(file, activeEl, dataTransfer)) {
-        return true;
-      }
-      console.log("[AiIngest] doubao: all strategies failed");
+      // 没有任何附件按钮 → 返回 false 让上游走文本 fallback
+      console.log(
+        "[AiIngest] doubao: attachment flow failed, return false for fallback",
+      );
       return false;
     }
 
