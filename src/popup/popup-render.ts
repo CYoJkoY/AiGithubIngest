@@ -2,11 +2,20 @@ import { t } from '../core/i18n';
 import { StorageSchema, SupportedLang } from '../types';
 import { renderBlacklistTags } from './blacklist-view';
 import { renderSitePolicy } from './site-policy-view';
+import { renderSiteLimits } from './site-limits-view';
 
 export async function getStorage(): Promise<StorageSchema> {
   return new Promise((resolve) => {
-    chrome.storage.sync.get(['userWhitelist', 'userBlacklist', 'githubToken', 'lang'], (res) =>
-      resolve(res as StorageSchema),
+    chrome.storage.sync.get(
+      [
+        'userWhitelist',
+        'userBlacklist',
+        'githubToken',
+        'lang',
+        'siteFileSizeLimits',
+        'defaultFileSizeLimit',
+      ],
+      (res) => resolve(res as StorageSchema),
     );
   });
 }
@@ -41,6 +50,11 @@ export async function render(): Promise<void> {
   document.getElementById('save-token-btn')!.textContent = t('tokenSave', currentLang);
   document.getElementById('clear-token-btn')!.textContent = t('tokenClear', currentLang);
 
+  const siteLimitsTitle = document.getElementById('lbl-site-limits-title');
+  if (siteLimitsTitle) siteLimitsTitle.textContent = t('siteFileLimitTitle', currentLang);
+  const siteLimitsHint = document.getElementById('lbl-site-limits-hint');
+  if (siteLimitsHint) siteLimitsHint.textContent = t('siteFileLimitHint', currentLang);
+
   const tokenInput = document.getElementById('token-input') as HTMLInputElement;
   tokenInput.placeholder = t('tokenPlaceholder', currentLang);
   if (storage.githubToken && !tokenInput.dataset.dirty) {
@@ -48,5 +62,6 @@ export async function render(): Promise<void> {
   }
 
   renderBlacklistTags(blacklist, currentLang, render);
+  renderSiteLimits(storage, currentLang, render);
   await renderSitePolicy(storage, currentLang, render);
 }

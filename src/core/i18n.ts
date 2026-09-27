@@ -32,6 +32,16 @@ export const translations = {
     language: '语言 / Language',
     openGithubRepo: '打开 GitHub 仓库',
 
+    // Site upload limits
+    siteFileLimitTitle: '各站点单文件上限 (MB)',
+    siteFileLimitHint:
+      '配置各平台单文件大小上限。超过后会自动将仓库摘要拆分为多个分片文件上传，避免宿主静默丢弃附件。',
+    siteFileLimitReset: '重置',
+    siteLimitOtherLabel: '其它（默认）',
+    attachingPart: '正在上传第 {current}/{total} 部分...',
+    attachedMultiPart: '已成功上传 {count} 个分片文件',
+    partialAttachFailed: '第 {current}/{total} 部分上传失败，请重试或手动粘贴',
+
     // Content & Toast
     taskInProgress: '已有提取任务进行中，已恢复普通文本粘贴',
     ingesting: '正在解析并提取 {repo}...',
@@ -86,6 +96,17 @@ export const translations = {
       'Personal Access Token allows accessing your private repositories and raises rate limits to 5,000 req/h.',
     language: 'Language',
     openGithubRepo: 'Open GitHub Repository',
+
+    // Site upload limits
+    siteFileLimitTitle: 'Site Upload Limits (MB)',
+    siteFileLimitHint:
+      'Configure per-platform single-file limits. When exceeded, the digest is automatically split into multiple smaller files for multi-part upload.',
+    siteFileLimitReset: 'Reset',
+    siteLimitOtherLabel: 'Other (default)',
+    attachingPart: 'Attaching part {current}/{total}...',
+    attachedMultiPart: 'Successfully attached as {count} part(s)',
+    partialAttachFailed:
+      'Attachment interrupted at part {current}/{total}. Please retry or paste manually.',
 
     // Content & Toast
     taskInProgress: 'An extraction task is already in progress, pasted as raw text.',

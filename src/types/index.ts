@@ -82,4 +82,8 @@ export interface StorageSchema {
   readonly userBlacklist?: readonly string[];
   readonly githubToken?: string;
   readonly lang?: SupportedLang;
+  /** Per-hostname single-file limit (bytes). Keys are lowercase hostnames. */
+  readonly siteFileSizeLimits?: Readonly<Record<string, number>>;
+  /** Fallback single-file limit (bytes) for hostnames not present in {@link siteFileSizeLimits}. */
+  readonly defaultFileSizeLimit?: number;
 }

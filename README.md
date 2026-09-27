@@ -10,7 +10,7 @@ Parse public and private GitHub repositories entirely inside your browser and se
 
 <p>
   <img src="https://img.shields.io/badge/Manifest-V3-38bdf8?style=flat-square" alt="Manifest V3">
-  <img src="https://img.shields.io/badge/Version-0.6.0-0284c7?style=flat-square" alt="Version 0.6.0">
+  <img src="https://img.shields.io/github/v/release/CYoJkoY/AiGithubIngest?style=flat-square&amp;label=Version&amp;color=0284c7" alt="Version">
   <img src="https://img.shields.io/badge/Runtime-Pure%20TypeScript%20%2F%20DOM-3178c6?style=flat-square" alt="TypeScript">
   <img src="https://img.shields.io/badge/Privacy-100%25%20In--Browser%20(Zero%20Servers)-059669?style=flat-square" alt="Zero-Server Privacy">
   <img src="https://img.shields.io/badge/License-MIT-9e8f7e?style=flat-square" alt="MIT License">
