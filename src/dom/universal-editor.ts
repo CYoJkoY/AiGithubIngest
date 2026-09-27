@@ -221,6 +221,7 @@ export class UniversalEditor {
       document.body,
     ].filter((scope): scope is Element => Boolean(scope));
 
+    // 1. 优先在编辑器作用域内查找
     for (const scope of searchScopes) {
       const fileInputs = Array.from(
         scope.querySelectorAll<HTMLInputElement>('input[type="file"]'),
@@ -231,6 +232,18 @@ export class UniversalEditor {
         this.mountFileToInput(fileInput, dataTransfer);
         return true;
       }
+    }
+
+    // 2. 全局兜底：腾讯元宝等站点会把 <input type="file"> 挂在 </body> 之外，
+    //    document.body.querySelectorAll 无法覆盖这种情况。
+    const globalInputs = Array.from(
+      document.querySelectorAll<HTMLInputElement>('input[type="file"]'),
+    );
+
+    for (const fileInput of globalInputs) {
+      if (!this.isValidFileInput(fileInput, file)) continue;
+      this.mountFileToInput(fileInput, dataTransfer);
+      return true;
     }
 
     return false;
@@ -266,7 +279,9 @@ export class UniversalEditor {
 
       target.dispatchEvent(pasteEvent);
 
-      return true;
+      // 无法可靠判断宿主是否真的接受了这个合成 paste，
+      // 返回 false 让上游走降级逻辑，避免"假成功"提示。
+      return false;
     } catch {
       return false;
     }
@@ -298,7 +313,9 @@ export class UniversalEditor {
       candidateTarget.dispatchEvent(new DragEvent("dragover", eventInit));
       candidateTarget.dispatchEvent(new DragEvent("drop", eventInit));
 
-      return true;
+      // 同上，无法可靠验证宿主是否接受合成 drop，
+      // 返回 false 让上游走降级逻辑。
+      return false;
     } catch {
       return false;
     }
