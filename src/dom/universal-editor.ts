@@ -177,6 +177,7 @@ export class UniversalEditor {
 
   /**
    * 策略 2: 单靶向精准模拟 ClipboardEvent('paste') 携带 File 对象
+   * 配备单次消费熔断与生命周期即时清空，杜绝 ProseMirror 框架在 setTimeout 宏任务中触发二次上传
    */
   private static tryPasteEvent(
     activeEl: HTMLElement | null,
@@ -192,6 +193,32 @@ export class UniversalEditor {
 
     try {
       target.focus();
+
+      // 单次消费防御：防范豆包 ProseMirror 编辑器在未 preventDefault 时于 setTimeout(0) 中兜底重复消费
+      let consumed = false;
+      const rawFiles = dataTransfer.files;
+      const rawItems = dataTransfer.items;
+
+      try {
+        Object.defineProperty(dataTransfer, "files", {
+          get: () => {
+            if (consumed) return [] as unknown as FileList;
+            return rawFiles;
+          },
+          configurable: true,
+        });
+
+        Object.defineProperty(dataTransfer, "items", {
+          get: () => {
+            if (consumed) return [] as unknown as DataTransferItemList;
+            return rawItems;
+          },
+          configurable: true,
+        });
+      } catch {
+        // 环境不支持属性重定义则继续以原生 DataTransfer 执行
+      }
+
       const pasteEvent = new ClipboardEvent("paste", {
         bubbles: true,
         cancelable: true,
@@ -200,6 +227,15 @@ export class UniversalEditor {
       });
 
       target.dispatchEvent(pasteEvent);
+
+      // 同步调用结束，立即将数据标记为已消费并清空数据槽，模拟原生剪贴板生命周期失效行为
+      consumed = true;
+      try {
+        dataTransfer.items.clear();
+      } catch {
+        // 忽略不支持 clear 的边缘场景
+      }
+
       return true;
     } catch {
       return false;
@@ -277,7 +313,7 @@ export class UniversalEditor {
 
     const currentHost = window.location.hostname.toLowerCase();
 
-    // 豆包平台原生对剪贴板文件粘贴支持完整，优先且唯一使用 Paste 策略，防止与 file input 的 React 委托冲突导致二次上传
+    // 豆包平台优先且唯一使用带有单次消费防护的 Paste 策略
     if (currentHost.includes("doubao.com")) {
       if (this.tryPasteEvent(activeEl, dataTransfer)) {
         return true;
