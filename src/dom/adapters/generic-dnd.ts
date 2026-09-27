@@ -80,8 +80,16 @@ function fireDragEvent(type: string, target: HTMLElement, file: File): DragEvent
 }
 
 /**
- * 完整 drop 序列：dragenter → dragover(x2) → drop → dragend/dragleave。
- * 每次都用新鲜 DataTransfer。
+ * 一次完整的 drop 派发序列：dragenter → dragover ×2 → drop。
+ *
+ * 关键修复点：
+ * 这里**不再**在末尾派发 dragend / dragleave。
+ * 原因是 dragend / dragleave 会立刻清除宿主的拖放高亮态（例如 Gemini 的
+ * `.xap-drag-in-progress`），而这正是我们在消费判定里曾经想当作"弱信号"
+ * 使用的东西。一旦我们自己先把高亮清掉，判定逻辑就会在 80ms 内返回 true，
+ * 让未被消费的 drop 被误判为成功，并终止整条适配器链。
+ *
+ * 现在 dragend / dragleave 的派发被推迟到消费判定结束之后（见 finalizeDrag）。
  */
 async function dispatchDropSequence(target: HTMLElement, file: File): Promise<void> {
   fireDragEvent('dragenter', target, file);
@@ -94,11 +102,21 @@ async function dispatchDropSequence(target: HTMLElement, file: File): Promise<vo
   await sleep(50);
 
   fireDragEvent('drop', target, file);
-  await sleep(100);
+}
 
-  // 清理：通知框架退出拖放态
-  fireDragEvent('dragend', target, file);
-  fireDragEvent('dragleave', target, file);
+/**
+ * drop 之后通知宿主退出拖放态。
+ *
+ * 必须、且只允许在消费判定结束之后调用。
+ * 无论判定结果如何都会调用，以保证页面上不会残留拖放高亮 / 拖放态。
+ */
+function finalizeDrag(target: HTMLElement, file: File): void {
+  try {
+    fireDragEvent('dragend', target, file);
+    fireDragEvent('dragleave', target, file);
+  } catch {
+    /* 清理阶段的异常不应向上抛出，避免中断适配器链 */
+  }
 }
 
 /** 统计页面上的附件预览节点数量（成功挂载后会 > 0） */
@@ -116,41 +134,37 @@ function countAttachments(): number {
 }
 
 /**
- * Gemini 消费 drop 后会移除 xap-drag-in-progress 类。
- * 这只是一个「弱信号」——只有在 Gemini 上下文里才有意义。
- */
-function hasActiveDragState(): boolean {
-  return document.querySelector('.xap-drag-in-progress') !== null;
-}
-
-/**
- * 判断当前页面是否处于「弱信号可用」的上下文。
+ * 等待宿主消费本次 drop。
  *
- * 之前的问题：`!hasActiveDragState()` 在非 Gemini 站点上恒为 true，
- * waitForConsumption 会在 80ms 内立即返回 true，被误判为成功；
- * attachVirtualFile 随即中止适配器链，最终 UI 只闪了一下却什么都没挂上。
+ * 只信任「强信号」：页面上出现新的附件预览节点（数量严格大于 beforeCount）。
  *
- * 现在只有在页面上确实存在 Gemini 相关节点时才启用弱信号判定。
+ * 历史教训（这也是本次修复的核心）：
+ *   之前曾额外启用过一个「弱信号」——「宿主清除 `.xap-drag-in-progress`
+ *   高亮态即视为消费成功」。但这个信号不可靠，原因有二：
+ *     1. 我们自己的 drop 序列末尾派发的 dragend / dragleave 就会清掉高亮，
+ *        与宿主是否消费毫无关系。
+ *     2. 在非 Gemini 站点上该高亮节点根本不存在，`!hasActiveDragState()`
+ *        恒为 true，waitForConsumption 会在 80ms 内立即返回 true。
+ *   结果就是：drop 未被消费时也被判成成功，适配器链提前终止，
+ *   导致真正该做兜底的 generic-paste 适配器永远得不到执行机会。
+ *
+ * 现在彻底移除了弱信号。判定失败就干净地返回 false，
+ * 把机会让给链上后续的适配器。
  */
-function supportsWeakSignal(): boolean {
-  return document.querySelector('rich-textarea, .ql-editor, [xapfileselectordropzone]') !== null;
-}
-
 async function waitForConsumption(
   beforeAttachmentCount: number,
   timeoutMs: number,
-  allowWeakSignal: boolean,
 ): Promise<boolean> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     await sleep(80);
-    // 出现附件预览 —— 强成功信号
     if (countAttachments() > beforeAttachmentCount) return true;
-    // 拖放高亮态被清除 —— 弱成功信号（仅 Gemini 等特定上下文）
-    if (allowWeakSignal && !hasActiveDragState()) return true;
   }
   return false;
 }
+
+/** 单个 target 尝试窗口（80ms 轮询粒度 ≈ 5 次检查） */
+const PER_TARGET_WAIT_MS = 400;
 
 export const genericDndAdapter: SiteAdapter = {
   id: 'generic-dnd',
@@ -161,7 +175,6 @@ export const genericDndAdapter: SiteAdapter = {
     if (targets.length === 0) return { success: false, method: 'dnd' };
 
     const beforeCount = countAttachments();
-    const allowWeakSignal = supportsWeakSignal();
 
     logger.debug(
       'generic-dnd: candidate targets',
@@ -169,13 +182,21 @@ export const genericDndAdapter: SiteAdapter = {
     );
 
     for (const target of targets) {
+      // 派发阶段：异常只影响当前 target，不影响后续 target
       try {
         await dispatchDropSequence(target, file);
       } catch (err) {
         logger.warn('generic-dnd: dispatch failed on', target.tagName, err);
+        finalizeDrag(target, file);
         continue;
       }
-      const consumed = await waitForConsumption(beforeCount, 800, allowWeakSignal);
+
+      // 消费判定阶段：此时宿主仍处于拖放高亮态，判定信号未被污染
+      const consumed = await waitForConsumption(beforeCount, PER_TARGET_WAIT_MS);
+
+      // 无论消费与否，都通知宿主退出拖放态，避免 UI 残留
+      finalizeDrag(target, file);
+
       if (consumed) {
         logger.debug('generic-dnd: consumed by', target.tagName);
         return { success: true, method: 'dnd' };
