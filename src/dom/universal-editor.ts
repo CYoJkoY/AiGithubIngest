@@ -213,8 +213,26 @@ export class UniversalEditor {
   }
 
   /**
-   * 策略 2: 剪贴板事件仿真（修复版）
-   * 在 React 根容器上阻止事件继续冒泡到 document/window，避免触发全局二次上传
+   * 策略 2: 剪贴板事件仿真（关键修复版）
+   *
+   * 背景：豆包等 tiptap / ProseMirror 平台的输入框是 contenteditable，
+   * 页面没有任何 input[type="file"]。一次合成的 paste 事件会被两层监听器消费：
+   *
+   *   1) ProseMirror view 在 contenteditable（target）自身的 DOM 上绑定的 paste 处理
+   *      —— 这一步消费掉 clipboardData.files，触发第一次上传。
+   *   2) React 委托层（挂载在 #root 上的 onPaste 合成事件）
+   *      —— 事件继续冒泡到 #root，被 React 委托再次分发，触发第二次上传。
+   *
+   * 修复思路：
+   *   在 target（ProseMirror 的 contenteditable）自身上注册一个冒泡阶段的停止传播监听器。
+   *   因为 content script 在 document_idle 注入，此监听器必然晚于 ProseMirror 的 DOM 监听器注册，
+   *   所以在同节点、同阶段的事件监听队列中它排在 ProseMirror 之后：
+   *     - dispatch 时 ProseMirror 先执行 → 正常消费文件，上传 1 次
+   *     - 本监听器随后执行 stopImmediatePropagation → 事件不再冒泡到 #root
+   *     - React 委托层收不到事件 → 第二次上传被彻底阻断
+   *
+   * 注意：绝不能使用捕获阶段（第三个参数 true），否则会先于 ProseMirror 执行，
+   * 导致 ProseMirror 完全收不到 paste 事件，变成 0 次上传。
    */
   private static tryPasteEvent(
     activeEl: HTMLElement | null,
@@ -238,27 +256,18 @@ export class UniversalEditor {
         clipboardData: dataTransfer,
       });
 
-      // 查找 React 根容器（豆包等平台通常使用 #root 或 [data-reactroot]）
-      const rootContainer =
-        document.querySelector("#root") ||
-        document.querySelector("[data-reactroot]") ||
-        document.querySelector("#app") ||
-        document.body;
-
-      // 在根容器上注册冒泡阶段的停止传播监听器。
-      // 由于内容脚本在 document_idle 运行，此监听器会在 React 自身的监听器之后注册，
-      // 因此执行顺序在 React 处理完上传之后，此时阻止继续冒泡可杜绝全局监听器二次上传。
-      const stopAtRoot = (e: Event): void => {
+      // 在 target 自身（ProseMirror contenteditable）注册冒泡阶段的停止传播监听器。
+      const stopAtTarget = (e: Event): void => {
         e.stopPropagation();
         e.stopImmediatePropagation();
       };
 
-      rootContainer.addEventListener("paste", stopAtRoot, false);
+      target.addEventListener("paste", stopAtTarget, false);
 
       try {
         target.dispatchEvent(pasteEvent);
       } finally {
-        rootContainer.removeEventListener("paste", stopAtRoot, false);
+        target.removeEventListener("paste", stopAtTarget, false);
       }
 
       return true;
@@ -328,16 +337,16 @@ export class UniversalEditor {
 
     const currentHost = window.location.hostname.toLowerCase();
 
-    // 豆包平台：优先使用 input[type="file"] 挂载，避免合成 paste 事件触发多次上传
+    // 豆包：输入框为 ProseMirror contenteditable，页面无任何 input[type="file"]。
+    // 直接走修复后的 paste 策略（在 target 上拦截冒泡防止 React 委托二次消费）。
     if (currentHost.includes("doubao.com")) {
-      if (this.tryUploadViaFileInput(file, activeEl, dataTransfer)) {
-        return true;
-      }
-      // 如果 file input 方式失败，再尝试修复后的 paste 策略（已隔离冒泡）
       if (this.tryPasteEvent(activeEl, dataTransfer)) {
         return true;
       }
-      // 豆包不再尝试拖拽，避免其他副作用
+      // 兜底：万一未来豆包版本引入了 file input
+      if (this.tryUploadViaFileInput(file, activeEl, dataTransfer)) {
+        return true;
+      }
       return false;
     }
 
