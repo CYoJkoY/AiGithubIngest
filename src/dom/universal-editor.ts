@@ -132,9 +132,8 @@ export class UniversalEditor {
       if (tracker) {
         tracker.setValue("");
       }
-      console.log("[AiIngest] cleanUpFileInput done");
-    } catch (e) {
-      console.log("[AiIngest] cleanUpFileInput failed:", e);
+    } catch {
+      // 容错处理
     }
   }
 
@@ -146,7 +145,6 @@ export class UniversalEditor {
     activeEl: HTMLElement | null,
     dataTransfer: DataTransfer,
   ): boolean {
-    console.log("[AiIngest] tryUploadViaFileInput enter");
     this.tryWakeUploadInput();
 
     const searchScopes = [
@@ -169,26 +167,8 @@ export class UniversalEditor {
         scope.querySelectorAll<HTMLInputElement>('input[type="file"]'),
       );
 
-      if (fileInputs.length > 0) {
-        console.log(
-          "[AiIngest] scope has file inputs:",
-          scope.tagName,
-          scope.className,
-          "count =",
-          fileInputs.length,
-        );
-      }
-
       for (const fileInput of fileInputs) {
-        const valid = this.isValidFileInput(fileInput, file);
-        console.log("[AiIngest] candidate input:", {
-          accept: fileInput.accept,
-          multiple: fileInput.multiple,
-          disabled: fileInput.disabled,
-          hidden: fileInput.offsetParent === null,
-          valid,
-        });
-        if (!valid) continue;
+        if (!this.isValidFileInput(fileInput, file)) continue;
 
         try {
           const descriptor = Object.getOwnPropertyDescriptor(
@@ -211,7 +191,6 @@ export class UniversalEditor {
             tracker.setValue("");
           }
 
-          console.log("[AiIngest] dispatching change + input on input");
           fileInput.dispatchEvent(
             new Event("change", { bubbles: true, composed: true }),
           );
@@ -224,40 +203,22 @@ export class UniversalEditor {
           }, 300);
 
           return true;
-        } catch (e) {
-          console.log("[AiIngest] tryUploadViaFileInput candidate failed:", e);
+        } catch {
+          // 切换下一候选节点
         }
       }
     }
 
-    console.log("[AiIngest] tryUploadViaFileInput return false");
     return false;
   }
 
   /**
-   * 策略 2: 剪贴板事件仿真（豆包最终修复版 v2）
+   * 策略 2: 剪贴板事件仿真（保留给非豆包站点）
    *
-   * 从诊断日志得出的结论：
-   *   - 之前"劫持 pasteEvent.clipboardData 为代理对象"的做法在豆包完全无效：
-   *     豆包通过 React SyntheticEvent / ProseMirror / 自己的 sync 引擎读
-   *     clipboardData 时，拿到的不是我们的代理对象，而是 null，导致
-   *     `Cannot destructure property 'files' of 'e.clipboardData' as it is null`，
-   *     最终 0 个上传。
-   *
-   * 新策略：
-   *   1. 让 pasteEvent.clipboardData 返回**真实的 dataTransfer 实例**（不做任何
-   *      代理包装），这样豆包拿到的是一个原生 DataTransfer，不会 instanceof
-   *      失败，也不会变成 null。
-   *
-   *   2. 把"一次性交付"的逻辑下沉到 dataTransfer 实例自身的 files / items
-   *      getter 上。无论 React / ProseMirror / 豆包 sync 引擎走哪条包装路径，
-   *      只要最终访问的是同一个 dataTransfer，getter 都会生效。
-   *
-   *   3. files 与 items 各自独立计数：files 第一次读返回真实，之后返回空；
-   *      items 同理。这样两个 handler 无论读哪个字段，都只会有一次命中。
-   *
-   *   4. dispatch 结束后立刻 delete 实例上的 own property，恢复原型链上的
-   *      原始 getter，避免污染后续用户正常粘贴。
+   * 注意：豆包不适用此策略。豆包内部的 tiptap/ProseMirror 事件系统
+   * （t1.emit + M.handlePaste）会把 ClipboardEvent 重新包装成一个内部事件，
+   * 该包装对象丢失了 clipboardData，导致 sync-input-engine 读到的
+   * e.clipboardData 恒为 null。此路径在豆包上无论怎么包装都无法生效。
    */
   private static tryPasteEvent(
     activeEl: HTMLElement | null,
@@ -269,183 +230,90 @@ export class UniversalEditor {
         'textarea, [contenteditable="true"], [role="textbox"]',
       ) as HTMLElement | null);
 
-    if (!target) {
-      console.log("[AiIngest] tryPasteEvent: no target found");
-      return false;
-    }
-
-    console.log("[AiIngest] tryPasteEvent enter, target =", {
-      tag: target.tagName,
-      className: target.className,
-      id: target.id,
-    });
-
-    let filesOwnPropInstalled = false;
-    let itemsOwnPropInstalled = false;
+    if (!target) return false;
 
     try {
       target.focus();
 
-      // 快照真实数据和空数据
-      const realFiles = dataTransfer.files;
-      const realItems = dataTransfer.items;
-      const emptyDataTransfer = new DataTransfer();
-      const emptyFiles = emptyDataTransfer.files;
-      const emptyItems = emptyDataTransfer.items;
-
-      console.log(
-        "[AiIngest] snapshot: realFiles.length =",
-        realFiles.length,
-        "realItems.length =",
-        realItems.length,
-      );
-
-      let filesReadCount = 0;
-      let itemsReadCount = 0;
-      let filesDelivered = false;
-      let itemsDelivered = false;
-
-      // 在 dataTransfer 实例上直接定义一次性 getter。
-      // 这会遮蔽 DataTransfer.prototype.files / .items 的原始 getter，
-      // 无论通过何种包装路径访问 dataTransfer.files，都会走这里。
-      Object.defineProperty(dataTransfer, "files", {
-        configurable: true,
-        get() {
-          filesReadCount += 1;
-          console.log(
-            `[AiIngest] dataTransfer.files read #${filesReadCount}`,
-            new Error().stack,
-          );
-          if (!filesDelivered) {
-            filesDelivered = true;
-            console.log(
-              `[AiIngest] dataTransfer.files #${filesReadCount} -> REAL`,
-            );
-            return realFiles;
-          }
-          console.log(
-            `[AiIngest] dataTransfer.files #${filesReadCount} -> EMPTY`,
-          );
-          return emptyFiles;
-        },
-      });
-      filesOwnPropInstalled = true;
-
-      Object.defineProperty(dataTransfer, "items", {
-        configurable: true,
-        get() {
-          itemsReadCount += 1;
-          console.log(
-            `[AiIngest] dataTransfer.items read #${itemsReadCount}`,
-            new Error().stack,
-          );
-          if (!itemsDelivered) {
-            itemsDelivered = true;
-            console.log(
-              `[AiIngest] dataTransfer.items #${itemsReadCount} -> REAL`,
-            );
-            return realItems;
-          }
-          console.log(
-            `[AiIngest] dataTransfer.items #${itemsReadCount} -> EMPTY`,
-          );
-          return emptyItems;
-        },
-      });
-      itemsOwnPropInstalled = true;
-
-      // 使用标准构造，不传 clipboardData 选项
       const pasteEvent = new ClipboardEvent("paste", {
         bubbles: true,
         cancelable: true,
         composed: true,
       });
 
-      // 让 event.clipboardData 直接返回真实的 dataTransfer，
-      // 这样 React SyntheticEvent / ProseMirror / 豆包 sync 引擎拿到的
-      // 都是一致的、可用的 DataTransfer 实例。
       Object.defineProperty(pasteEvent, "clipboardData", {
         configurable: true,
         get() {
-          console.log(
-            "[AiIngest] pasteEvent.clipboardData accessed -> real dataTransfer",
-          );
           return dataTransfer;
         },
       });
 
-      console.log("[AiIngest] === dispatching paste event ===");
       target.dispatchEvent(pasteEvent);
-      console.log(
-        "[AiIngest] === dispatch done ===",
-        "filesRead =",
-        filesReadCount,
-        "itemsRead =",
-        itemsReadCount,
-        "filesDelivered =",
-        filesDelivered,
-        "itemsDelivered =",
-        itemsDelivered,
-      );
 
       return true;
-    } catch (e) {
-      console.log("[AiIngest] tryPasteEvent threw:", e);
+    } catch {
       return false;
-    } finally {
-      // 恢复原始 getter，避免污染后续正常粘贴
-      try {
-        if (filesOwnPropInstalled) {
-          delete (dataTransfer as unknown as Record<string, unknown>).files;
-        }
-        if (itemsOwnPropInstalled) {
-          delete (dataTransfer as unknown as Record<string, unknown>).items;
-        }
-        console.log("[AiIngest] restored dataTransfer prototype getters");
-      } catch (e) {
-        console.log("[AiIngest] restore failed:", e);
-      }
     }
   }
 
   /**
-   * 策略 3: 单靶向 Drag & Drop 状态机仿真
+   * 策略 3: 拖放事件仿真（豆包首选策略）
+   *
+   * 与 paste 不同，drop 事件不经过 tiptap 的 paste 事件包装，
+   * 走的是 ProseMirror 的 handleDrop + 豆包自己的文件上传管线。
+   * 绝大多数现代聊天界面都支持拖放文件上传。
+   *
+   * 完整的 drop 状态机序列：
+   *   dragenter → dragover → drop
+   * 有些框架要求 dragenter / dragover 的 preventDefault 返回 true，
+   * 我们统一设置 cancelable: true 以便让框架侧决定是否消费。
    */
   private static tryDragAndDrop(
     activeEl: HTMLElement | null,
     dataTransfer: DataTransfer,
   ): boolean {
-    const candidateTarget =
-      activeEl?.closest('[class*="chat"]') ||
-      activeEl?.closest('[class*="input"]') ||
-      activeEl ||
-      document.querySelector('[data-dropzone="true"]') ||
-      document.querySelector('[class*="dropzone"]') ||
-      document.querySelector("main");
+    // 定位最合适的目标：优先 contenteditable 编辑器，其次聊天容器
+    const candidateTargets = [
+      activeEl,
+      activeEl?.closest('[contenteditable="true"]'),
+      document.querySelector('[contenteditable="true"]'),
+      activeEl?.closest('[class*="chat"]'),
+      activeEl?.closest('[class*="input"]'),
+      activeEl?.closest('[class*="editor"]'),
+      document.querySelector('[class*="dropzone"]'),
+      document.querySelector("main"),
+      document.body,
+    ].filter((el): el is HTMLElement => el instanceof HTMLElement);
 
-    if (!candidateTarget) {
-      console.log("[AiIngest] tryDragAndDrop: no candidate target");
-      return false;
+    for (const candidate of candidateTargets) {
+      try {
+        const eventInit: DragEventInit = {
+          bubbles: true,
+          cancelable: true,
+          composed: true,
+          dataTransfer,
+        };
+
+        const dragEnterEvent = new DragEvent("dragenter", eventInit);
+        const dragOverEvent = new DragEvent("dragover", eventInit);
+        const dropEvent = new DragEvent("drop", eventInit);
+
+        candidate.dispatchEvent(dragEnterEvent);
+        candidate.dispatchEvent(dragOverEvent);
+        candidate.dispatchEvent(dropEvent);
+
+        console.log("[AiIngest] tryDragAndDrop dispatched on", {
+          tag: candidate.tagName,
+          className: candidate.className,
+        });
+        return true;
+      } catch (e) {
+        console.log("[AiIngest] tryDragAndDrop candidate failed:", e);
+      }
     }
 
-    try {
-      const eventInit: DragEventInit = {
-        bubbles: true,
-        cancelable: true,
-        composed: true,
-        dataTransfer,
-      };
-
-      console.log("[AiIngest] tryDragAndDrop dispatching on", candidateTarget);
-      candidateTarget.dispatchEvent(new DragEvent("dragenter", eventInit));
-      candidateTarget.dispatchEvent(new DragEvent("dragover", eventInit));
-      candidateTarget.dispatchEvent(new DragEvent("drop", eventInit));
-
-      return true;
-    } catch (e) {
-      console.log("[AiIngest] tryDragAndDrop threw:", e);
-      return false;
-    }
+    console.log("[AiIngest] tryDragAndDrop: all candidates failed");
+    return false;
   }
 
   /**
@@ -455,16 +323,12 @@ export class UniversalEditor {
     file: File,
     targetElement?: EventTarget | null,
   ): boolean {
-    console.log("[AiIngest] attachVirtualFile called:", {
-      name: file.name,
-      size: file.size,
-      type: file.type,
-    });
+    console.log("[AiIngest] attachVirtualFile:", file.name, file.size);
 
     const now = Date.now();
     const uploadKey = `${file.name}-${file.size}`;
     if (now - this.lastUploadTime < 1500 && this.lastUploadKey === uploadKey) {
-      console.log("[AiIngest] attachVirtualFile: deduped (same file < 1500ms)");
+      console.log("[AiIngest] attachVirtualFile: deduped");
       return true;
     }
     this.lastUploadTime = now;
@@ -476,51 +340,39 @@ export class UniversalEditor {
         : document.activeElement
     ) as HTMLElement | null;
 
-    console.log("[AiIngest] activeEl =", {
-      tag: activeEl?.tagName,
-      className: activeEl?.className,
-      id: activeEl?.id,
-    });
-
     const dataTransfer = new DataTransfer();
     dataTransfer.items.add(file);
-    console.log(
-      "[AiIngest] dataTransfer.items.length after add =",
-      dataTransfer.items.length,
-    );
 
     const currentHost = window.location.hostname.toLowerCase();
     console.log("[AiIngest] currentHost =", currentHost);
 
-    // 豆包分支
+    // 豆包分支：完全跳过 paste（tiptap 事件包装会让 clipboardData 丢失），
+    // 直接走 drop 上传；drop 失败时兜底 file input。
     if (currentHost.includes("doubao.com")) {
-      console.log("[AiIngest] doubao branch: tryPasteEvent first");
-      if (this.tryPasteEvent(activeEl, dataTransfer)) {
-        console.log("[AiIngest] doubao branch: tryPasteEvent returned true");
+      console.log("[AiIngest] doubao branch: tryDragAndDrop first");
+      if (this.tryDragAndDrop(activeEl, dataTransfer)) {
+        console.log("[AiIngest] doubao: tryDragAndDrop returned true");
         return true;
       }
-      console.log("[AiIngest] doubao branch: tryPasteEvent failed, fallback");
+      console.log("[AiIngest] doubao: tryDragAndDrop failed, fallback input");
       if (this.tryUploadViaFileInput(file, activeEl, dataTransfer)) {
         return true;
       }
+      console.log("[AiIngest] doubao: all strategies failed");
       return false;
     }
 
-    // 其他站点
+    // 其他站点：file input → paste → drop
     if (this.tryUploadViaFileInput(file, activeEl, dataTransfer)) {
-      console.log("[AiIngest] non-doubao: tryUploadViaFileInput succeeded");
       return true;
     }
     if (this.tryPasteEvent(activeEl, dataTransfer)) {
-      console.log("[AiIngest] non-doubao: tryPasteEvent succeeded");
       return true;
     }
     if (this.tryDragAndDrop(activeEl, dataTransfer)) {
-      console.log("[AiIngest] non-doubao: tryDragAndDrop succeeded");
       return true;
     }
 
-    console.log("[AiIngest] attachVirtualFile: all strategies failed");
     return false;
   }
 
@@ -540,7 +392,6 @@ export class UniversalEditor {
 
     if (!activeEl) return false;
 
-    // 1. Textarea / Input 元素
     if (
       activeEl instanceof HTMLTextAreaElement ||
       activeEl instanceof HTMLInputElement
@@ -587,7 +438,6 @@ export class UniversalEditor {
       return true;
     }
 
-    // 2. contenteditable 富文本输入容器
     if (
       activeEl.isContentEditable ||
       activeEl.closest("[contenteditable='true']")
