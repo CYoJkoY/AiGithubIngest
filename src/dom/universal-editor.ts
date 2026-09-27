@@ -379,6 +379,267 @@ export class UniversalEditor {
   }
 
   /**
+   * 定位 Qwen 输入框左下角的 "+" 模式选择按钮
+   *
+   * 真实 DOM（chat.qwen.ai，2026-09 采样）：
+   *   <div class="qwen-chat-v2-dropdown-menu-trigger">
+   *     <div class="mode-select-open" role="button" aria-label="选择模式">
+   *       <span class="anticon mode-select-open-icon">
+   *         <svg><use xlink:href="#qwpcicon-addBold"></use></svg>
+   *       </span>
+   *     </div>
+   *   </div>
+   */
+  private static findQwenModeButton(): HTMLElement | null {
+    // 优先级 1：类名（跨语言稳定）
+    const byClass = document.querySelector<HTMLElement>(".mode-select-open");
+    if (byClass && !byClass.hasAttribute("disabled")) {
+      return byClass;
+    }
+
+    // 优先级 2：aria-label（中英文兼容）
+    const ariaCandidates = ["选择模式", "Select mode", "选择"];
+    for (const label of ariaCandidates) {
+      const btn = document.querySelector<HTMLElement>(
+        `[role="button"][aria-label="${label}"]`,
+      );
+      if (btn && !btn.hasAttribute("disabled")) {
+        return btn;
+      }
+    }
+
+    // 优先级 3：通过 icon use href 回溯（跨语言最稳）
+    const allUses = Array.from(document.querySelectorAll("use"));
+    for (const use of allUses) {
+      const href =
+        use.getAttribute("href") ||
+        use.getAttribute("xlink:href") ||
+        use.getAttributeNS("http://www.w3.org/1999/xlink", "href");
+      if (href === "#qwpcicon-addBold") {
+        const btn = use.closest<HTMLElement>('[role="button"]');
+        if (btn && !btn.hasAttribute("disabled")) {
+          return btn;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * 定位展开后下拉菜单中的 "上传附件" 菜单项
+   *
+   * 真实 DOM：
+   *   <div role="menuitem" class="qwen-chat-v2-dropdown-menu-item ...">
+   *     ...
+   *     <svg><use xlink:href="#qwpcicon-upload"></use></svg>
+   *     ...
+   *     <span class="mode-select-dropdown-item-name">上传附件</span>
+   *   </div>
+   */
+  private static findQwenUploadMenuItem(): HTMLElement | null {
+    const menuItems = Array.from(
+      document.querySelectorAll<HTMLElement>('[role="menuitem"]'),
+    );
+    if (menuItems.length === 0) return null;
+
+    // 优先级 1：内含 #qwpcicon-upload 图标（跨语言最稳）
+    for (const item of menuItems) {
+      const uses = Array.from(item.querySelectorAll("use"));
+      const hit = uses.some((use) => {
+        const href =
+          use.getAttribute("href") ||
+          use.getAttribute("xlink:href") ||
+          use.getAttributeNS("http://www.w3.org/1999/xlink", "href");
+        return href === "#qwpcicon-upload";
+      });
+      if (hit) return item;
+    }
+
+    // 优先级 2：通过 .mode-select-dropdown-item-name 文本匹配
+    const uploadTexts = [
+      "上传附件",
+      "上传文件",
+      "Upload attachment",
+      "Upload file",
+    ];
+    for (const item of menuItems) {
+      const nameEl = item.querySelector(".mode-select-dropdown-item-name");
+      const text = (nameEl?.textContent || item.textContent || "").trim();
+      if (uploadTexts.some((kw) => text.includes(kw))) {
+        return item;
+      }
+    }
+
+    // 优先级 3：包含 .mode-select-dropdown-item 且带 upload/附件 关键字
+    for (const item of menuItems) {
+      if (
+        item.querySelector(".mode-select-dropdown-item") &&
+        /upload|附件/i.test(item.textContent || "")
+      ) {
+        return item;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Qwen (chat.qwen.ai / qwen.ai / tongyi.aliyun.com) 专用文件挂载流程
+   *
+   * Qwen 的附件上传是"两步下拉菜单"交互，与豆包单步按钮截然不同：
+   *
+   *   1. 点击输入框左下角 "+" 按钮 (aria-label="选择模式") → 展开 dropdown
+   *   2. 点击菜单项 "上传附件" (role="menuitem") → 宿主创建 input[type="file"]
+   *      并立即调用 .click() 弹系统文件选择器
+   *
+   * 必须模拟完整的两步链路，否则 input 永远不会被创建。
+   *
+   * 同时安装捕获阶段 click 拦截器 + showPicker patch，阻止系统文件选择
+   * 器真正弹出，保证自动化流程对用户完全静默。
+   */
+  private static tryQwenUpload(
+    file: File,
+    dataTransfer: DataTransfer,
+  ): boolean {
+    // 1. 快路径：input 已存在（用户此前已用过上传功能）
+    const directInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]');
+    if (directInput && this.isValidFileInput(directInput, file)) {
+      this.mountFileToInput(directInput, dataTransfer);
+      return true;
+    }
+
+    // 2. 定位 "+" 按钮
+    const modeBtn = this.findQwenModeButton();
+    if (!modeBtn) {
+      return false;
+    }
+
+    // 3. 捕获阶段拦截系统文件选择器弹出（仅针对 file input）
+    const clickBlocker = (e: Event): void => {
+      const target = e.target;
+      if (target instanceof HTMLInputElement && target.type === "file") {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+      }
+    };
+    document.addEventListener("click", clickBlocker, true);
+
+    // 4. patch showPicker 兼容部分 Chromium 变体
+    const originalShowPicker = (
+      HTMLInputElement.prototype as unknown as {
+        showPicker?: () => void;
+      }
+    ).showPicker;
+    let showPickerPatched = false;
+    if (typeof originalShowPicker === "function") {
+      try {
+        (
+          HTMLInputElement.prototype as unknown as {
+            showPicker: () => void;
+          }
+        ).showPicker = function (this: HTMLInputElement): void {
+          if (this.type === "file") return;
+          return originalShowPicker.call(this);
+        };
+        showPickerPatched = true;
+      } catch {
+        // 容错处理
+      }
+    }
+
+    // 记录点击前已存在的 file input
+    const preExistingInputs = new Set<HTMLInputElement>(
+      Array.from(
+        document.querySelectorAll<HTMLInputElement>('input[type="file"]'),
+      ),
+    );
+
+    // 5. 派发合成 click 到 "+" 按钮 → 触发 Ant Design dropdown 展开
+    try {
+      modeBtn.dispatchEvent(
+        new MouseEvent("click", {
+          bubbles: true,
+          cancelable: true,
+          view: window,
+        }),
+      );
+    } catch {
+      // 容错处理
+    }
+
+    // 6. 等待菜单渲染后点击 "上传附件" 菜单项
+    let menuItemClicked = false;
+    const clickMenuItem = (): void => {
+      if (menuItemClicked) return;
+      const menuItem = this.findQwenUploadMenuItem();
+      if (!menuItem) return;
+      menuItemClicked = true;
+      try {
+        menuItem.dispatchEvent(
+          new MouseEvent("click", {
+            bubbles: true,
+            cancelable: true,
+            view: window,
+          }),
+        );
+      } catch {
+        // 容错处理
+      }
+    };
+
+    const timers: Array<ReturnType<typeof setTimeout>> = [];
+
+    // 6a. 300ms 首次点击（覆盖同步渲染）
+    timers.push(setTimeout(clickMenuItem, 300));
+    // 6b. 700ms 二次点击（覆盖异步 chunk 渲染）
+    timers.push(setTimeout(clickMenuItem, 700));
+
+    // 7. 多段扫描新创建的 input 并挂载
+    const tryMount = (): void => {
+      const allInputs = Array.from(
+        document.querySelectorAll<HTMLInputElement>('input[type="file"]'),
+      );
+      const ordered = [
+        ...allInputs.filter((i) => !preExistingInputs.has(i)),
+        ...allInputs,
+      ];
+      for (const input of ordered) {
+        if (this.isValidFileInput(input, file)) {
+          this.mountFileToInput(input, dataTransfer);
+          return;
+        }
+      }
+    };
+    timers.push(setTimeout(tryMount, 500)); // 对应首次点击
+    timers.push(setTimeout(tryMount, 900)); // 对应二次点击
+    timers.push(setTimeout(tryMount, 1400)); // 慢速兜底
+    timers.push(setTimeout(tryMount, 2000)); // 最慢路径
+
+    // 8. 2.5s 后统一清理拦截器与 patch，恢复用户后续手动操作
+    timers.push(
+      setTimeout(() => {
+        try {
+          document.removeEventListener("click", clickBlocker, true);
+          if (showPickerPatched) {
+            (
+              HTMLInputElement.prototype as unknown as {
+                showPicker?: () => void;
+              }
+            ).showPicker = originalShowPicker;
+          }
+        } catch {
+          // 容错处理
+        }
+      }, 2500),
+    );
+
+    return true;
+  }
+
+  /**
    * 互斥式文件挂载入口
    */
   public static attachVirtualFile(
@@ -404,9 +665,18 @@ export class UniversalEditor {
 
     const currentHost = window.location.hostname.toLowerCase();
 
-    // 豆包专用分支
+    // 豆包专用分支（单步按钮交互）
     if (currentHost.includes("doubao.com")) {
       return this.tryDoubaoUpload(file, dataTransfer);
+    }
+
+    // Qwen 专用分支（两步下拉菜单交互：chat.qwen.ai / qwen.ai / tongyi.aliyun.com）
+    if (
+      currentHost.includes("qwen.ai") ||
+      currentHost.includes("qwen.com") ||
+      currentHost.includes("tongyi.aliyun.com")
+    ) {
+      return this.tryQwenUpload(file, dataTransfer);
     }
 
     // 其他站点：file input → paste → drop
