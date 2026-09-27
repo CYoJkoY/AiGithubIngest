@@ -1,49 +1,45 @@
 import { SiteAdapter } from './types';
+import type { Logger } from '../../core/logger';
 
 /**
- * Drop target 优先级选择器：
- *  1) Gemini 的声明式 dropzone（xapfileselectordropzone / xap-uploader-dropzone）
- *  2) 常见通用 dropzone 标记
- *  3) file-drop-zone 属性
- * 顺序即优先级——外层容器放前面，事件会冒泡到内层监听器，所以先尝试最内层
- * 的 xapfileselectordropzone 更可靠。
+ * drop target 优先级：最内层优先。
+ * 真实拖放时浏览器会逐层选 drop target，所以先尝试 ql-editor / rich-textarea
+ * 这种最内层，再逐层向外退，最后兜底到 main。
  */
 const DROP_TARGET_SELECTORS: readonly string[] = [
+  // Gemini 内层优先
+  '.ql-editor[contenteditable="true"]',
+  'rich-textarea',
   '[xapfileselectordropzone]',
   '.xap-uploader-dropzone',
-  '[file-drop-zone]',
   '[data-filedrop-id="chat-window-input-container"]',
+  // 通用 dropzone 标记
+  '[file-drop-zone]',
   '[data-dropzone="true"]',
   '[class*="dropzone" i]',
   '[class*="drop-zone" i]',
   '[class*="uploader" i]',
+  '[class*="chat" i]',
 ];
 
-/** 收集候选 drop target（去重、保持优先级、只保留可见元素） */
 function collectDropTargets(activeElement: HTMLElement | null): HTMLElement[] {
+  const targets: HTMLElement[] = [];
   const seen = new Set<HTMLElement>();
-  const push = (el: HTMLElement | null | undefined): void => {
+  const add = (el: HTMLElement | null | undefined): void => {
     if (!el || seen.has(el)) return;
+    // 可见性检查（防止命中到隐藏的备用 dropzone）
     if (el.offsetWidth === 0 && el.offsetHeight === 0) return;
     seen.add(el);
-  };
-  const targets: HTMLElement[] = [];
-  const add = (el: HTMLElement | null | undefined): void => {
-    const before = seen.size;
-    push(el);
-    if (el && seen.size > before) targets.push(el);
+    targets.push(el);
   };
 
-  for (const selector of DROP_TARGET_SELECTORS) {
-    document.querySelectorAll<HTMLElement>(selector).forEach(add);
+  for (const sel of DROP_TARGET_SELECTORS) {
+    document.querySelectorAll<HTMLElement>(sel).forEach(add);
   }
 
   if (activeElement) {
-    add(
-      activeElement.closest<HTMLElement>(
-        '[class*="chat" i], [class*="input" i], [class*="editor" i], main',
-      ),
-    );
+    add(activeElement.closest<HTMLElement>('[contenteditable="true"]'));
+    add(activeElement);
   }
 
   add(document.querySelector<HTMLElement>('main'));
@@ -51,70 +47,87 @@ function collectDropTargets(activeElement: HTMLElement | null): HTMLElement[] {
 }
 
 /**
- * 派发完整 drop 序列。要点：
- *  - dataTransfer.effectAllowed = 'all' 才能被部分框架识别为合法拖拽
- *  - dragover 必须 preventDefault，否则浏览器/框架认为该区域拒绝 drop
- *  - 事件间加 40ms 间隔，让 React/Angular 完成状态推进（dragenter → dragover → drop）
+ * 关键：每次派发事件都必须使用**全新**的 DataTransfer。
+ * Chrome 会在事件回调结束后回收 dataTransfer.files，复用同一个实例会导致
+ * 后续事件里 files 为空。
  */
-async function dispatchDropSequence(
-  target: HTMLElement,
-  dataTransfer: DataTransfer,
-): Promise<void> {
+function makeFileDataTransfer(file: File): DataTransfer {
+  const dt = new DataTransfer();
+  dt.items.add(file);
   try {
-    dataTransfer.effectAllowed = 'all';
-    dataTransfer.dropEffect = 'copy';
+    dt.effectAllowed = 'all';
+    dt.dropEffect = 'copy';
   } catch {
-    /* Safari 对某些 DataTransfer 属性只读，静默忽略 */
+    /* 部分环境下 effectAllowed 只读，忽略 */
   }
+  return dt;
+}
 
-  const init: DragEventInit = {
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+function fireDragEvent(type: string, target: HTMLElement, file: File): DragEvent {
+  const evt = new DragEvent(type, {
     bubbles: true,
     cancelable: true,
     composed: true,
-    dataTransfer,
-  };
-
-  const fire = (type: string): DragEvent => {
-    const evt = new DragEvent(type, init);
-    target.dispatchEvent(evt);
-    return evt;
-  };
-
-  fire('dragenter');
-  await new Promise<void>((r) => setTimeout(r, 40));
-
-  const dragOverEvt = fire('dragover');
-  if (!dragOverEvt.defaultPrevented) {
-    dragOverEvt.preventDefault();
-  }
-  await new Promise<void>((r) => setTimeout(r, 40));
-
-  fire('drop');
-  fire('dragleave');
+    dataTransfer: makeFileDataTransfer(file),
+  });
+  target.dispatchEvent(evt);
+  return evt;
 }
 
 /**
- * drop 是否被前端框架消费？
- * 判断依据：drop 事件被 preventDefault（框架声明"我处理了"）
- *          或目标元素出现 drag-over 类（"我进入了激活态"）
- *          或 DOM 出现新的附件预览节点
+ * 完整 drop 序列：dragenter → dragover(x2) → drop → dragend/dragleave。
+ * 每次都用新鲜 DataTransfer。
  */
-function snapshot(target: HTMLElement): string {
-  const attachmentCount = document.querySelectorAll(
-    'uploader-file-preview, [class*="file-preview" i], [class*="attachment" i], [class*="upload-chip" i]',
-  ).length;
-  return `${target.className}|${attachmentCount}`;
+async function dispatchDropSequence(target: HTMLElement, file: File): Promise<void> {
+  fireDragEvent('dragenter', target, file);
+  await sleep(50);
+
+  // 真实浏览器会连续派发多次 dragover，部分实现需要至少两次才进入 drop-ready
+  fireDragEvent('dragover', target, file);
+  await sleep(50);
+  fireDragEvent('dragover', target, file);
+  await sleep(50);
+
+  fireDragEvent('drop', target, file);
+  await sleep(100);
+
+  // 清理：通知框架退出拖放态
+  fireDragEvent('dragend', target, file);
+  fireDragEvent('dragleave', target, file);
 }
 
-async function waitForDropConsumption(
-  target: HTMLElement,
-  before: string,
+/** 统计页面上的附件预览节点数量（成功挂载后会 > 0） */
+function countAttachments(): number {
+  return document.querySelectorAll(
+    [
+      'uploader-file-preview',
+      '[class*="file-preview" i]',
+      '[class*="attachment-preview" i]',
+      '[class*="upload-chip" i]',
+      '[class*="file-chip" i]',
+      '[class*="uploaded-file" i]',
+    ].join(','),
+  ).length;
+}
+
+/** Gemini 消费 drop 后会移除 xap-drag-in-progress 类 */
+function hasActiveDragState(): boolean {
+  return document.querySelector('.xap-drag-in-progress') !== null;
+}
+
+async function waitForConsumption(
+  beforeAttachmentCount: number,
   timeoutMs: number,
 ): Promise<boolean> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    await new Promise<void>((r) => setTimeout(r, 80));
-    if (snapshot(target) !== before) return true;
+    await sleep(80);
+    // 出现附件预览 —— 强成功信号
+    if (countAttachments() > beforeAttachmentCount) return true;
+    // 拖放高亮态被清除 —— 弱成功信号（框架认为 drop 已完成）
+    if (!hasActiveDragState()) return true;
   }
   return false;
 }
@@ -122,22 +135,29 @@ async function waitForDropConsumption(
 export const genericDndAdapter: SiteAdapter = {
   id: 'generic-dnd',
   matches: () => true,
-  attach: async (_file, ctx) => {
-    const { dataTransfer, activeElement, logger } = ctx;
+  attach: async (file, ctx) => {
+    const { activeElement, logger } = ctx;
     const targets = collectDropTargets(activeElement);
+    const beforeCount = countAttachments();
+
+    logger.debug(
+      'generic-dnd: candidate targets',
+      targets.map((t) => t.tagName),
+    );
 
     for (const target of targets) {
-      const before = snapshot(target);
       try {
-        await dispatchDropSequence(target, dataTransfer);
+        await dispatchDropSequence(target, file);
       } catch (err) {
-        logger.warn('generic-dnd: dispatch failed', err);
+        logger.warn('generic-dnd: dispatch failed on', target.tagName, err);
         continue;
       }
-      const consumed = await waitForDropConsumption(target, before, 1200);
+      const consumed = await waitForConsumption(beforeCount, 1000);
       if (consumed) {
+        logger.debug('generic-dnd: consumed by', target.tagName);
         return { success: true, method: 'dnd' };
       }
+      logger.debug('generic-dnd: not consumed by', target.tagName);
     }
 
     return { success: false, method: 'dnd' };
