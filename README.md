@@ -429,12 +429,12 @@ Forbidden directions:
 
 ## <img src="assets/readme/icons/heart.svg" width="24" height="24" alt=""> Support & Sponsorship
 
-Maintaining browser extension compatibility across rapidly evolving AI web applications, rate-limit defenses, and memory-safe streaming decompression requires continuous testing and maintenance.
+Maintaining browser-extension compatibility across rapidly evolving AI web applications, rate-limit defenses, and memory-safe streaming decompression requires continuous testing and maintenance.
 
 <div align="center">
 
 <a href="https://cyojkoy.github.io/Payment/">
-  <img src="assets/readme/support-cta.svg" alt="Support AiGithubIngest development" width="420">
+  <img src="assets/readme/support-cta.svg" alt="Support AiGithubIngest development" width="780">
 </a>
 
 <br>

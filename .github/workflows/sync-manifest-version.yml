@@ -86,6 +86,6 @@ jobs:
           if git diff --staged --quiet; then
             echo "无实际差异，跳过提交"
           else
-            git commit -m "chore(release): sync package.json version to ${{ steps.sync.outputs.new_version }} [skip ci]"
+            git commit -m "chore(release): sync package.json version to ${{ steps.sync.outputs.new_version }}"
             git push origin HEAD:main
           fi
