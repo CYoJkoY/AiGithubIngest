@@ -72,3 +72,44 @@ export const evaluateSitePolicy = (
 
   return "DISABLED";
 };
+
+/**
+ * 多候选域名策略判断：用于 iframe / about:blank 等场景，
+ * 允许将 current / ancestorOrigins / referrer 一并纳入判定。
+ */
+export const evaluateSitePolicyForHostnames = (
+  hostnames: readonly string[],
+  userWhitelist: readonly string[] = [],
+  userBlacklist: readonly string[] = [],
+): SitePolicyStatus => {
+  const normalizedHosts = Array.from(
+    new Set(hostnames.map(normalizeHostname).filter(Boolean)),
+  );
+
+  // 黑名单最高优先级：任一候选域名命中黑名单即停用
+  if (
+    normalizedHosts.some((host) =>
+      userBlacklist.some((domain) => matchDomain(host, domain)),
+    )
+  ) {
+    return "DISABLED_BLACKLIST";
+  }
+
+  if (
+    normalizedHosts.some((host) =>
+      userWhitelist.some((domain) => matchDomain(host, domain)),
+    )
+  ) {
+    return "ENABLED_WHITELIST";
+  }
+
+  if (
+    normalizedHosts.some((host) =>
+      BUILTIN_AI_DOMAINS.some((domain) => matchDomain(host, domain)),
+    )
+  ) {
+    return "ENABLED_BUILTIN";
+  }
+
+  return "DISABLED";
+};
