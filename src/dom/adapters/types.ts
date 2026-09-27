@@ -1,10 +1,10 @@
-import { logger } from '../../core/logger';
+import type { Logger } from '../../core/logger';
 
 export interface AdapterContext {
   readonly file: File;
   readonly dataTransfer: DataTransfer;
   readonly activeElement: HTMLElement | null;
-  readonly logger: typeof logger;
+  readonly logger: Logger;
 }
 
 export interface AdapterResult {

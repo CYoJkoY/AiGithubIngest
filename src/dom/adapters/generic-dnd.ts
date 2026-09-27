@@ -24,7 +24,8 @@ export const genericDndAdapter: SiteAdapter = {
       candidateTarget.dispatchEvent(new DragEvent('dragover', eventInit));
       candidateTarget.dispatchEvent(new DragEvent('drop', eventInit));
       return { success: false, method: 'dnd' };
-    } catch {
+    } catch (err) {
+      ctx.logger.warn('generic-dnd dispatch failed', err);
       return { success: false, method: 'dnd' };
     }
   },

@@ -1,4 +1,5 @@
-import { evaluateSitePolicyForHostnames, normalizeHostname } from '../core/policy';
+import { normalizeHostname } from '../core/policy';
+import { logger } from '../core/logger';
 
 export function resolvePolicyHostnames(): string[] {
   const hostnames = new Set<string>();
@@ -8,12 +9,14 @@ export function resolvePolicyHostnames(): string[] {
       const url = value.includes('://') ? new URL(value) : new URL(`https://${value}`);
       const host = normalizeHostname(url.hostname);
       if (host) hostnames.add(host);
-    } catch {
-      // ignore
+    } catch (err) {
+      logger.debug('resolvePolicyHostnames: invalid value', value, err);
     }
   };
+
   add(window.location.hostname);
   add(document.referrer);
+
   try {
     const ancestorOrigins = window.location.ancestorOrigins;
     if (ancestorOrigins) {
@@ -21,16 +24,16 @@ export function resolvePolicyHostnames(): string[] {
         add(ancestorOrigins.item(i));
       }
     }
-  } catch {
-    // ignore
+  } catch (err) {
+    logger.debug('ancestorOrigins access failed', err);
   }
+
   try {
-    if (window.top && window.top.location) {
-      add(window.top.location.hostname);
-    }
-  } catch {
-    // 跨域 top
+    if (window.top && window.top.location) add(window.top.location.hostname);
+  } catch (err) {
+    logger.debug('cross-origin top access denied', err);
   }
+
   return Array.from(hostnames);
 }
 

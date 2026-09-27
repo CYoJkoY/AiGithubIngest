@@ -26,7 +26,8 @@ export const genericPasteAdapter: SiteAdapter = {
       });
       target.dispatchEvent(pasteEvent);
       return { success: false, method: 'paste' };
-    } catch {
+    } catch (err) {
+      ctx.logger.warn('generic-paste dispatch failed', err);
       return { success: false, method: 'paste' };
     }
   },

@@ -1,6 +1,7 @@
 import { t } from '../core/i18n';
 import { StorageSchema, SupportedLang } from '../types';
 import { normalizeHostname } from '../core/policy';
+import { logger } from '../core/logger';
 
 export function renderBlacklistTags(
   blacklist: readonly string[],
@@ -48,20 +49,18 @@ export async function handleAddBlacklist(
 
   let targetDomain = rawVal;
   try {
-    if (targetDomain.includes('://')) {
-      targetDomain = new URL(targetDomain).hostname;
-    }
-  } catch {
-    // 容错
+    if (targetDomain.includes('://')) targetDomain = new URL(targetDomain).hostname;
+  } catch (err) {
+    logger.debug('handleAddBlacklist: URL parse fallback', err);
   }
 
   const clean = normalizeHostname(targetDomain);
   if (!clean || clean.length < 3) return;
 
   const storage = await new Promise<StorageSchema>((resolve) => {
-    chrome.storage.sync.get(['userWhitelist', 'userBlacklist'], (res) => {
-      resolve(res as StorageSchema);
-    });
+    chrome.storage.sync.get(['userWhitelist', 'userBlacklist'], (res) =>
+      resolve(res as StorageSchema),
+    );
   });
 
   const currentBlacklist = storage.userBlacklist ?? [];

@@ -5,16 +5,15 @@ import { renderSitePolicy } from './site-policy-view';
 
 export async function getStorage(): Promise<StorageSchema> {
   return new Promise((resolve) => {
-    chrome.storage.sync.get(['userWhitelist', 'userBlacklist', 'githubToken', 'lang'], (res) => {
-      resolve(res as StorageSchema);
-    });
+    chrome.storage.sync.get(['userWhitelist', 'userBlacklist', 'githubToken', 'lang'], (res) =>
+      resolve(res as StorageSchema),
+    );
   });
 }
 
 export async function render(): Promise<void> {
   const storage = await getStorage();
   const currentLang: SupportedLang = storage.lang || 'zh-CN';
-  const whitelist = storage.userWhitelist ?? [];
   const blacklist = storage.userBlacklist ?? [];
 
   const langSelect = document.getElementById('lang-select') as HTMLSelectElement;
@@ -23,9 +22,9 @@ export async function render(): Promise<void> {
   document.getElementById('lbl-language')!.textContent = t('language', currentLang);
   const githubLink = document.getElementById('github-link') as HTMLAnchorElement | null;
   if (githubLink) {
-    const repoLabel = t('openGithubRepo', currentLang);
-    githubLink.setAttribute('aria-label', repoLabel);
-    githubLink.setAttribute('title', repoLabel);
+    const label = t('openGithubRepo', currentLang);
+    githubLink.setAttribute('aria-label', label);
+    githubLink.setAttribute('title', label);
   }
   document.getElementById('lbl-title')!.textContent = t('popupTitle', currentLang);
   document.getElementById('lbl-blacklist-title')!.textContent = t(
