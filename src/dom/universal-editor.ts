@@ -5,6 +5,7 @@ export class UniversalEditor {
 
   /**
    * 校验 file input 是否具备接收文本/文档附件的能力
+   * 采用宽松防御策略：只要不是明确仅限图片/音视频的专用控件，均允许挂载 Markdown
    */
   private static isValidFileInput(
     input: HTMLInputElement,
@@ -105,7 +106,7 @@ export class UniversalEditor {
 
   /**
    * 策略 1: 扫描并触发原生 input[type="file"] 挂载
-   * 针对豆包在 document 层设置冒泡屏障，防止微前端基座二次委托
+   * 针对豆包设立 document 冒泡屏障，允许通过 #root 委托，但阻止渗透至 window
    */
   private static tryUploadViaFileInput(
     file: File,
@@ -132,6 +133,7 @@ export class UniversalEditor {
       document.body,
     ].filter((scope): scope is Element => Boolean(scope));
 
+    // 跨作用域去重收集候选控件，杜绝多重 scope 重复扫描相同控件
     const seenInputs = new Set<HTMLInputElement>();
     const candidateInputs: HTMLInputElement[] = [];
 
@@ -149,7 +151,7 @@ export class UniversalEditor {
 
     if (candidateInputs.length === 0) return false;
 
-    // 优先选取与当前输入框最近且可见的单一控件
+    // 优先级排序：专属于 Markdown/文档的控件 > 离当前输入框最近的控件 > 可见控件
     candidateInputs.sort((a, b) => {
       const aAccept = (a.accept || "").toLowerCase();
       const bAccept = (b.accept || "").toLowerCase();
@@ -186,7 +188,8 @@ export class UniversalEditor {
 
     const fileInput = candidateInputs[0];
 
-    const stopChangeAtDoc = (e: Event): void => {
+    // 冒泡屏障：在 document 层停止冒泡，阻止事件穿透到全局 window
+    const stopBubbleAtDocument = (e: Event): void => {
       e.stopPropagation();
     };
 
@@ -194,7 +197,7 @@ export class UniversalEditor {
       try {
         fileInput.value = "";
       } catch {
-        // 静默忽略只读受限
+        // 部分浏览器受限属性设空静默忽略
       }
 
       const descriptor = Object.getOwnPropertyDescriptor(
@@ -218,7 +221,7 @@ export class UniversalEditor {
       }
 
       if (isDoubao) {
-        document.addEventListener("change", stopChangeAtDoc, {
+        document.addEventListener("change", stopBubbleAtDocument, {
           capture: false,
           once: true,
         });
@@ -233,14 +236,13 @@ export class UniversalEditor {
       return false;
     } finally {
       if (isDoubao) {
-        document.removeEventListener("change", stopChangeAtDoc, false);
+        document.removeEventListener("change", stopBubbleAtDocument, false);
       }
     }
   }
 
   /**
-   * 策略 2: 单靶向模拟 ClipboardEvent('paste')
-   * 针对豆包等平台设置 document 冒泡屏障，阻止冒泡到 window 全局监听器
+   * 策略 2: 单靶向精准模拟 ClipboardEvent('paste') 携带 File 对象
    */
   private static tryPasteEvent(
     activeEl: HTMLElement | null,
@@ -257,7 +259,7 @@ export class UniversalEditor {
     const currentHost = window.location.hostname.toLowerCase();
     const isDoubao = currentHost.includes("doubao.com");
 
-    const stopPasteAtDoc = (e: Event): void => {
+    const stopBubbleAtDocument = (e: Event): void => {
       e.stopPropagation();
     };
 
@@ -265,7 +267,7 @@ export class UniversalEditor {
       target.focus();
 
       if (isDoubao) {
-        document.addEventListener("paste", stopPasteAtDoc, {
+        document.addEventListener("paste", stopBubbleAtDocument, {
           capture: false,
           once: true,
         });
@@ -284,14 +286,13 @@ export class UniversalEditor {
       return false;
     } finally {
       if (isDoubao) {
-        document.removeEventListener("paste", stopPasteAtDoc, false);
+        document.removeEventListener("paste", stopBubbleAtDocument, false);
       }
     }
   }
 
   /**
    * 策略 3: 精准单靶心 Drag & Drop 状态机仿真
-   * 针对豆包等平台设置 document 冒泡屏障，阻止冒泡到 window 全局拖拽层
    */
   private static tryDragAndDrop(
     activeEl: HTMLElement | null,
@@ -312,13 +313,13 @@ export class UniversalEditor {
     const currentHost = window.location.hostname.toLowerCase();
     const isDoubao = currentHost.includes("doubao.com");
 
-    const stopDropAtDoc = (e: Event): void => {
+    const stopBubbleAtDocument = (e: Event): void => {
       e.stopPropagation();
     };
 
     try {
       if (isDoubao) {
-        document.addEventListener("drop", stopDropAtDoc, {
+        document.addEventListener("drop", stopBubbleAtDocument, {
           capture: false,
           once: true,
         });
@@ -339,13 +340,13 @@ export class UniversalEditor {
       return false;
     } finally {
       if (isDoubao) {
-        document.removeEventListener("drop", stopDropAtDoc, false);
+        document.removeEventListener("drop", stopBubbleAtDocument, false);
       }
     }
   }
 
   /**
-   * 互斥式文件挂载入口
+   * 互斥式文件挂载入口：增加 1500ms 任务指纹锁与并发锁
    */
   public static attachVirtualFile(
     file: File,
@@ -377,18 +378,18 @@ export class UniversalEditor {
       const isDoubao = currentHost.includes("doubao.com");
 
       if (isDoubao) {
-        // 豆包平台优先使用带顶层冒泡屏障的 Paste / Drop 状态机
+        // 豆包平台优先使用单靶向 input 挂载（带 document 冒泡屏障）
+        if (this.tryUploadViaFileInput(file, activeEl, dataTransfer)) {
+          return true;
+        }
         if (this.tryPasteEvent(activeEl, dataTransfer)) {
           return true;
         }
         if (this.tryDragAndDrop(activeEl, dataTransfer)) {
           return true;
         }
-        if (this.tryUploadViaFileInput(file, activeEl, dataTransfer)) {
-          return true;
-        }
       } else {
-        // 其他平台维持标准级联策略
+        // 其他主流平台执行标准级联
         if (this.tryUploadViaFileInput(file, activeEl, dataTransfer)) {
           return true;
         }
@@ -409,7 +410,7 @@ export class UniversalEditor {
   }
 
   /**
-   * 轻量化文本光标注入（降级回退通道）
+   * 轻量化文本光标注入（降级兜底通道）
    */
   public static insertAtCursor(
     text: string,
