@@ -68,39 +68,80 @@ export class UniversalEditor {
   }
 
   /**
-   * 查找页面中可能存在的附件上传按钮并尝试唤起隐藏的 input
-   * 兼顾中英文界面的 aria-label 与 title 属性
+   * 清理并解绑物理 input 节点上的文件常驻状态，
+   * 防止文件持续悬挂导致后续操作重复提交
    */
-  private static tryWakeUploadInput(): void {
-    const uploadBtnSelectors = [
-      'button[aria-label*="上传"]',
-      'button[aria-label*="文件"]',
-      'button[aria-label*="附件"]',
-      'button[title*="上传"]',
-      'button[title*="文件"]',
-      'button[title*="附件"]',
-      'div[role="button"][aria-label*="上传"]',
-      'div[role="button"][title*="上传"]',
-      'button[aria-label*="upload" i]',
-      'button[aria-label*="attach" i]',
-      'button[aria-label*="file" i]',
-      'button[title*="upload" i]',
-      'button[title*="attach" i]',
-      'button[title*="file" i]',
-      'div[role="button"][aria-label*="upload" i]',
-      'div[role="button"][aria-label*="attach" i]',
-      'div[role="button"][title*="upload" i]',
-      'div[role="button"][title*="attach" i]',
-      '[class*="upload-btn"]',
-      '[class*="attach-btn"]',
-    ];
+  private static cleanUpFileInput(fileInput: HTMLInputElement): void {
+    try {
+      const emptyDT = new DataTransfer();
+      const descriptor = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "files",
+      );
 
-    for (const selector of uploadBtnSelectors) {
-      const btn = document.querySelector<HTMLElement>(selector);
-      if (btn && btn.offsetWidth > 0 && btn.offsetHeight > 0) {
-        btn.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
-        break;
+      if (descriptor?.set) {
+        descriptor.set.call(fileInput, emptyDT.files);
+      } else {
+        fileInput.files = emptyDT.files;
       }
+
+      fileInput.value = "";
+
+      const tracker = (
+        fileInput as unknown as {
+          _valueTracker?: { setValue: (val: string) => void };
+        }
+      )._valueTracker;
+
+      if (tracker) {
+        tracker.setValue("");
+      }
+    } catch {
+      // 容错处理
+    }
+  }
+
+  /**
+   * 将文件挂载到指定 input，并派发 input / change 事件通知宿主框架
+   */
+  private static mountFileToInput(
+    input: HTMLInputElement,
+    dataTransfer: DataTransfer,
+  ): void {
+    try {
+      const descriptor = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "files",
+      );
+
+      if (descriptor?.set) {
+        descriptor.set.call(input, dataTransfer.files);
+      } else {
+        input.files = dataTransfer.files;
+      }
+
+      const tracker = (
+        input as unknown as {
+          _valueTracker?: { setValue: (val: string) => void };
+        }
+      )._valueTracker;
+      if (tracker) {
+        tracker.setValue("");
+      }
+
+      input.dispatchEvent(
+        new Event("input", { bubbles: true, composed: true }),
+      );
+      input.dispatchEvent(
+        new Event("change", { bubbles: true, composed: true }),
+      );
+
+      // 留出异步读取窗口后清空物理 DOM 节点，防止文件常驻挂载
+      setTimeout(() => {
+        UniversalEditor.cleanUpFileInput(input);
+      }, 1000);
+    } catch {
+      // 容错处理
     }
   }
 
@@ -112,11 +153,6 @@ export class UniversalEditor {
     activeEl: HTMLElement | null,
     dataTransfer: DataTransfer,
   ): boolean {
-    this.tryWakeUploadInput();
-
-    const currentHost = window.location.hostname.toLowerCase();
-    const isDoubao = currentHost.includes("doubao.com");
-
     const searchScopes = [
       activeEl?.closest("form"),
       activeEl?.closest('[class*="chat"]'),
@@ -139,48 +175,8 @@ export class UniversalEditor {
 
       for (const fileInput of fileInputs) {
         if (!this.isValidFileInput(fileInput, file)) continue;
-
-        try {
-          // 通过原型链 Setter 绕过 React 受控组件拦截
-          const descriptor = Object.getOwnPropertyDescriptor(
-            HTMLInputElement.prototype,
-            "files",
-          );
-
-          if (descriptor?.set) {
-            descriptor.set.call(fileInput, dataTransfer.files);
-          } else {
-            fileInput.files = dataTransfer.files;
-          }
-
-          // 同步重置 React 内部 valueTracker
-          const tracker = (
-            fileInput as unknown as {
-              _valueTracker?: { setValue: (val: string) => void };
-            }
-          )._valueTracker;
-          if (tracker) {
-            tracker.setValue("");
-          }
-
-          if (isDoubao) {
-            // 豆包平台派发非冒泡 change 事件，防止 #root 委托层与原生监听器各执行一次导致双重上传
-            const changeEvent = new Event("change", {
-              bubbles: false,
-              cancelable: true,
-              composed: false,
-            });
-            fileInput.dispatchEvent(changeEvent);
-          } else {
-            fileInput.dispatchEvent(
-              new Event("change", { bubbles: true, composed: true }),
-            );
-          }
-
-          return true;
-        } catch {
-          // 遇到受限 DOM 节点静默切换下一候选
-        }
+        this.mountFileToInput(fileInput, dataTransfer);
+        return true;
       }
     }
 
@@ -188,7 +184,7 @@ export class UniversalEditor {
   }
 
   /**
-   * 策略 2: 单靶向精准模拟 ClipboardEvent('paste') 携带 File 对象
+   * 策略 2: 剪贴板事件仿真
    */
   private static tryPasteEvent(
     activeEl: HTMLElement | null,
@@ -204,14 +200,22 @@ export class UniversalEditor {
 
     try {
       target.focus();
+
       const pasteEvent = new ClipboardEvent("paste", {
         bubbles: true,
         cancelable: true,
         composed: true,
-        clipboardData: dataTransfer,
+      });
+
+      Object.defineProperty(pasteEvent, "clipboardData", {
+        configurable: true,
+        get() {
+          return dataTransfer;
+        },
       });
 
       target.dispatchEvent(pasteEvent);
+
       return true;
     } catch {
       return false;
@@ -219,26 +223,21 @@ export class UniversalEditor {
   }
 
   /**
-   * 策略 3: 全局与局部穿透式 Drag & Drop 状态机多靶心仿真
+   * 策略 3: 单靶向 Drag & Drop 状态机仿真
    */
   private static tryDragAndDrop(
     activeEl: HTMLElement | null,
     dataTransfer: DataTransfer,
   ): boolean {
-    const candidateTargets = [
-      activeEl,
-      activeEl?.closest('[class*="chat"]'),
-      activeEl?.closest('[class*="input"]'),
-      activeEl?.closest('[class*="editor"]'),
-      document.querySelector('[data-dropzone="true"]'),
-      document.querySelector('[class*="dropzone"]'),
-      document.querySelector('[class*="drop-target"]'),
-      document.querySelector('[role="main"]'),
-      document.querySelector("main"),
-      document.body,
-    ].filter((el): el is HTMLElement => Boolean(el));
+    const candidateTarget =
+      activeEl?.closest('[class*="chat"]') ||
+      activeEl?.closest('[class*="input"]') ||
+      activeEl ||
+      document.querySelector('[data-dropzone="true"]') ||
+      document.querySelector('[class*="dropzone"]') ||
+      document.querySelector("main");
 
-    if (candidateTargets.length === 0) return false;
+    if (!candidateTarget) return false;
 
     try {
       const eventInit: DragEventInit = {
@@ -248,15 +247,10 @@ export class UniversalEditor {
         dataTransfer,
       };
 
-      for (const target of candidateTargets) {
-        const dragEnter = new DragEvent("dragenter", eventInit);
-        const dragOver = new DragEvent("dragover", eventInit);
-        const drop = new DragEvent("drop", eventInit);
+      candidateTarget.dispatchEvent(new DragEvent("dragenter", eventInit));
+      candidateTarget.dispatchEvent(new DragEvent("dragover", eventInit));
+      candidateTarget.dispatchEvent(new DragEvent("drop", eventInit));
 
-        target.dispatchEvent(dragEnter);
-        target.dispatchEvent(dragOver);
-        target.dispatchEvent(drop);
-      }
       return true;
     } catch {
       return false;
@@ -264,7 +258,128 @@ export class UniversalEditor {
   }
 
   /**
-   * 互斥式文件挂载入口：增加 1500ms 任务指纹时间锁与精准熔断机制
+   * 豆包专用文件挂载流程
+   *
+   * 豆包输入框是 tiptap / ProseMirror contenteditable，页面初始没有任何
+   * input[type="file"]，只有在点击附件按钮后才动态创建隐藏 input。
+   *
+   * paste / drop 路径在豆包上均被实测证明不可行（sync-input-engine 会剥离
+   * clipboardData，tiptap handleDrop 只处理图片），唯一可行路径是：
+   *
+   *   1. 精确定位附件按钮 button[data-testid="upload_file_button"]
+   *   2. 在 document 上安装捕获阶段的 click 拦截器，阻止浏览器弹出系统文件
+   *      选择器（豆包内部通过向 input 元素派发 click 事件触发，绕过
+   *      HTMLInputElement.prototype.click / showPicker）
+   *   3. 派发合成 click 触发 React onClick，让豆包渲染出隐藏 input
+   *   4. 挂载文件到 input 并派发 input / change 事件
+   *   5. 1 秒后移除拦截器，恢复用户后续正常操作
+   */
+  private static tryDoubaoUpload(
+    file: File,
+    dataTransfer: DataTransfer,
+  ): boolean {
+    // 1. 快路径：input 可能已经在 DOM 中
+    const directInput = document.querySelector<HTMLInputElement>(
+      'input[data-testid="upload-file-input"], input[type="file"]',
+    );
+
+    if (directInput && this.isValidFileInput(directInput, file)) {
+      this.mountFileToInput(directInput, dataTransfer);
+      return true;
+    }
+
+    // 2. 慢路径：点击附件按钮触发 input 渲染
+    const attachBtn = document.querySelector<HTMLElement>(
+      'button[data-testid="upload_file_button"]',
+    );
+
+    if (!attachBtn) {
+      return false;
+    }
+
+    // 安装捕获阶段的 click 拦截器：阻止浏览器弹出系统文件选择器。
+    // 捕获阶段在 document 上会先于豆包任何监听器执行，因此 100% 拦截。
+    // 仅拦截目标为 file input 的 click，不影响其他元素。
+    const clickBlocker = (e: Event): void => {
+      const target = e.target;
+      if (target instanceof HTMLInputElement && target.type === "file") {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+      }
+    };
+
+    document.addEventListener("click", clickBlocker, true);
+
+    // 兼容 patch：部分 Chrome 版本可能走 showPicker 路径
+    const originalShowPicker = (
+      HTMLInputElement.prototype as unknown as {
+        showPicker?: () => void;
+      }
+    ).showPicker;
+    let showPickerPatched = false;
+
+    if (typeof originalShowPicker === "function") {
+      try {
+        (
+          HTMLInputElement.prototype as unknown as {
+            showPicker: () => void;
+          }
+        ).showPicker = function (this: HTMLInputElement): void {
+          if (this.type === "file") return;
+          return originalShowPicker.call(this);
+        };
+        showPickerPatched = true;
+      } catch {
+        // 容错处理
+      }
+    }
+
+    // 派发合成 click 触发 React onClick，让豆包渲染出 input
+    try {
+      attachBtn.dispatchEvent(
+        new MouseEvent("click", {
+          bubbles: true,
+          cancelable: true,
+          view: window,
+        }),
+      );
+    } catch {
+      // 容错处理
+    }
+
+    // 3. 延迟扫描新出现的 input 并挂载文件
+    setTimeout(() => {
+      const newInput = document.querySelector<HTMLInputElement>(
+        'input[data-testid="upload-file-input"], input[type="file"]',
+      );
+
+      if (newInput && this.isValidFileInput(newInput, file)) {
+        this.mountFileToInput(newInput, dataTransfer);
+      }
+    }, 200);
+
+    // 4. 1 秒后移除拦截器和恢复 patch，保证用户后续操作完全正常
+    setTimeout(() => {
+      try {
+        document.removeEventListener("click", clickBlocker, true);
+        if (showPickerPatched) {
+          (
+            HTMLInputElement.prototype as unknown as {
+              showPicker?: () => void;
+            }
+          ).showPicker = originalShowPicker;
+        }
+      } catch {
+        // 容错处理
+      }
+    }, 1000);
+
+    return true;
+  }
+
+  /**
+   * 互斥式文件挂载入口
    */
   public static attachVirtualFile(
     file: File,
@@ -287,17 +402,20 @@ export class UniversalEditor {
     const dataTransfer = new DataTransfer();
     dataTransfer.items.add(file);
 
-    // 优先策略 1: 扫描并触发 input[type="file"]
+    const currentHost = window.location.hostname.toLowerCase();
+
+    // 豆包专用分支
+    if (currentHost.includes("doubao.com")) {
+      return this.tryDoubaoUpload(file, dataTransfer);
+    }
+
+    // 其他站点：file input → paste → drop
     if (this.tryUploadViaFileInput(file, activeEl, dataTransfer)) {
       return true;
     }
-
-    // 优先策略 2: 模拟粘贴 ClipboardEvent
     if (this.tryPasteEvent(activeEl, dataTransfer)) {
       return true;
     }
-
-    // 优先策略 3: 模拟拖拽 Drag & Drop
     if (this.tryDragAndDrop(activeEl, dataTransfer)) {
       return true;
     }

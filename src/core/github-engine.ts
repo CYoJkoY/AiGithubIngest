@@ -101,7 +101,11 @@ export class GitHubEngine {
     }
 
     // 通道 2: codeload 直链兜底（仅限无 Token 且为公共仓库时）
-    const fallbackBranches = [branch, "main", "master"].filter(Boolean);
+    // 防御性保护：若用户明确指定了分支（target.ref），绝不允许 fallback 到 main/master，避免悄悄拉取错误分支代码
+    const fallbackBranches = target.ref
+      ? [branch]
+      : [branch, "main", "master"].filter(Boolean);
+
     for (const b of fallbackBranches) {
       const codeloadUrl = `https://codeload.github.com/${target.owner}/${target.repo}/legacy.zip/refs/heads/${encodeURIComponent(b)}`;
       try {
