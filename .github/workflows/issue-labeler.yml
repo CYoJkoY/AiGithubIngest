@@ -1,0 +1,190 @@
+name: Issue Triage & Auto Labeler
+
+on:
+  issues:
+    types:
+      - opened
+      - edited
+
+permissions:
+  issues: write
+  contents: read
+
+concurrency:
+  group: issue-labeler-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  triage-and-label:
+    name: Automatic Issue Labeling
+    runs-on: ubuntu-latest
+    if: github.actor != 'github-actions[bot]'
+
+    steps:
+      - name: Apply labels based on template and metadata
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            if (!issue) return;
+
+            const title = String(issue.title || '').trim();
+            const body = String(issue.body || '');
+            const labelsToAdd = new Set();
+
+            // 1. 根据 Issue 标题前缀推断基础类型标签
+            if (/^\[Bug\]/i.test(title)) {
+              labelsToAdd.add('type: bug');
+              labelsToAdd.add('status: triage');
+            } else if (/^\[Feature\]/i.test(title)) {
+              labelsToAdd.add('type: feature');
+              labelsToAdd.add('status: triage');
+            } else if (/^\[Site Support\]/i.test(title)) {
+              labelsToAdd.add('type: site-support');
+              labelsToAdd.add('status: triage');
+            } else if (/^\[Docs\]/i.test(title)) {
+              labelsToAdd.add('type: documentation');
+              labelsToAdd.add('status: triage');
+            }
+
+            // 2. 正则解析 GitHub Issue Form 渲染后的标题分块 (### Heading)
+            function extractSectionValue(headingName) {
+              const escaped = headingName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              const regex = new RegExp(`###\\s+${escaped}[^\\n]*\\n+([^#\\n][^\\n]*)`, 'i');
+              const match = body.match(regex);
+              return match ? match[1].trim() : '';
+            }
+
+            // 3. 提取目标 AI 平台 (Target AI Platform)
+            const platformRaw = extractSectionValue('Target AI Platform');
+            if (platformRaw) {
+              const pLower = platformRaw.toLowerCase();
+              if (pLower.includes('chatgpt')) labelsToAdd.add('platform: chatgpt');
+              else if (pLower.includes('claude')) labelsToAdd.add('platform: claude');
+              else if (pLower.includes('gemini')) labelsToAdd.add('platform: gemini');
+              else if (pLower.includes('deepseek')) labelsToAdd.add('platform: deepseek');
+              else if (pLower.includes('poe')) labelsToAdd.add('platform: poe');
+              else if (pLower.includes('perplexity')) labelsToAdd.add('platform: perplexity');
+              else if (pLower.includes('kimi')) labelsToAdd.add('platform: kimi');
+              else if (pLower.includes('chatglm')) labelsToAdd.add('platform: chatglm');
+              else if (pLower.includes('qianwen') || pLower.includes('qwen') || pLower.includes('tongyi')) labelsToAdd.add('platform: qwen');
+              else if (pLower.includes('copilot')) labelsToAdd.add('platform: copilot');
+              else if (pLower.includes('doubao')) labelsToAdd.add('platform: doubao');
+              else if (pLower.includes('yuanbao')) labelsToAdd.add('platform: yuanbao');
+              else if (pLower.includes('custom whitelisted')) labelsToAdd.add('platform: custom-domain');
+              else if (pLower.includes('standalone')) labelsToAdd.add('platform: standalone-ui');
+            }
+
+            // 4. 提取影响的子系统 (Affected Subsystem)
+            const subsystemRaw = extractSectionValue('Affected Subsystem');
+            if (subsystemRaw) {
+              const sLower = subsystemRaw.toLowerCase();
+              if (sLower.includes('github-engine') || sLower.includes('ingest') || sLower.includes('fflate')) {
+                labelsToAdd.add('subsystem: core');
+              } else if (sLower.includes('file-filter') || sLower.includes('glob')) {
+                labelsToAdd.add('subsystem: filter');
+              } else if (sLower.includes('tree-builder') || sLower.includes('output-formatter')) {
+                labelsToAdd.add('subsystem: tree');
+              } else if (sLower.includes('token-estimator')) {
+                labelsToAdd.add('subsystem: token');
+              } else if (sLower.includes('universal-editor') || sLower.includes('mounting')) {
+                labelsToAdd.add('subsystem: dom');
+              } else if (sLower.includes('popup') || sLower.includes('storage') || sLower.includes('policy')) {
+                labelsToAdd.add('subsystem: popup');
+              } else if (sLower.includes('index.html') || sLower.includes('main.ts') || sLower.includes('standalone')) {
+                labelsToAdd.add('subsystem: standalone');
+              }
+            }
+
+            // 5. 提取运行浏览器环境 (Browser Environment)
+            const browserRaw = extractSectionValue('Browser Environment');
+            if (browserRaw) {
+              const bLower = browserRaw.toLowerCase();
+              if (bLower.includes('chrome')) labelsToAdd.add('browser: chrome');
+              else if (bLower.includes('edge')) labelsToAdd.add('browser: edge');
+              else if (bLower.includes('brave')) labelsToAdd.add('browser: brave');
+              else if (bLower.includes('arc')) labelsToAdd.add('browser: arc');
+              else if (bLower.includes('vivaldi')) labelsToAdd.add('browser: vivaldi');
+            }
+
+            // 6. 提取文档影响范围 (Documentation Area)
+            const docAreaRaw = extractSectionValue('Documentation Area');
+            if (docAreaRaw) {
+              labelsToAdd.add('type: documentation');
+              labelsToAdd.add('status: triage');
+            }
+
+            if (labelsToAdd.size === 0) {
+              console.log('未匹配到需要自动添加的标签。');
+              return;
+            }
+
+            const desiredLabels = Array.from(labelsToAdd);
+            console.log(`准备添加标签到 Issue #${issue.number}:`, desiredLabels);
+
+            // 7. 防御性标签存在性检查与创建（若仓库中未建立该标签则自动创建，防止 API 抛错）
+            const labelDefinitions = {
+              'type: bug': { color: 'd73a4a', description: 'Something is not working as expected' },
+              'type: feature': { color: 'a2eeef', description: 'New capability or enhancement' },
+              'type: site-support': { color: 'bfdadc', description: 'Request support for a new AI chat domain' },
+              'type: documentation': { color: '0075ca', description: 'Improvements or additions to documentation' },
+              'status: triage': { color: 'fbca04', description: 'Awaiting triaging and verification' },
+              'subsystem: core': { color: '0e8a16', description: 'github-engine, streaming decompression, ingest core' },
+              'subsystem: dom': { color: '1d76db', description: 'universal-editor and platform adapters' },
+              'subsystem: popup': { color: '5319e7', description: 'Extension popup, settings and storage' },
+              'subsystem: filter': { color: 'c2e0c6', description: 'Path ignore and glob pattern filtering' },
+              'subsystem: tree': { color: 'bfd4f2', description: 'Directory tree and output formatter' },
+              'subsystem: token': { color: 'd4c5f9', description: 'Heuristic token estimation' },
+              'subsystem: standalone': { color: 'fef2c0', description: 'Standalone web UI (index.html)' },
+              'platform: chatgpt': { color: '10a37f', description: 'ChatGPT (chatgpt.com)' },
+              'platform: claude': { color: 'd97706', description: 'Claude (claude.ai)' },
+              'platform: gemini': { color: '2563eb', description: 'Google Gemini (gemini.google.com)' },
+              'platform: deepseek': { color: '0284c7', description: 'DeepSeek (chat.deepseek.com)' },
+              'platform: poe': { color: '7c3aed', description: 'Poe (poe.com)' },
+              'platform: perplexity': { color: '0d9488', description: 'Perplexity (perplexity.ai)' },
+              'platform: kimi': { color: 'ea580c', description: 'Kimi (kimi.moonshot.cn)' },
+              'platform: chatglm': { color: '4f46e5', description: 'ChatGLM (chatglm.cn)' },
+              'platform: qwen': { color: '6366f1', description: 'Tongyi Qianwen / Qwen' },
+              'platform: copilot': { color: '059669', description: 'Microsoft Copilot' },
+              'platform: doubao': { color: '3b82f6', description: 'Doubao (doubao.com)' },
+              'platform: yuanbao': { color: '06b6d4', description: 'Tencent Yuanbao (yuanbao.tencent.com)' },
+              'platform: custom-domain': { color: '64748b', description: 'Custom whitelisted domain' },
+              'platform: standalone-ui': { color: '94a3b8', description: 'Standalone UI' },
+              'browser: chrome': { color: 'f59e0b', description: 'Google Chrome' },
+              'browser: edge': { color: '0284c7', description: 'Microsoft Edge' },
+              'browser: brave': { color: 'f97316', description: 'Brave Browser' },
+              'browser: arc': { color: 'ec4899', description: 'Arc Browser' },
+              'browser: vivaldi': { color: 'ef4444', description: 'Vivaldi Browser' }
+            };
+
+            for (const labelName of desiredLabels) {
+              try {
+                await github.rest.issues.getLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: labelName
+                });
+              } catch (err) {
+                if (err.status === 404) {
+                  const def = labelDefinitions[labelName] || { color: 'ededed', description: '' };
+                  console.log(`Label [${labelName}] 不存在，正在自动创建...`);
+                  await github.rest.issues.createLabel({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    name: labelName,
+                    color: def.color,
+                    description: def.description
+                  });
+                }
+              }
+            }
+
+            // 8. 批量附加标签
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              labels: desiredLabels
+            });
+
+            console.log(`✅ Issue #${issue.number} 自动打标签完成。`);

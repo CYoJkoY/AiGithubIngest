@@ -6,3 +6,6 @@ contact_links:
   - name: Documentation & Architecture
     url: https://github.com/CYoJkoY/AiGithubIngest#readme
     about: Review supported platforms, architectural boundaries, and configuration details.
+  - name: Project Sponsorship
+    url: https://cyojkoy.github.io/Payment/
+    about: Support ongoing maintenance, browser hardening, and streaming decompression updates.

@@ -1,0 +1,41 @@
+name: 'Documentation'
+description: 'Report an inaccuracy, broken link, missing platform guide, or propose documentation improvements.'
+title: '[Docs]: <short summary>'
+labels:
+  - 'type: documentation'
+  - 'status: triage'
+body:
+  - type: dropdown
+    id: doc-area
+    attributes:
+      label: Documentation Area
+      options:
+        - 'README.md (Homepage & Supported Platforms Table)'
+        - 'Architecture & Invariants (Module Boundaries & Flow)'
+        - 'Development & Build Workflow (pnpm / Vitest / esbuild)'
+        - 'Release & Manifest Version Contract'
+        - 'Security, Token Storage & Privacy Policy'
+        - 'Other'
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Problem Description
+      description: What is inaccurate, ambiguous, or missing in the current documentation?
+      placeholder: 'The README section regarding supported platforms does not clearly mention...'
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-fix
+    attributes:
+      label: Suggested Correction (Optional)
+      description: Provide the replacement text or concrete documentation edits if you have a draft.
+      placeholder: |
+        ```markdown
+        Update the table entry for ...
+        ```
+    validations:
+      required: false

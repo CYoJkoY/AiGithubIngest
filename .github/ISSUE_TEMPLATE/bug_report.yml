@@ -1,7 +1,9 @@
 name: 'Bug Report'
 description: 'Report an unexpected error, extraction failure, token estimation bug, or DOM injection defect.'
 title: '[Bug]: <one-line summary>'
-labels: ['type: bug', 'status: triage']
+labels:
+  - 'type: bug'
+  - 'status: triage'
 body:
   - type: markdown
     attributes:
@@ -14,8 +16,8 @@ body:
       label: Extension Version
       description: >
         Open `chrome://extensions`, locate the AiGithubIngest card, and copy the displayed
-        version. For example `0.6.0`. Development/version_name builds are no longer published.
-      placeholder: 'e.g. 0.6.0'
+        version. For example `0.6.2`.
+      placeholder: 'e.g. 0.6.2'
     validations:
       required: true
 
@@ -41,11 +43,13 @@ body:
         - Claude (claude.ai)
         - Google Gemini (gemini.google.com)
         - DeepSeek (chat.deepseek.com)
+        - Doubao (doubao.com)
+        - Tencent Yuanbao (yuanbao.tencent.com)
+        - Tongyi Qianwen (tongyi.aliyun.com / qwen.ai / qianwen.com)
         - Poe (poe.com)
         - Perplexity (perplexity.ai)
         - Kimi (kimi.moonshot.cn)
         - ChatGLM (chatglm.cn)
-        - Tongyi Qianwen (tongyi.aliyun.com)
         - Microsoft Copilot (copilot.microsoft.com)
         - Custom Whitelisted Domain
         - Standalone Web Interface (index.html)

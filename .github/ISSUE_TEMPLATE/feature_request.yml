@@ -1,7 +1,9 @@
 name: 'Feature Request'
 description: 'Suggest a new capability, file filter enhancement, token estimator improvement, or UX optimization.'
 title: '[Feature]: <short summary>'
-labels: ['type: feature', 'status: triage']
+labels:
+  - 'type: feature'
+  - 'status: triage'
 body:
   - type: dropdown
     id: category

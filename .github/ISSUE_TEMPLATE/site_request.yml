@@ -1,12 +1,14 @@
 name: 'Site Support Request'
 description: 'Propose adding a new AI chat platform to the default built-in policy or report DOM mounting compatibility for a specific domain.'
 title: '[Site Support]: Support <Platform Name / Domain>'
-labels: ['type: site-support', 'status: triage']
+labels:
+  - 'type: site-support'
+  - 'status: triage'
 body:
   - type: markdown
     attributes:
       value: |
-        AiGithubIngest natively activates on platforms like ChatGPT, Claude, and Gemini[cite: 1, 4]. If you regularly work on another AI interface, submit the platform details below.
+        AiGithubIngest natively activates on platforms like ChatGPT, Claude, Gemini, Doubao, and DeepSeek. If you regularly work on another AI interface, submit the platform details below.
 
   - type: input
     id: site-name

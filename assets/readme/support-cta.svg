@@ -1,40 +1,114 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 280" width="100%" role="img" aria-labelledby="supTitle supDesc">
-  <title id="supTitle">Support AiGithubIngest development</title>
-  <desc id="supDesc">Sponsorship call-to-action for AiGithubIngest — local, zero-proxy GitHub ingestion for AI conversations.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 190" width="780" height="190" fill="none" role="img" aria-labelledby="cta-title cta-desc">
+  <title id="cta-title">Support AiGithubIngest Development</title>
+  <desc id="cta-desc">Direct sponsorship banner for sustaining client-side zero-proxy GitHub ingestion engine development.</desc>
 
   <defs>
-    <style>
-      .bg       { fill: #0f172a; }
-      .frame    { fill: none; stroke: #334155; stroke-width: 2; }
-      .card     { fill: #1e293b; stroke: #334155; stroke-width: 2; }
-      .accent   { fill: #38bdf8; }
-      .accent-s { stroke: #38bdf8; stroke-width: 3; fill: none; stroke-linecap: round; stroke-linejoin: round; }
-      .accent-m { stroke: #38bdf8; stroke-width: 2.5; fill: none; stroke-linecap: round; stroke-linejoin: round; }
-      .eyebrow  { font: 600 20px "SF Mono", Consolas, "Liberation Mono", monospace; fill: #38bdf8; letter-spacing: 0.22em; }
-      .head     { font: 700 36px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; fill: #f8fafc; letter-spacing: -0.01em; }
-      .sub      { font: 400 22px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; fill: #94a3b8; }
-      .cta      { font: 600 24px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; fill: #38bdf8; letter-spacing: 0.02em; }
-    </style>
+    <!-- 主背景线性渐变 -->
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0B1120" />
+      <stop offset="50%" stop-color="#0F172A" />
+      <stop offset="100%" stop-color="#1E293B" />
+    </linearGradient>
+
+    <!-- 顶部高光微细线 -->
+    <linearGradient id="topGlow" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0" />
+      <stop offset="25%" stop-color="#38BDF8" stop-opacity="0.8" />
+      <stop offset="75%" stop-color="#0284C7" stop-opacity="0.8" />
+      <stop offset="100%" stop-color="#0284C7" stop-opacity="0" />
+    </linearGradient>
+
+    <!-- 核心按钮渐变 -->
+    <linearGradient id="btnGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0284C7" />
+      <stop offset="100%" stop-color="#2563EB" />
+    </linearGradient>
+
+    <!-- 流程流动渐变 -->
+    <linearGradient id="streamGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#38BDF8" />
+      <stop offset="100%" stop-color="#10B981" />
+    </linearGradient>
   </defs>
 
-  <rect class="bg" width="1240" height="280" rx="20"/>
-  <rect class="frame" x="1" y="1" width="1238" height="278" rx="19"/>
+  <!-- 外层自适应卡片底板（在 GitHub 浅色与深色背景下均具备独立完整对比度） -->
+  <rect x="1" y="1" width="778" height="188" rx="14" fill="url(#bgGradient)" stroke="#334155" stroke-width="1.5" />
+  <path d="M 18 1.5 L 762 1.5" stroke="url(#topGlow)" stroke-width="2" stroke-linecap="round" />
 
-  <!-- Project-derived mark: code file with outbound arrow -->
-  <g transform="translate(48 60)">
-    <rect class="card" x="0" y="0" width="160" height="160" rx="14"/>
-    <circle class="accent" cx="140" cy="20" r="5"/>
-    <line class="accent-s" x1="28" y1="52" x2="112" y2="52"/>
-    <line class="accent-m" x1="28" y1="80" x2="132" y2="80" opacity="0.7"/>
-    <line class="accent-m" x1="28" y1="108" x2="96" y2="108" opacity="0.5"/>
-    <path class="accent-s" d="M 60 132 L 100 132 M 88 120 L 100 132 L 88 144"/>
+  <!-- 背景科技感轻量辅助网格/参考线（极低不透明度，克制无噪点） -->
+  <g opacity="0.05" stroke="#94A3B8" stroke-width="1">
+    <line x1="240" y1="1" x2="240" y2="189" />
+    <line x1="1" y1="58" x2="779" y2="58" />
+    <line x1="1" y1="130" x2="779" y2="130" />
   </g>
 
-  <!-- Eyebrow / Head / Sub -->
-  <text x="248" y="94"  class="eyebrow">SUPPORT THE PROJECT</text>
-  <text x="248" y="146" class="head">Support AiGithubIngest</text>
-  <text x="248" y="188" class="sub">Local, zero-proxy GitHub ingestion for AI conversations.</text>
+  <!-- ==================== 左侧：项目原生机制可视化（内存流式解析流水线） ==================== -->
+  <g id="pipeline-panel">
+    <!-- 面板边框卡片 -->
+    <rect x="22" y="24" width="206" height="142" rx="10" fill="#070D1B" stroke="#1E293B" stroke-width="1.2" />
 
-  <!-- Right-side CTA label -->
-  <text x="1192" y="146" text-anchor="end" class="cta">Sponsor →</text>
+    <!-- 状态指示头 -->
+    <circle cx="36" cy="40" r="3.5" fill="#10B981" />
+    <text x="46" y="43.5" fill="#64748B" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="9.5" font-weight="600" letter-spacing="0.06em">CLIENT RUNTIME : RAM</text>
+
+    <!-- 节点 1：GitHub 源码 Zipball -->
+    <rect x="34" y="56" width="56" height="42" rx="6" fill="#111C33" stroke="#25354C" stroke-width="1" />
+    <!-- 仓库图标 -->
+    <path d="M48 68 C48 66 50 64 52 64 H60 C62 64 64 66 64 68 V76 H48 Z" fill="#38BDF8" fill-opacity="0.15" />
+    <path d="M49 67 H55 M49 71 H59 M49 75 H57" stroke="#38BDF8" stroke-width="1.2" stroke-linecap="round" />
+    <text x="62" y="91" text-anchor="middle" fill="#94A3B8" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, monospace" font-size="8.5">repo.zip</text>
+
+    <!-- 传输流向：内存解压缩（fflate Stream） -->
+    <path d="M 96 77 L 122 77" stroke="url(#streamGradient)" stroke-width="2" stroke-dasharray="3 2" />
+    <polygon points="122,74 128,77 122,80" fill="#10B981" />
+    <text x="112" y="71" text-anchor="middle" fill="#38BDF8" font-size="8" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, monospace" font-weight="700">fflate</text>
+
+    <!-- 节点 2：原生挂载 Markdown Digest -->
+    <rect x="134" y="56" width="82" height="42" rx="6" fill="#064E3B" fill-opacity="0.25" stroke="#059669" stroke-width="1" />
+    <!-- Markdown 文档小图标 -->
+    <path d="M148 64 H158 L164 70 V78 H148 Z" fill="#10B981" fill-opacity="0.2" stroke="#10B981" stroke-width="1.2" />
+    <polyline points="158,64 158,70 164,70" fill="none" stroke="#10B981" stroke-width="1.2" />
+    <text x="175" y="91" text-anchor="middle" fill="#34D399" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, monospace" font-size="8.5" font-weight="600">digest.md</text>
+
+    <!-- 底部安全与纯本地保证徽章 -->
+    <rect x="34" y="110" width="182" height="26" rx="5" fill="#0C1425" stroke="#1E293B" stroke-width="1" />
+    <!-- 盾牌/锁图标 -->
+    <path d="M47 119 L52 117 L57 119 V124 C57 127.5 52 131 52 131 C52 131 47 127.5 47 124 Z" fill="#10B981" fill-opacity="0.2" stroke="#10B981" stroke-width="1.2" stroke-linejoin="round" />
+    <text x="64" y="127" fill="#10B981" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="9.5" font-weight="600">100% In-Browser Privacy</text>
+  </g>
+
+  <!-- ==================== 右侧：信息架构、愿景与行动调用 ==================== -->
+  <g id="content-panel">
+    <!-- 类别徽章（Sponsorship & Maintenance） -->
+    <rect x="252" y="27" width="194" height="22" rx="11" fill="#0369A1" fill-opacity="0.18" stroke="#0284C7" stroke-width="1" />
+    <!-- 爱心符号 -->
+    <path d="M265 37.5 C263.5 35 260 35.5 259 37.5 C258 39.5 265 44 265 44 C265 44 272 39.5 271 37.5 C270 35.5 266.5 35 265 37.5 Z" fill="#38BDF8" />
+    <text x="277" y="42" fill="#38BDF8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="9.5" font-weight="700" letter-spacing="0.06em">SPONSORSHIP &amp; MAINTENANCE</text>
+
+    <!-- 主标题 -->
+    <text x="252" y="74" fill="#F8FAFC" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="19" font-weight="700" letter-spacing="-0.02em">Support AiGithubIngest Development</text>
+
+    <!-- 叙事陈述：具体而事实性地阐述赞助所支持的核心工程（依据 AzSkills 规范，拒绝虚无宣传） -->
+    <text x="252" y="96" fill="#94A3B8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12.5">Sustain local zero-proxy parsing, memory-safe streaming decompression,</text>
+    <text x="252" y="114" fill="#94A3B8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12.5">and continuous adapter maintenance for ChatGPT, Claude, Gemini &amp; DeepSeek.</text>
+
+    <!-- 行动与凭证栏 -->
+    <g id="actions-row">
+      <!-- 赞助触发主按钮 -->
+      <rect x="252" y="132" width="176" height="34" rx="7" fill="url(#btnGradient)" />
+      <text x="272" y="153.5" fill="#FFFFFF" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12.5" font-weight="600">Sponsor on Payment</text>
+      <!-- 箭头图标 -->
+      <path d="M 401 149 L 411 149 M 407 145 L 411 149 L 407 153" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+
+      <!-- 规范地址展示框（兼顾视觉凭证与可信跳转验证） -->
+      <rect x="434" y="132" width="224" height="34" rx="7" fill="#1E293B" fill-opacity="0.7" stroke="#334155" stroke-width="1" />
+      <!-- 外部链接图标 -->
+      <path d="M 449 146 H 455 V 152 M 455 146 L 447 154" stroke="#64748B" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" />
+      <text x="462" y="153.5" fill="#94A3B8" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="11">cyojkoy.github.io/Payment</text>
+
+      <!-- 开源协议与单通道契约徽章 -->
+      <rect x="666" y="132" width="90" height="34" rx="7" fill="#1E293B" fill-opacity="0.4" stroke="#334155" stroke-width="1" />
+      <text x="711" y="153.5" text-anchor="middle" fill="#64748B" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="10" font-weight="600">MIT LICENSE</text>
+    </g>
+  </g>
 </svg>
