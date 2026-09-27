@@ -66,42 +66,6 @@ export class UniversalEditor {
   }
 
   /**
-   * 查找页面中可能存在的附件上传按钮（仅 mouseenter 唤起）
-   */
-  private static tryWakeUploadInput(): void {
-    const uploadBtnSelectors = [
-      'button[aria-label*="上传"]',
-      'button[aria-label*="文件"]',
-      'button[aria-label*="附件"]',
-      'button[title*="上传"]',
-      'button[title*="文件"]',
-      'button[title*="附件"]',
-      'div[role="button"][aria-label*="上传"]',
-      'div[role="button"][title*="上传"]',
-      'button[aria-label*="upload" i]',
-      'button[aria-label*="attach" i]',
-      'button[aria-label*="file" i]',
-      'button[title*="upload" i]',
-      'button[title*="attach" i]',
-      'button[title*="file" i]',
-      'div[role="button"][aria-label*="upload" i]',
-      'div[role="button"][aria-label*="attach" i]',
-      'div[role="button"][title*="upload" i]',
-      'div[role="button"][title*="attach" i]',
-      '[class*="upload-btn"]',
-      '[class*="attach-btn"]',
-    ];
-
-    for (const selector of uploadBtnSelectors) {
-      const btn = document.querySelector<HTMLElement>(selector);
-      if (btn && btn.offsetWidth > 0 && btn.offsetHeight > 0) {
-        btn.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
-        break;
-      }
-    }
-  }
-
-  /**
    * 清理并解绑物理 input 节点上的文件常驻状态
    */
   private static cleanUpFileInput(fileInput: HTMLInputElement): void {
@@ -135,15 +99,58 @@ export class UniversalEditor {
   }
 
   /**
-   * 策略 1: 扫描并触发原生 input[type="file"] 挂载
+   * 将文件挂载到指定 input
+   */
+  private static mountFileToInput(
+    input: HTMLInputElement,
+    dataTransfer: DataTransfer,
+  ): void {
+    try {
+      const descriptor = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "files",
+      );
+
+      if (descriptor?.set) {
+        descriptor.set.call(input, dataTransfer.files);
+      } else {
+        input.files = dataTransfer.files;
+      }
+
+      const tracker = (
+        input as unknown as {
+          _valueTracker?: { setValue: (val: string) => void };
+        }
+      )._valueTracker;
+      if (tracker) {
+        tracker.setValue("");
+      }
+
+      input.dispatchEvent(
+        new Event("input", { bubbles: true, composed: true }),
+      );
+      input.dispatchEvent(
+        new Event("change", { bubbles: true, composed: true }),
+      );
+
+      console.log("[AiIngest] mountFileToInput: dispatched input/change");
+
+      setTimeout(() => {
+        UniversalEditor.cleanUpFileInput(input);
+      }, 1000);
+    } catch (e) {
+      console.log("[AiIngest] mountFileToInput failed", e);
+    }
+  }
+
+  /**
+   * 策略 1: 通用 file input 扫描（用于非豆包站点）
    */
   private static tryUploadViaFileInput(
     file: File,
     activeEl: HTMLElement | null,
     dataTransfer: DataTransfer,
   ): boolean {
-    this.tryWakeUploadInput();
-
     const searchScopes = [
       activeEl?.closest("form"),
       activeEl?.closest('[class*="chat"]'),
@@ -166,43 +173,8 @@ export class UniversalEditor {
 
       for (const fileInput of fileInputs) {
         if (!this.isValidFileInput(fileInput, file)) continue;
-
-        try {
-          const descriptor = Object.getOwnPropertyDescriptor(
-            HTMLInputElement.prototype,
-            "files",
-          );
-
-          if (descriptor?.set) {
-            descriptor.set.call(fileInput, dataTransfer.files);
-          } else {
-            fileInput.files = dataTransfer.files;
-          }
-
-          const tracker = (
-            fileInput as unknown as {
-              _valueTracker?: { setValue: (val: string) => void };
-            }
-          )._valueTracker;
-          if (tracker) {
-            tracker.setValue("");
-          }
-
-          fileInput.dispatchEvent(
-            new Event("change", { bubbles: true, composed: true }),
-          );
-          fileInput.dispatchEvent(
-            new Event("input", { bubbles: true, composed: true }),
-          );
-
-          setTimeout(() => {
-            UniversalEditor.cleanUpFileInput(fileInput);
-          }, 300);
-
-          return true;
-        } catch {
-          // 切换下一候选节点
-        }
+        this.mountFileToInput(fileInput, dataTransfer);
+        return true;
       }
     }
 
@@ -284,81 +256,54 @@ export class UniversalEditor {
   }
 
   /**
-   * 豆包专用：合成点击附件按钮 → 等 input 出现 → 挂载文件
+   * 豆包专用：通过 data-testid 精确定位 input / 触发按钮
    *
-   * 背景与实测（见 DevTools Console 日志）：
-   *   1. 豆包输入框是 tiptap / ProseMirror contenteditable，页面初始状态
-   *      没有任何 input[type="file"]。
-   *   2. paste 事件在豆包上完全无效：豆包内部的 sync-input-engine 会把
-   *      ClipboardEvent 剥离掉 clipboardData，导致 e.clipboardData 恒为
-   *      null，最终 0 上传。
-   *   3. drop 事件在豆包上也被静默忽略：tiptap 的 handleDrop 只处理图片，
-   *      Markdown 文件被丢弃。
-   *   4. 唯一可行路径：走豆包官方的附件按钮 → 让框架动态创建 input
-   *      [type="file"] → 挂载文件。
+   * 从用户提供的豆包 DOM 得出精确选择器：
+   *   - 附件按钮：button[data-testid="upload_file_button"]
+   *   - 文件输入：input[data-testid="upload-file-input"] 或 input[type="file"]
+   *   - input 的 accept 明确包含 .md，可直接上传 Markdown
    *
-   * 实现：
-   *   - 使用 dispatchEvent(new MouseEvent('click', ...)) 而不是 .click()，
-   *     因为合成 click 不满足 transient activation，不会弹出系统文件选择
-   *     对话框，但仍会触发 React 的 onClick 处理器让框架准备好 input。
-   *   - 记录点击前已存在的 input 集合，点击后延迟扫描新增的 input。
-   *   - 找到合适 input 后设置 files 并触发 input / change。
+   * 流程：
+   *   1. 直接查 input[data-testid="upload-file-input"]（快路径，input 可能已存在）
+   *   2. 若不存在，合成 click 到 button[data-testid="upload_file_button"]，
+   *      等待 200ms 后重新查 input 并挂载
+   *
+   * 说明：
+   *   - 合成 click 不满足 transient activation，Chrome 不会弹出系统文件选择器，
+   *     但会触发 React 的 onClick，让框架渲染出隐藏 input。
+   *   - 之前的 paste / drop 路径均已被实测证明不可行（豆包内部剥离 clipboardData，
+   *     tiptap handleDrop 只处理图片），此方案为唯一可行路径。
    */
-  private static tryDoubaoAttachmentFlow(
+  private static tryDoubaoUpload(
     file: File,
     dataTransfer: DataTransfer,
   ): boolean {
-    console.log("[AiIngest] doubao attachment flow start");
+    console.log("[AiIngest] doubao: tryDoubaoUpload start");
 
-    // 1. 定位附件按钮
-    const attachBtnSelectors = [
-      'button[aria-label*="上传"]',
-      'button[aria-label*="附件"]',
-      'button[aria-label*="文件"]',
-      'button[title*="上传"]',
-      'button[title*="附件"]',
-      'button[title*="文件"]',
-      'button[aria-label*="upload" i]',
-      'button[aria-label*="attach" i]',
-      'button[aria-label*="file" i]',
-      'button[title*="upload" i]',
-      'button[title*="attach" i]',
-      'button[title*="file" i]',
-      '[role="button"][aria-label*="上传"]',
-      '[role="button"][aria-label*="附件"]',
-      '[role="button"][aria-label*="upload" i]',
-      '[role="button"][aria-label*="attach" i]',
-    ];
+    // 1. 快路径：input 可能已经在 DOM 中
+    const directInput = document.querySelector<HTMLInputElement>(
+      'input[data-testid="upload-file-input"], input[type="file"]',
+    );
 
-    let attachBtn: HTMLElement | null = null;
-    let matchedSelector = "";
-    for (const sel of attachBtnSelectors) {
-      const el = document.querySelector<HTMLElement>(sel);
-      if (el && el.offsetWidth > 0 && el.offsetHeight > 0) {
-        attachBtn = el;
-        matchedSelector = sel;
-        break;
-      }
+    if (directInput && this.isValidFileInput(directInput, file)) {
+      console.log("[AiIngest] doubao: direct input found, mounting");
+      this.mountFileToInput(directInput, dataTransfer);
+      return true;
     }
 
+    // 2. 慢路径：点击附件按钮触发 input 渲染
+    const attachBtn = document.querySelector<HTMLElement>(
+      'button[data-testid="upload_file_button"]',
+    );
+
     if (!attachBtn) {
-      console.log("[AiIngest] doubao: no attachment button matched");
+      console.log("[AiIngest] doubao: no attach button found");
       return false;
     }
 
     console.log(
-      "[AiIngest] doubao: matched attachment button",
-      matchedSelector,
+      "[AiIngest] doubao: dispatching synthetic click on attach button",
     );
-
-    // 2. 记录点击前已有的 file input
-    const beforeInputs = new Set<HTMLInputElement>(
-      Array.from(
-        document.querySelectorAll<HTMLInputElement>('input[type="file"]'),
-      ),
-    );
-
-    // 3. 合成 click（不会弹出系统文件选择器）
     try {
       attachBtn.dispatchEvent(
         new MouseEvent("click", {
@@ -367,79 +312,28 @@ export class UniversalEditor {
           view: window,
         }),
       );
-      console.log("[AiIngest] doubao: dispatched synthetic click");
     } catch (e) {
-      console.log("[AiIngest] doubao: dispatch click failed", e);
+      console.log("[AiIngest] doubao: click dispatch failed", e);
       return false;
     }
 
-    // 4. 延迟扫描新出现的 input 并挂载文件
+    // 3. 延迟扫描新出现的 input
     setTimeout(() => {
-      const allInputs = Array.from(
-        document.querySelectorAll<HTMLInputElement>('input[type="file"]'),
+      const newInput = document.querySelector<HTMLInputElement>(
+        'input[data-testid="upload-file-input"], input[type="file"]',
       );
-      const newInputs = allInputs.filter((el) => !beforeInputs.has(el));
-      const candidates = newInputs.length > 0 ? newInputs : allInputs;
 
-      console.log("[AiIngest] doubao: scanned inputs after click", {
-        total: allInputs.length,
-        newCount: newInputs.length,
-      });
-
-      for (const fileInput of candidates) {
-        if (!this.isValidFileInput(fileInput, file)) {
-          console.log("[AiIngest] doubao: input not valid, skip", {
-            accept: fileInput.accept,
-          });
-          continue;
-        }
-
-        try {
-          const descriptor = Object.getOwnPropertyDescriptor(
-            HTMLInputElement.prototype,
-            "files",
-          );
-          if (descriptor?.set) {
-            descriptor.set.call(fileInput, dataTransfer.files);
-          } else {
-            fileInput.files = dataTransfer.files;
-          }
-
-          const tracker = (
-            fileInput as unknown as {
-              _valueTracker?: { setValue: (val: string) => void };
-            }
-          )._valueTracker;
-          if (tracker) {
-            tracker.setValue("");
-          }
-
-          fileInput.dispatchEvent(
-            new Event("input", { bubbles: true, composed: true }),
-          );
-          fileInput.dispatchEvent(
-            new Event("change", { bubbles: true, composed: true }),
-          );
-
-          console.log(
-            "[AiIngest] doubao: dispatched input/change on file input",
-          );
-
-          // 800ms 后清空物理 input，避免文件常驻
-          setTimeout(() => {
-            UniversalEditor.cleanUpFileInput(fileInput);
-          }, 800);
-
-          return;
-        } catch (e) {
-          console.log("[AiIngest] doubao: input dispatch failed", e);
-        }
+      if (newInput && this.isValidFileInput(newInput, file)) {
+        console.log(
+          "[AiIngest] doubao: input appeared after click, mounting file",
+        );
+        this.mountFileToInput(newInput, dataTransfer);
+      } else {
+        console.log("[AiIngest] doubao: no valid input appeared after click", {
+          found: !!newInput,
+        });
       }
-
-      console.log(
-        "[AiIngest] doubao: attachment flow finished, no suitable input",
-      );
-    }, 250);
+    }, 200);
 
     return true;
   }
@@ -471,17 +365,9 @@ export class UniversalEditor {
 
     const currentHost = window.location.hostname.toLowerCase();
 
-    // 豆包：paste 和 drop 都已被实测证明不可行，改走"合成点击附件按钮"
+    // 豆包专用分支
     if (currentHost.includes("doubao.com")) {
-      console.log("[AiIngest] doubao branch: tryDoubaoAttachmentFlow");
-      if (this.tryDoubaoAttachmentFlow(file, dataTransfer)) {
-        return true;
-      }
-      // 没有任何附件按钮 → 返回 false 让上游走文本 fallback
-      console.log(
-        "[AiIngest] doubao: attachment flow failed, return false for fallback",
-      );
-      return false;
+      return this.tryDoubaoUpload(file, dataTransfer);
     }
 
     // 其他站点：file input → paste → drop
