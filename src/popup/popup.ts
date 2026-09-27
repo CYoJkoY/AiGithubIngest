@@ -82,6 +82,14 @@ const render = async (): Promise<void> => {
     "language",
     currentLang,
   );
+  const githubLink = document.getElementById(
+    "github-link",
+  ) as HTMLAnchorElement | null;
+  if (githubLink) {
+    const repoLabel = t("openGithubRepo", currentLang);
+    githubLink.setAttribute("aria-label", repoLabel);
+    githubLink.setAttribute("title", repoLabel);
+  }
   document.getElementById("lbl-title")!.textContent = t(
     "popupTitle",
     currentLang,

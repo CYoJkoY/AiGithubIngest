@@ -31,6 +31,7 @@ export const translations = {
     tokenHint:
       "配置 Personal Access Token 可解析您的私有仓库并提升 API 限额至 5000次/h。",
     language: "语言 / Language",
+    openGithubRepo: "打开 GitHub 仓库",
 
     // Content & Toast
     taskInProgress: "已有提取任务进行中，已恢复普通文本粘贴",
@@ -86,6 +87,7 @@ export const translations = {
     tokenHint:
       "Personal Access Token allows accessing your private repositories and raises rate limits to 5,000 req/h.",
     language: "Language",
+    openGithubRepo: "Open GitHub Repository",
 
     // Content & Toast
     taskInProgress:
