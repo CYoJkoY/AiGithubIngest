@@ -489,6 +489,27 @@ body {
   font-size: 11px;
 }
 
+/*
+ * Hide the native number-input spinner arrows.
+ *
+ * The site-limit input is narrow (~58px), so the spinner consumes roughly
+ * half of the usable width — it obscures the value while typing and its hit
+ * area is too small to click reliably. Users type the value directly instead.
+ *
+ * Keyboard ↑/↓ still works (step-based) and min/step remain in effect for
+ * browser form validation; only the clickable arrows are removed.
+ */
+.site-limit-input::-webkit-outer-spin-button,
+.site-limit-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.site-limit-input {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
 .site-limit-unit {
   flex: 0 0 auto;
   padding: 3px 4px;
