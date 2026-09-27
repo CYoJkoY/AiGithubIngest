@@ -2,7 +2,7 @@ export interface RepoTarget {
   readonly owner: string;
   readonly repo: string;
   readonly ref?: string;
-  readonly type?: "tree" | "blob";
+  readonly type?: 'tree' | 'blob';
   readonly subpath?: string;
   readonly canonicalUrl: string;
 }
@@ -10,7 +10,7 @@ export interface RepoTarget {
 export interface GitTreeItem {
   readonly path: string;
   readonly mode: string;
-  readonly type: "blob" | "tree";
+  readonly type: 'blob' | 'tree';
   readonly sha: string;
   readonly size?: number;
   readonly url?: string;
@@ -33,7 +33,7 @@ export interface IngestFileResult {
 
 export interface FileSystemNode {
   name: string;
-  type: "DIRECTORY" | "FILE";
+  type: 'DIRECTORY' | 'FILE';
   path: string;
   size: number;
   fileCount: number;
@@ -51,15 +51,12 @@ export interface IngestSummary {
 }
 
 export interface ParseError {
-  readonly code: "EMPTY_INPUT" | "NOT_GITHUB_URL";
+  readonly code: 'EMPTY_INPUT' | 'NOT_GITHUB_URL';
   readonly message: string;
 }
 
 export type SitePolicyStatus =
-  | "ENABLED_BUILTIN"
-  | "ENABLED_WHITELIST"
-  | "DISABLED_BLACKLIST"
-  | "DISABLED";
+  'ENABLED_BUILTIN' | 'ENABLED_WHITELIST' | 'DISABLED_BLACKLIST' | 'DISABLED';
 
 export interface IngestSuccessPayload {
   readonly repoUrl: string;
@@ -67,7 +64,7 @@ export interface IngestSuccessPayload {
 }
 
 export type ExtensionMessage = {
-  readonly type: "INGEST_REPO";
+  readonly type: 'INGEST_REPO';
   readonly payload: { readonly url: string };
 };
 
@@ -78,7 +75,7 @@ export type ExtensionResponse =
       readonly error: { readonly code: string; readonly message: string };
     };
 
-export type SupportedLang = "zh-CN" | "en";
+export type SupportedLang = 'zh-CN' | 'en';
 
 export interface StorageSchema {
   readonly userWhitelist?: readonly string[];

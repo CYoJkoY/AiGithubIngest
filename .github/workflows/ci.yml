@@ -5,15 +5,15 @@ on:
     branches:
       - main
     tags-ignore:
-      - "v*"
+      - 'v*'
     paths-ignore:
-      - "**.md"
-      - ".gitignore"
+      - '**.md'
+      - '.gitignore'
   pull_request:
     branches:
       - main
     paths-ignore:
-      - "**.md"
+      - '**.md'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -35,7 +35,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: "pnpm"
+          cache: 'pnpm'
 
       - name: Install Dependencies
         run: pnpm install --frozen-lockfile
@@ -43,23 +43,28 @@ jobs:
       - name: Strict Typecheck
         run: pnpm exec tsc --noEmit
 
+      - name: Lint
+        run: pnpm lint
+
+      - name: Format Check
+        run: pnpm format:check
+
+      - name: Test with coverage
+        run: pnpm test
+
       - name: Validate manifest version and version_name
         shell: bash
         run: |
           set -euo pipefail
           node - <<'NODE'
           const fs = require('fs');
-
           const manifest = JSON.parse(fs.readFileSync('manifest.json', 'utf8'));
           const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-
           const stable = String(manifest.version || '').trim();
           const name = String(manifest.version_name || '').trim();
-
           if (!/^\d+\.\d+\.\d+$/.test(stable)) {
             throw new Error(`manifest.version 必须符合 X.Y.Z 格式，当前为: ${stable}`);
           }
-
           if (name) {
             if (!/^\d+\.\d+\.\d+\.dev\d+$/.test(name)) {
               throw new Error(`manifest.version_name 必须符合 X.Y.Z.devN 格式，当前为: ${name}`);
@@ -70,17 +75,12 @@ jobs:
               );
             }
           }
-
           if (pkg.version !== stable) {
             throw new Error(
               `package.json version (${pkg.version}) 必须等于 manifest.version (${stable})`
             );
           }
-
-          console.log(
-            `√ 版本校验通过: version=${stable}` +
-              (name ? `, version_name=${name}` : '')
-          );
+          console.log(`√ 版本校验通过: version=${stable}` + (name ? `, version_name=${name}` : ''));
           NODE
 
       - name: Build Extension Artifacts
@@ -89,7 +89,7 @@ jobs:
       - name: Verify Clean Worktree After Build
         run: |
           if [ -n "$(git status --porcelain)" ]; then
-            echo "::error::构建触发了非预期的工作区变更（例如本地隐式补正版本），请在提交前保持工作区干净："
+            echo "::error::构建触发了非预期的工作区变更，请保持工作区干净："
             git status --porcelain
             exit 1
           fi

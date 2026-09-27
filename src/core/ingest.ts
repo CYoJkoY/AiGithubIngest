@@ -1,12 +1,22 @@
-import { unzipSync } from "fflate";
-import { IngestFileResult, IngestOptions, IngestSummary } from "../types";
-import { extractGitHubRepo } from "./parser";
-import { GitHubEngine } from "./github-engine";
-import { shouldIncludeFile } from "./file-filter";
-import { TreeBuilder } from "./tree-builder";
-import { OutputFormatter } from "./output-formatter";
-import { formatTokenCount } from "./token-estimator";
-import { t } from "./i18n";
+import { unzipSync } from 'fflate';
+import {
+  IngestFileResult,
+  IngestOptions,
+  IngestSummary,
+  RepoTarget,
+  SupportedLang,
+} from '../types';
+import { extractGitHubRepo } from './parser';
+import { GitHubEngine } from './github-engine';
+import { shouldIncludeFile } from './file-filter';
+import { TreeBuilder } from './tree-builder';
+import { OutputFormatter } from './output-formatter';
+import { formatTokenCount } from './token-estimator';
+import { t } from './i18n';
+import { DomainError } from './errors';
+
+const SEPARATOR_LINE = '='.repeat(48);
+const BINARY_PLACEHOLDER = '[Binary file]';
 
 function isBinary(buffer: Uint8Array): boolean {
   const checkLen = Math.min(buffer.length, 1024);
@@ -16,72 +26,70 @@ function isBinary(buffer: Uint8Array): boolean {
   return false;
 }
 
-export async function ingestRepository(
-  rawUrl: string,
-  options: IngestOptions = {},
-): Promise<IngestSummary> {
-  const lang = options.lang || "zh-CN";
+interface ExtractedFile {
+  readonly path: string;
+  readonly content: string;
+  readonly size: number;
+}
 
-  const parseResult = extractGitHubRepo(rawUrl);
-  if (!parseResult.ok) {
-    throw new Error(parseResult.error.message);
+interface ExtractResult {
+  readonly treeFiles: Array<{ path: string; size: number }>;
+  readonly processedFiles: ExtractedFile[];
+}
+
+/** 从 zip 键中去除 rootPrefix，并过滤掉目录项 */
+function toRelativePath(rawKey: string, rootPrefix: string): string | null {
+  if (rootPrefix && !rawKey.startsWith(rootPrefix)) return null;
+  const relative = rootPrefix ? rawKey.slice(rootPrefix.length) : rawKey;
+  if (!relative || relative.endsWith('/')) return null;
+  return relative;
+}
+
+/** 检查相对路径是否命中目标子路径（支持 tree/blob 语义） */
+function matchesSubpath(relativePath: string, cleanSubpath: string, isBlob: boolean): boolean {
+  if (!cleanSubpath) return true;
+  if (isBlob) return relativePath === cleanSubpath;
+  return relativePath.startsWith(`${cleanSubpath}/`);
+}
+
+function toProcessedFile(
+  relativePath: string,
+  data: Uint8Array,
+  decoder: TextDecoder,
+): ExtractedFile {
+  const size = data.length;
+  if (isBinary(data)) {
+    return { path: relativePath, content: BINARY_PLACEHOLDER, size };
   }
+  return { path: relativePath, content: decoder.decode(data), size };
+}
 
-  const target = parseResult.value;
-  options.onProgress?.(t("stepResolvingBranch", lang), 0, 100);
-  const resolvedBranch = await GitHubEngine.resolveBranch(
-    target,
-    options.token,
-    lang,
-  );
+function extractFilesFromZip(
+  unzipped: Record<string, Uint8Array>,
+  fileKeys: string[],
+  target: RepoTarget,
+  options: IngestOptions,
+  lang: SupportedLang,
+): ExtractResult {
+  const sampleKey = fileKeys.find((k) => k.includes('/')) ?? fileKeys[0];
+  const slashIdx = sampleKey.indexOf('/');
+  const rootPrefix = slashIdx !== -1 ? sampleKey.slice(0, slashIdx + 1) : '';
 
-  options.onProgress?.(t("stepDownloadingZip", lang), 20, 100);
-  const zipBuffer = await GitHubEngine.fetchZipball(
-    target,
-    resolvedBranch,
-    options.token,
-    lang,
-  );
-
-  options.onProgress?.(t("stepUnpacking", lang), 60, 100);
-  const unzipped = unzipSync(new Uint8Array(zipBuffer));
-  const fileKeys = Object.keys(unzipped);
-
-  if (fileKeys.length === 0) {
-    throw new Error(t("emptyZipError", lang));
-  }
-
-  const sampleKey = fileKeys.find((k) => k.includes("/")) ?? fileKeys[0];
-  const slashIdx = sampleKey.indexOf("/");
-  const rootPrefix = slashIdx !== -1 ? sampleKey.slice(0, slashIdx + 1) : "";
-
-  const cleanSubpath = target.subpath
-    ? target.subpath.replace(/^\/+|\/+$/g, "")
-    : "";
-  const isBlob = target.type === "blob" && cleanSubpath.length > 0;
+  const cleanSubpath = target.subpath ? target.subpath.replace(/^\/+|\/+$/g, '') : '';
+  const isBlob = target.type === 'blob' && cleanSubpath.length > 0;
+  const maxBytes = (options.maxFileSizeKb ?? 100) * 1024;
+  const decoder = new TextDecoder('utf-8', { fatal: false });
 
   const treeFiles: Array<{ path: string; size: number }> = [];
-  const processedFiles: IngestFileResult[] = [];
-  const maxBytes = (options.maxFileSizeKb ?? 100) * 1024;
-  const utf8Decoder = new TextDecoder("utf-8", { fatal: false });
+  const processedFiles: ExtractedFile[] = [];
 
   for (const rawKey of fileKeys) {
-    if (rootPrefix && !rawKey.startsWith(rootPrefix)) continue;
-
-    const relativePath = rootPrefix ? rawKey.slice(rootPrefix.length) : rawKey;
-    if (!relativePath || relativePath.endsWith("/")) continue;
-
-    if (cleanSubpath) {
-      if (isBlob) {
-        if (relativePath !== cleanSubpath) continue;
-      } else if (!relativePath.startsWith(`${cleanSubpath}/`)) {
-        continue;
-      }
-    }
+    const relativePath = toRelativePath(rawKey, rootPrefix);
+    if (!relativePath) continue;
+    if (!matchesSubpath(relativePath, cleanSubpath, isBlob)) continue;
 
     const fileData = unzipped[rawKey];
     const fileSize = fileData.length;
-
     if (
       !shouldIncludeFile(
         relativePath,
@@ -95,39 +103,65 @@ export async function ingestRepository(
     }
 
     treeFiles.push({ path: relativePath, size: fileSize });
-
-    if (isBinary(fileData)) {
-      processedFiles.push({
-        path: relativePath,
-        content: "[Binary file]",
-        size: fileSize,
-      });
-      continue;
-    }
-
-    const textContent = utf8Decoder.decode(fileData);
-    processedFiles.push({
-      path: relativePath,
-      content: textContent,
-      size: fileSize,
-    });
+    processedFiles.push(toProcessedFile(relativePath, fileData, decoder));
   }
 
   if (processedFiles.length === 0) {
-    throw new Error(t("noMatchFiles", lang));
+    throw new DomainError('NO_MATCHING_FILES', t('noMatchFiles', lang));
   }
 
-  options.onProgress?.(t("stepBuildingTree", lang), 90, 100);
+  return { treeFiles, processedFiles };
+}
+
+function buildRawContentPart(files: readonly ExtractedFile[]): string {
+  let out = '';
+  for (const f of files) {
+    out += `\n${SEPARATOR_LINE}\nFILE: ${f.path}\n${SEPARATOR_LINE}\n${f.content}\n`;
+  }
+  return out;
+}
+
+export async function ingestRepository(
+  rawUrl: string,
+  options: IngestOptions = {},
+): Promise<IngestSummary> {
+  const lang: SupportedLang = options.lang ?? 'zh-CN';
+
+  const parseResult = extractGitHubRepo(rawUrl);
+  if (!parseResult.ok) {
+    throw new DomainError('NOT_GITHUB_URL', parseResult.error.message);
+  }
+
+  const target = parseResult.value;
+  options.onProgress?.(t('stepResolvingBranch', lang), 0, 100);
+  const resolvedBranch = await GitHubEngine.resolveBranch(target, options.token, lang);
+
+  options.onProgress?.(t('stepDownloadingZip', lang), 20, 100);
+  const zipBuffer = await GitHubEngine.fetchZipball(target, resolvedBranch, options.token, lang);
+
+  options.onProgress?.(t('stepUnpacking', lang), 60, 100);
+  const unzipped = unzipSync(new Uint8Array(zipBuffer));
+  const fileKeys = Object.keys(unzipped);
+
+  if (fileKeys.length === 0) {
+    throw new DomainError('EMPTY_ARCHIVE', t('emptyZipError', lang));
+  }
+
+  const { treeFiles, processedFiles } = extractFilesFromZip(
+    unzipped,
+    fileKeys,
+    target,
+    options,
+    lang,
+  );
+
+  options.onProgress?.(t('stepBuildingTree', lang), 90, 100);
 
   const rootSlug = `${target.owner}-${target.repo}`;
   const fileTree = TreeBuilder.build(treeFiles, rootSlug);
   const treeVisual = TreeBuilder.renderAscii(fileTree);
 
-  let rawContentPart = "";
-  for (const f of processedFiles) {
-    rawContentPart += `\n================================================\nFILE: ${f.path}\n================================================\n${f.content}\n`;
-  }
-
+  const rawContentPart = buildRawContentPart(processedFiles);
   const estimatedTokens = formatTokenCount(treeVisual + rawContentPart);
   const summaryPrefix = OutputFormatter.createSummaryPrefix(
     target,
@@ -135,11 +169,10 @@ export async function ingestRepository(
     processedFiles.length,
     estimatedTokens,
   );
-
   const formattedOutput = OutputFormatter.buildFullDigest(
     summaryPrefix,
     treeVisual,
-    processedFiles,
+    processedFiles as readonly IngestFileResult[],
   );
 
   return {

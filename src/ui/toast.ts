@@ -1,4 +1,4 @@
-export type ToastType = "info" | "success" | "error";
+export type ToastType = 'info' | 'success' | 'error';
 
 export class Toast {
   private static container: HTMLElement | null = null;
@@ -8,32 +8,28 @@ export class Toast {
     const parent = document.body || document.documentElement;
 
     if (!this.container || !parent.contains(this.container)) {
-      this.container = document.createElement("div");
-      this.container.className = "ai-github-ingest-toast-container";
+      this.container = document.createElement('div');
+      this.container.className = 'ai-github-ingest-toast-container';
       parent.appendChild(this.container);
     }
     return this.container;
   }
 
-  public static show(
-    message: string,
-    type: ToastType = "info",
-    duration: number = 3000,
-  ): void {
+  public static show(message: string, type: ToastType = 'info', duration: number = 3000): void {
     const container = this.getOrCreateContainer();
 
-    const toast = document.createElement("div");
+    const toast = document.createElement('div');
     toast.className = `ai-github-ingest-toast ${type}`;
     toast.textContent = message;
 
     container.appendChild(toast);
 
     requestAnimationFrame(() => {
-      toast.classList.add("show");
+      toast.classList.add('show');
     });
 
     setTimeout(() => {
-      toast.classList.remove("show");
+      toast.classList.remove('show');
       setTimeout(() => {
         toast.remove();
         if (container.childNodes.length === 0) {
@@ -47,7 +43,7 @@ export class Toast {
 
 export const showToast = (
   message: string,
-  type: ToastType = "info",
+  type: ToastType = 'info',
   duration: number = 3000,
 ): void => {
   Toast.show(message, type, duration);

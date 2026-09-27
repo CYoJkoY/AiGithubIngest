@@ -1,7 +1,7 @@
-name: "Site Support Request"
-description: "Propose adding a new AI chat platform to the default built-in policy or report DOM mounting compatibility for a specific domain."
-title: "[Site Support]: Support <Platform Name / Domain>"
-labels: ["type: site-support", "status: triage"]
+name: 'Site Support Request'
+description: 'Propose adding a new AI chat platform to the default built-in policy or report DOM mounting compatibility for a specific domain.'
+title: '[Site Support]: Support <Platform Name / Domain>'
+labels: ['type: site-support', 'status: triage']
 body:
   - type: markdown
     attributes:
@@ -12,7 +12,7 @@ body:
     id: site-name
     attributes:
       label: Platform Name
-      placeholder: "e.g., Mistral Le Chat, Dify, FastGPT"
+      placeholder: 'e.g., Mistral Le Chat, Dify, FastGPT'
     validations:
       required: true
 
@@ -20,7 +20,7 @@ body:
     id: site-domain
     attributes:
       label: Platform Domain or URL
-      placeholder: "e.g., chat.mistral.ai"
+      placeholder: 'e.g., chat.mistral.ai'
     validations:
       required: true
 
@@ -30,9 +30,9 @@ body:
       label: Native File Upload Support
       description: Does this platform's input area natively accept file attachments or drag-and-drop files?
       options:
-        - "Yes (features an attachment button or accepts drag-and-drop files)"
-        - "No (text-only prompt area, requires cursor text insertion fallback)"
-        - "Unsure"
+        - 'Yes (features an attachment button or accepts drag-and-drop files)'
+        - 'No (text-only prompt area, requires cursor text insertion fallback)'
+        - 'Unsure'
     validations:
       required: true
 
@@ -53,6 +53,6 @@ body:
     attributes:
       label: Motivation & Context
       description: Explain why this platform should be integrated into default built-in support.
-      placeholder: "This platform is an open-source self-hosted model interface widely used by..."
+      placeholder: 'This platform is an open-source self-hosted model interface widely used by...'
     validations:
       required: true

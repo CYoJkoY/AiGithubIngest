@@ -8,9 +8,7 @@
     <div class="container">
       <!-- 语言切换 + GitHub 仓库入口 -->
       <div class="lang-row">
-        <label for="lang-select" id="lbl-language" class="setting-label"
-          >Language</label
-        >
+        <label for="lang-select" id="lbl-language" class="setting-label">Language</label>
         <div class="lang-actions">
           <select id="lang-select" class="select-box">
             <option value="zh-CN">简体中文</option>
@@ -42,9 +40,7 @@
         <div class="current-site" id="current-domain">--</div>
         <div class="action-btn-group">
           <button id="toggle-btn" class="btn" disabled>...</button>
-          <button id="blacklist-current-btn" class="btn btn-danger hidden">
-            加入黑名单
-          </button>
+          <button id="blacklist-current-btn" class="btn btn-danger hidden">加入黑名单</button>
         </div>
       </div>
 
@@ -62,9 +58,7 @@
             autocomplete="off"
             spellcheck="false"
           />
-          <button id="add-blacklist-btn" class="btn btn-secondary btn-inline">
-            拉黑
-          </button>
+          <button id="add-blacklist-btn" class="btn btn-secondary btn-inline">拉黑</button>
         </div>
         <div id="blacklist-tags" class="blacklist-tags"></div>
       </div>
@@ -72,9 +66,7 @@
       <!-- GitHub Token (私有项目支持) -->
       <div class="card">
         <div class="header">
-          <span class="title" id="lbl-token-title"
-            >GitHub Token (私有仓库)</span
-          >
+          <span class="title" id="lbl-token-title">GitHub Token (私有仓库)</span>
         </div>
         <div class="token-input-wrapper">
           <input
@@ -85,17 +77,10 @@
             autocomplete="off"
             spellcheck="false"
           />
-          <button
-            id="toggle-token-visibility"
-            class="btn-icon"
-            title="Toggle Visibility"
-          >
-            👁
-          </button>
+          <button id="toggle-token-visibility" class="btn-icon" title="Toggle Visibility">👁</button>
         </div>
         <p class="hint-text" id="lbl-token-hint">
-          配置 Personal Access Token 可解析您的私有仓库并提升 API 限额至
-          5000次/h。
+          配置 Personal Access Token 可解析您的私有仓库并提升 API 限额至 5000次/h。
         </p>
         <div class="token-actions">
           <button id="save-token-btn" class="btn btn-primary">保存</button>

@@ -21,6 +21,7 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 .eslintcache
+coverage/
 
 # 系统与 IDE 杂项
 .DS_Store

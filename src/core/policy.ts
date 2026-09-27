@@ -1,43 +1,40 @@
-import { SitePolicyStatus } from "../types";
+import { SitePolicyStatus } from '../types';
 
 export const BUILTIN_AI_DOMAINS: readonly string[] = [
   // 国际主流大模型
-  "gemini.google.com",
-  "chatgpt.com",
-  "chat.openai.com",
-  "claude.ai",
-  "chat.deepseek.com",
-  "poe.com",
-  "perplexity.ai",
-  "copilot.microsoft.com",
-  "grok.com",
+  'gemini.google.com',
+  'chatgpt.com',
+  'chat.openai.com',
+  'claude.ai',
+  'chat.deepseek.com',
+  'poe.com',
+  'perplexity.ai',
+  'copilot.microsoft.com',
+  'grok.com',
 
   // 国内主流大模型（深度覆盖通义千问新老版、豆包、腾讯元宝、智谱清言所有主子域名）
-  "kimi.moonshot.cn",
-  "chatglm.cn",
-  "chat.z.ai",
-  "z.ai",
-  "bigmodel.cn",
-  "tongyi.aliyun.com",
-  "chat.qwen.ai",
-  "qwen.ai",
-  "qianwen.com",
-  "doubao.com",
-  "yuanbao.tencent.com",
-  "yuanbao.com",
+  'kimi.moonshot.cn',
+  'chatglm.cn',
+  'chat.z.ai',
+  'z.ai',
+  'bigmodel.cn',
+  'tongyi.aliyun.com',
+  'chat.qwen.ai',
+  'qwen.ai',
+  'qianwen.com',
+  'doubao.com',
+  'yuanbao.tencent.com',
+  'yuanbao.com',
 ];
 
 export const normalizeHostname = (host: string): string => {
   return host
     .toLowerCase()
     .trim()
-    .replace(/^www\./, "");
+    .replace(/^www\./, '');
 };
 
-export const matchDomain = (
-  hostname: string,
-  targetDomain: string,
-): boolean => {
+export const matchDomain = (hostname: string, targetDomain: string): boolean => {
   const normHost = normalizeHostname(hostname);
   const normTarget = normalizeHostname(targetDomain);
   return normHost === normTarget || normHost.endsWith(`.${normTarget}`);
@@ -55,22 +52,16 @@ export const evaluateSitePolicy = (
   userWhitelist: readonly string[] = [],
   userBlacklist: readonly string[] = [],
 ): SitePolicyStatus => {
-  const isBlacklisted = userBlacklist.some((domain) =>
-    matchDomain(currentHostname, domain),
-  );
-  if (isBlacklisted) return "DISABLED_BLACKLIST";
+  const isBlacklisted = userBlacklist.some((domain) => matchDomain(currentHostname, domain));
+  if (isBlacklisted) return 'DISABLED_BLACKLIST';
 
-  const isWhitelisted = userWhitelist.some((domain) =>
-    matchDomain(currentHostname, domain),
-  );
-  if (isWhitelisted) return "ENABLED_WHITELIST";
+  const isWhitelisted = userWhitelist.some((domain) => matchDomain(currentHostname, domain));
+  if (isWhitelisted) return 'ENABLED_WHITELIST';
 
-  const isBuiltin = BUILTIN_AI_DOMAINS.some((domain) =>
-    matchDomain(currentHostname, domain),
-  );
-  if (isBuiltin) return "ENABLED_BUILTIN";
+  const isBuiltin = BUILTIN_AI_DOMAINS.some((domain) => matchDomain(currentHostname, domain));
+  if (isBuiltin) return 'ENABLED_BUILTIN';
 
-  return "DISABLED";
+  return 'DISABLED';
 };
 
 /**
@@ -82,34 +73,22 @@ export const evaluateSitePolicyForHostnames = (
   userWhitelist: readonly string[] = [],
   userBlacklist: readonly string[] = [],
 ): SitePolicyStatus => {
-  const normalizedHosts = Array.from(
-    new Set(hostnames.map(normalizeHostname).filter(Boolean)),
-  );
+  const normalizedHosts = Array.from(new Set(hostnames.map(normalizeHostname).filter(Boolean)));
 
   // 黑名单最高优先级：任一候选域名命中黑名单即停用
-  if (
-    normalizedHosts.some((host) =>
-      userBlacklist.some((domain) => matchDomain(host, domain)),
-    )
-  ) {
-    return "DISABLED_BLACKLIST";
+  if (normalizedHosts.some((host) => userBlacklist.some((domain) => matchDomain(host, domain)))) {
+    return 'DISABLED_BLACKLIST';
+  }
+
+  if (normalizedHosts.some((host) => userWhitelist.some((domain) => matchDomain(host, domain)))) {
+    return 'ENABLED_WHITELIST';
   }
 
   if (
-    normalizedHosts.some((host) =>
-      userWhitelist.some((domain) => matchDomain(host, domain)),
-    )
+    normalizedHosts.some((host) => BUILTIN_AI_DOMAINS.some((domain) => matchDomain(host, domain)))
   ) {
-    return "ENABLED_WHITELIST";
+    return 'ENABLED_BUILTIN';
   }
 
-  if (
-    normalizedHosts.some((host) =>
-      BUILTIN_AI_DOMAINS.some((domain) => matchDomain(host, domain)),
-    )
-  ) {
-    return "ENABLED_BUILTIN";
-  }
-
-  return "DISABLED";
+  return 'DISABLED';
 };

@@ -1,7 +1,7 @@
-name: "Bug Report"
-description: "Report an unexpected error, extraction failure, token estimation bug, or DOM injection defect."
-title: "[Bug]: <one-line summary>"
-labels: ["type: bug", "status: triage"]
+name: 'Bug Report'
+description: 'Report an unexpected error, extraction failure, token estimation bug, or DOM injection defect.'
+title: '[Bug]: <one-line summary>'
+labels: ['type: bug', 'status: triage']
 body:
   - type: markdown
     attributes:
@@ -17,7 +17,7 @@ body:
         version. If you are running a development build, include the full
         `version_name` (for example `0.5.0.dev01`); otherwise use the stable `version`
         (for example `0.5.0`).
-      placeholder: "e.g. 0.5.0 or 0.5.0.dev01"
+      placeholder: 'e.g. 0.5.0 or 0.5.0.dev01'
     validations:
       required: true
 
@@ -27,10 +27,10 @@ body:
       label: Release Channel
       description: Which channel did you install from?
       options:
-        - "Stable release (GitHub Release, tag vX.Y.Z)"
-        - "Development pre-release (GitHub Pre-release, tag vX.Y.Z.devN)"
-        - "Built from source (pnpm run build, loaded unpacked)"
-        - "Other / not sure"
+        - 'Stable release (GitHub Release, tag vX.Y.Z)'
+        - 'Development pre-release (GitHub Pre-release, tag vX.Y.Z.devN)'
+        - 'Built from source (pnpm run build, loaded unpacked)'
+        - 'Other / not sure'
     validations:
       required: true
 
@@ -61,7 +61,7 @@ body:
     attributes:
       label: Target GitHub Repository URL
       description: The repository URL, ref, or subpath that triggered the issue (redact sensitive identifiers if testing a private repository).
-      placeholder: "e.g., https://github.com/owner/repo or owner/repo/tree/main/src"
+      placeholder: 'e.g., https://github.com/owner/repo or owner/repo/tree/main/src'
     validations:
       required: true
 
@@ -98,11 +98,11 @@ body:
       label: UniversalEditor Mounting Outcome
       description: What happened in the input area after pasting the repository link?
       options:
-        - label: "Toast showed success and mounted a native Markdown file attachment (.md)"
-        - label: "Failed to mount file attachment, but fell back to ASCII tree and digest text at the cursor"
-        - label: "Reverted to plain URL paste without parsing"
-        - label: "Page completely froze or hung (anti-freeze fallback did not engage)"
-        - label: "Toast displayed an error notification banner"
+        - label: 'Toast showed success and mounted a native Markdown file attachment (.md)'
+        - label: 'Failed to mount file attachment, but fell back to ASCII tree and digest text at the cursor'
+        - label: 'Reverted to plain URL paste without parsing'
+        - label: 'Page completely froze or hung (anti-freeze fallback did not engage)'
+        - label: 'Toast displayed an error notification banner'
 
   - type: textarea
     id: actual-behavior
@@ -121,7 +121,7 @@ body:
     attributes:
       label: Expected Behavior
       description: Describe what you expected to happen instead.
-      placeholder: "The repository should decompress and attach as owner_repo.md in the prompt area..."
+      placeholder: 'The repository should decompress and attach as owner_repo.md in the prompt area...'
     validations:
       required: true
 
@@ -143,7 +143,7 @@ body:
     attributes:
       label: Validation Checklist
       options:
-        - label: "I have verified that the repository URL exists and is publicly accessible (or valid PAT permissions are set)."
+        - label: 'I have verified that the repository URL exists and is publicly accessible (or valid PAT permissions are set).'
           required: true
-        - label: "I have searched open and closed issues to ensure this problem has not already been reported."
+        - label: 'I have searched open and closed issues to ensure this problem has not already been reported.'
           required: true

@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - "manifest.json"
+      - 'manifest.json'
   workflow_dispatch:
 
 permissions:
