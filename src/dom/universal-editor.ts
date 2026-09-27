@@ -213,23 +213,26 @@ export class UniversalEditor {
   }
 
   /**
-   * 策略 2: 剪贴板事件仿真（关键修复版）
+   * 策略 2: 剪贴板事件仿真（豆包关键修复版）
    *
-   * 背景：豆包输入框是 tiptap / ProseMirror contenteditable，页面没有
-   * 任何 input[type="file"]。一次合成的 paste 事件会被 React 的合成
-   * 事件系统分发给组件树中多个 onPaste 处理器，每个处理器都会读取
-   * event.clipboardData.files 并各自触发一次文件上传，表现为"上传两个
-   * 相同文件"。
+   * 背景与实测：
+   *   - 豆包输入框是 tiptap / ProseMirror contenteditable，页面没有任何
+   *     input[type="file"]。
+   *   - 一次合成的 paste 事件会被 React 合成事件系统分发给组件树中多个
+   *     onPaste 处理器，每个处理器都会读取 event.clipboardData.files 并各自
+   *     触发一次文件上传，表现为"上传两个相同文件"。
+   *   - 一旦在 target 上 stopPropagation / stopImmediatePropagation，React
+   *     合成事件层直接收不到 paste 事件，表现为"0 个文件上传"。
+   *     所以绝不能阻断冒泡。
    *
-   * 修复思路：
-   *   劫持派发出去的 ClipboardEvent.clipboardData，将 files 暴露为一个
-   *   一次性 getter —— 第一次读取返回真实 FileList，之后返回空 FileList。
-   *   这样：
-   *     - 第一个 onPaste 处理器读到真实文件 → 正常上传一次
-   *     - 第二个 onPaste 处理器读到空文件列表 → 静默跳过，不再重复上传
+   * 修复策略：
+   *   让事件正常冒泡，但把 pasteEvent.clipboardData 替换为"一次性交付"代理：
+   *   - files 属性：第一次读取返回真实 FileList，之后返回空 FileList。
+   *   - items 属性：与 files 共享同一个 delivered 标志，避免某些处理器改读 items。
+   *   - 其他属性/方法（getData / setData / clearData / types ...）原样转发。
    *
-   * 保留在 target 自身注册冒泡阶段的 stopPropagation 监听器，进一步
-   * 防止合成事件冒泡到 window / document 上的全局粘贴监听器。
+   *   最终效果：第一个 onPaste 处理器读到真实文件 → 正常上传 1 次；
+   *   其余 onPaste 处理器读到空列表 → 静默跳过，不再重复上传。
    */
   private static tryPasteEvent(
     activeEl: HTMLElement | null,
@@ -246,46 +249,71 @@ export class UniversalEditor {
     try {
       target.focus();
 
-      // 快照真实文件列表，并准备一个空的 FileList 作为"已消耗"返回值
+      // 快照真实数据与空数据
       const realFiles = dataTransfer.files;
-      const emptyFiles = new DataTransfer().files;
-      let filesReadCount = 0;
+      const realItems = dataTransfer.items;
+      const emptyDataTransfer = new DataTransfer();
+      const emptyFiles = emptyDataTransfer.files;
+      const emptyItems = emptyDataTransfer.items;
 
-      // 构造一份代理 clipboardData：转发 DataTransfer 全部能力，
-      // 仅在 files 属性上做一次性消耗语义。
-      const clipboardProxy = {
-        get items() {
-          return dataTransfer.items;
-        },
-        get types() {
-          return dataTransfer.types;
-        },
-        get dropEffect() {
-          return dataTransfer.dropEffect;
-        },
-        get effectAllowed() {
-          return dataTransfer.effectAllowed;
-        },
-        getData: (format: string) => dataTransfer.getData(format),
-        setData: (format: string, data: string) =>
-          dataTransfer.setData(format, data),
-        clearData: (format?: string) => dataTransfer.clearData(format),
-        setDragImage: () => {
-          /* no-op */
-        },
+      // files 与 items 共享一个"已交付"标志：无论哪个先被读取，
+      // 只有第一个读取者能拿到真实数据。
+      let delivered = false;
+      const consume = <T>(real: T, empty: T): T => {
+        if (delivered) return empty;
+        delivered = true;
+        return real;
       };
 
-      Object.defineProperty(clipboardProxy, "files", {
-        configurable: true,
-        get() {
-          filesReadCount += 1;
-          return filesReadCount === 1 ? realFiles : emptyFiles;
+      // 用 PropertyDescriptorMap 断言避免 TS 对字面量联合类型（如 dropEffect）
+      // 的 setter 参数做窄化校验；同时不提供 setter，避免写入冲突。
+      const proxyDescriptorMap = {
+        files: {
+          configurable: true,
+          get: () => consume(realFiles, emptyFiles),
         },
-      });
+        items: {
+          configurable: true,
+          get: () => consume(realItems, emptyItems),
+        },
+        types: {
+          configurable: true,
+          get: () => dataTransfer.types,
+        },
+        dropEffect: {
+          configurable: true,
+          get: () => dataTransfer.dropEffect,
+        },
+        effectAllowed: {
+          configurable: true,
+          get: () => dataTransfer.effectAllowed,
+        },
+        getData: {
+          configurable: true,
+          value: (format: string) => dataTransfer.getData(format),
+        },
+        setData: {
+          configurable: true,
+          value: (format: string, data: string) =>
+            dataTransfer.setData(format, data),
+        },
+        clearData: {
+          configurable: true,
+          value: (format?: string) => dataTransfer.clearData(format),
+        },
+        setDragImage: {
+          configurable: true,
+          value: () => undefined,
+        },
+      } as PropertyDescriptorMap;
 
-      // 先按标准方式构造 ClipboardEvent，再用 defineProperty 把 clipboardData
-      // 劫持为上面的代理对象，让所有监听器（React 合成事件层 + 原生层）都
-      // 拿到同一个代理，共享 files 的"一次性"语义。
+      // 用 Object.create 保留 DataTransfer 原型链，
+      // 使代理对象 instanceof DataTransfer 仍然成立。
+      const clipboardProxy = Object.create(
+        DataTransfer.prototype,
+        proxyDescriptorMap,
+      );
+
       const pasteEvent = new ClipboardEvent("paste", {
         bubbles: true,
         cancelable: true,
@@ -293,34 +321,21 @@ export class UniversalEditor {
         clipboardData: dataTransfer,
       });
 
+      // 用代理对象替换 pasteEvent.clipboardData
       try {
         Object.defineProperty(pasteEvent, "clipboardData", {
           configurable: true,
           get() {
             return clipboardProxy;
           },
-          set() {
-            /* 忽略框架内部对 clipboardData 的重新赋值 */
-          },
         });
       } catch {
         // 某些运行环境禁止重定义，忽略并退回原始 dataTransfer
       }
 
-      // 在 target 自身注册冒泡阶段的停止传播监听器，
-      // 让事件不再冒泡到 window / document 的全局粘贴监听器。
-      const stopAtTarget = (e: Event): void => {
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-      };
-
-      target.addEventListener("paste", stopAtTarget, false);
-
-      try {
-        target.dispatchEvent(pasteEvent);
-      } finally {
-        target.removeEventListener("paste", stopAtTarget, false);
-      }
+      // 关键：不做任何冒泡阻断，让 React 合成事件系统正常分发。
+      // files / items 的一次性交付语义会自动保证只上传一次。
+      target.dispatchEvent(pasteEvent);
 
       return true;
     } catch {
@@ -390,7 +405,8 @@ export class UniversalEditor {
     const currentHost = window.location.hostname.toLowerCase();
 
     // 豆包：输入框为 ProseMirror contenteditable，页面无任何 input[type="file"]。
-    // 直接走修复后的 paste 策略（在 target 上拦截冒泡防止 React 委托二次消费）。
+    // 直接走修复后的 paste 策略（不阻断冒泡，改用一次性 files 交付防止 React
+    // 合成事件层被多个 onPaste 处理器重复消费）。
     if (currentHost.includes("doubao.com")) {
       if (this.tryPasteEvent(activeEl, dataTransfer)) {
         return true;
