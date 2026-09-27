@@ -1,0 +1,21 @@
+# 强制所有文本文件在仓库中使用 LF 行尾符
+* text=auto eol=lf
+
+# 明确二进制文件，避免被当作文本处理
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.svg text eol=lf
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.zip binary
+*.crx binary
+
+# Windows 脚本保留 CRLF（如有 .bat / .cmd）
+*.bat text eol=crlf
+*.cmd text eol=crlf
