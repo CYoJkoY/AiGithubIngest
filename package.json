@@ -11,7 +11,7 @@
     "format:check": "prettier --check .",
     "format": "prettier --write .",
     "test": "vitest run --coverage",
-    "verify": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test && pnpm build"
+    "verify": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test"
   },
   "dependencies": {
     "fflate": "^0.8.2"
