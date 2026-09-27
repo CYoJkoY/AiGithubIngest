@@ -8,6 +8,32 @@ body:
       value: |
         Thank you for reporting an issue! Please verify that the target site is enabled in the extension popup and that you are using the latest release before submitting.
 
+  - type: input
+    id: extension-version
+    attributes:
+      label: Extension Version
+      description: >
+        Open `chrome://extensions`, locate the AiGithubIngest card, and copy the displayed
+        version. If you are running a development build, include the full
+        `version_name` (for example `0.5.0.dev01`); otherwise use the stable `version`
+        (for example `0.5.0`).
+      placeholder: "e.g. 0.5.0 or 0.5.0.dev01"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: release-channel
+    attributes:
+      label: Release Channel
+      description: Which channel did you install from?
+      options:
+        - "Stable release (GitHub Release, tag vX.Y.Z)"
+        - "Development pre-release (GitHub Pre-release, tag vX.Y.Z.devN)"
+        - "Built from source (pnpm run build, loaded unpacked)"
+        - "Other / not sure"
+    validations:
+      required: true
+
   - type: dropdown
     id: platform
     attributes:

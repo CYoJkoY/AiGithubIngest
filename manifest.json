@@ -2,6 +2,7 @@
   "manifest_version": 3,
   "name": "AI GitHub Ingest Engine",
   "version": "0.5.0",
+  "version_name": "0.5.0.dev01",
   "description": "在 AI 站点粘贴 GitHub 链接时，纯本地解析并注入结构化代码上下文，无需依赖第三方在线服务。",
   "permissions": [
     "activeTab",

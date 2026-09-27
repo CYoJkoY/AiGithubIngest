@@ -3,10 +3,21 @@ name: Release Extension
 on:
   push:
     tags:
-      - "v*"
+      - "v*.*.*"
+      - "v*.*.*.dev*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to build (for example v0.5.0 or v0.5.0.dev01)"
+        required: true
+        type: string
 
 permissions:
   contents: write
+
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  cancel-in-progress: false
 
 jobs:
   build-and-release:
@@ -16,6 +27,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
           fetch-depth: 0
 
       - name: Install pnpm
@@ -33,30 +45,60 @@ jobs:
       - name: Strict Typecheck
         run: pnpm exec tsc --noEmit
 
-      - name: Verify Tag Version matches manifest.json
+      - name: Read and validate version
+        id: version
         shell: bash
         run: |
           set -euo pipefail
-          RAW_TAG="${{ github.ref_name }}"
-          TAG_VERSION="${RAW_TAG#v}"
+
           MANIFEST_VERSION=$(node -p "JSON.parse(require('fs').readFileSync('manifest.json','utf8')).version || ''")
+          VERSION_NAME=$(node -p "JSON.parse(require('fs').readFileSync('manifest.json','utf8')).version_name || ''")
+          PKG_VERSION=$(node -p "JSON.parse(require('fs').readFileSync('package.json','utf8')).version || ''")
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
 
           echo "🔍 开始版本一致性复核："
-          echo "  - Git Tag:       ${RAW_TAG} (解析版本: ${TAG_VERSION})"
-          echo "  - manifest.json: ${MANIFEST_VERSION} (单一真相源)"
+          echo "  - Git Tag:                ${TAG}"
+          echo "  - manifest.version:       ${MANIFEST_VERSION}"
+          echo "  - manifest.version_name:  ${VERSION_NAME:-<empty>}"
+          echo "  - package.json:           ${PKG_VERSION}"
 
-          if [ -z "${MANIFEST_VERSION}" ]; then
-            echo "::error::manifest.json 中缺少有效的 version 字段！"
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ && ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+\.dev[0-9]+$ ]]; then
+            echo "::error::无效的 Release Tag 格式: $TAG （应为 vX.Y.Z 或 vX.Y.Z.devN）"
             exit 1
           fi
 
-          if [ "${TAG_VERSION}" != "${MANIFEST_VERSION}" ]; then
-            echo "❌ [Fatal] Git Tag 版本 (${TAG_VERSION}) 与 manifest.json 版本 (${MANIFEST_VERSION}) 不一致！"
-            echo "::error::Tag 版本 (${TAG_VERSION}) 与 manifest.json (${MANIFEST_VERSION}) 不一致，发布中断！请确保以 manifest.json 中的版本号打 Tag。"
+          TAG_VERSION="${TAG#v}"
+          IS_DEV="false"
+          EFFECTIVE_VERSION="$MANIFEST_VERSION"
+
+          if [[ "$TAG_VERSION" == *.dev[0-9]* ]]; then
+            IS_DEV="true"
+            if [[ -z "$VERSION_NAME" || "$TAG_VERSION" != "$VERSION_NAME" ]]; then
+              echo "::error::开发版 Tag ($TAG_VERSION) 必须等于 manifest.version_name ($VERSION_NAME)"
+              exit 1
+            fi
+            EFFECTIVE_VERSION="$VERSION_NAME"
+          else
+            if [[ "$TAG_VERSION" != "$MANIFEST_VERSION" ]]; then
+              echo "::error::正式版 Tag ($TAG_VERSION) 必须等于 manifest.version ($MANIFEST_VERSION)"
+              exit 1
+            fi
+          fi
+
+          if [[ "$PKG_VERSION" != "$MANIFEST_VERSION" ]]; then
+            echo "::error::package.json 版本 ($PKG_VERSION) 必须等于 manifest.version ($MANIFEST_VERSION)"
             exit 1
           fi
 
-          echo "✅ 版本复核通过：Git Tag 与 manifest.json 权威源版本一致 (${MANIFEST_VERSION})"
+          echo "version=$EFFECTIVE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "is_dev=$IS_DEV" >> "$GITHUB_OUTPUT"
+          echo "✅ 版本复核通过：EFFECTIVE_VERSION=${EFFECTIVE_VERSION}, IS_DEV=${IS_DEV}"
 
       - name: Build production bundle
         run: pnpm run build
@@ -80,24 +122,31 @@ jobs:
               exit 1
             fi
           done
+
+          BUILT_VERSION=$(node -p "JSON.parse(require('fs').readFileSync('dist/manifest.json','utf8')).version || ''")
+          BUILT_VERSION_NAME=$(node -p "JSON.parse(require('fs').readFileSync('dist/manifest.json','utf8')).version_name || ''")
+          echo "  - 构建产物 version:        ${BUILT_VERSION}"
+          echo "  - 构建产物 version_name:   ${BUILT_VERSION_NAME:-<empty>}"
           echo "✅ 产物契约校验通过"
 
       - name: Package extension archive (ZIP & CRX)
         id: package
         env:
           CRX_PRIVATE_KEY: ${{ secrets.CRX_PRIVATE_KEY }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
         run: |
-          TAG_NAME="${{ github.ref_name }}"
-          ARCHIVE_NAME="ai-github-ingest-${TAG_NAME}.zip"
-          CRX_NAME="ai-github-ingest-${TAG_NAME}.crx"
+          set -euo pipefail
+          VERSION="${RELEASE_VERSION}"
+          ARCHIVE_NAME="ai-github-ingest-v${VERSION}.zip"
+          CRX_NAME="ai-github-ingest-v${VERSION}.crx"
 
-          echo "📦 打包 ZIP 产物..."
+          echo "📦 打包 ZIP 产物: ${ARCHIVE_NAME}"
           cd dist
           zip -r "../${ARCHIVE_NAME}" ./* -x "*.DS_Store*"
           cd ..
           sha256sum "${ARCHIVE_NAME}" > "${ARCHIVE_NAME}.sha256"
 
-          if [ -n "$CRX_PRIVATE_KEY" ]; then
+          if [ -n "${CRX_PRIVATE_KEY:-}" ]; then
             echo "🔑 使用 CRX_PRIVATE_KEY 签名打包 CRX3..."
             trap 'rm -f key.pem' EXIT
             echo "$CRX_PRIVATE_KEY" > key.pem
@@ -108,16 +157,19 @@ jobs:
             echo "::warning::未检测到 CRX_PRIVATE_KEY Secret，已跳过 CRX 打包，仅发布 ZIP 产物"
           fi
 
+          echo "archive=${ARCHIVE_NAME}" >> "$GITHUB_OUTPUT"
+          echo "crx=${CRX_NAME}" >> "$GITHUB_OUTPUT"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          name: "Release ${{ github.ref_name }}"
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "Release ${{ steps.version.outputs.tag }}"
           files: |
-            ai-github-ingest-${{ github.ref_name }}.zip
-            ai-github-ingest-${{ github.ref_name }}.zip.sha256
-            ai-github-ingest-${{ github.ref_name }}*.crx
-            ai-github-ingest-${{ github.ref_name }}*.crx.sha256
+            ai-github-ingest-v${{ steps.version.outputs.version }}.zip
+            ai-github-ingest-v${{ steps.version.outputs.version }}.zip.sha256
+            ai-github-ingest-v${{ steps.version.outputs.version }}*.crx
+            ai-github-ingest-v${{ steps.version.outputs.version }}*.crx.sha256
           draft: false
-          prerelease: ${{ contains(github.ref_name, '-alpha') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
+          prerelease: ${{ steps.version.outputs.is_dev == 'true' }}
           generate_release_notes: true

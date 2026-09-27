@@ -1,52 +1,54 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 840 220" width="100%" height="100%">
-  <defs>
-    <style>
-      .card-bg { fill: #f8fafc; stroke: #e2e8f0; stroke-width: 1.5; }
-      .icon-box { fill: #e0f2fe; stroke: #38bdf8; stroke-width: 1.5; }
-      .icon-stroke { stroke: #0284c7; }
-      .title-text { fill: #0f172a; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 20px; font-weight: 700; letter-spacing: 0.02em; }
-      .desc-text { fill: #64748b; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; }
-      .btn-bg { fill: #0284c7; }
-      .btn-text { fill: #ffffff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; font-weight: 600; }
-      .heart-icon { fill: #ffffff; }
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 200" width="640" height="200" role="img" aria-labelledby="support-cta-title">
+  <title id="support-cta-title">Support AzSkills — reusable engineering and design contracts</title>
 
-      @media (prefers-color-scheme: dark) {
-        .card-bg { fill: #0f172a; stroke: #334155; }
-        .icon-box { fill: #1e293b; stroke: #0284c7; }
-        .icon-stroke { stroke: #38bdf8; }
-        .title-text { fill: #f8fafc; }
-        .desc-text { fill: #94a3b8; }
-        .btn-bg { fill: #0284c7; }
-      }
-    </style>
-  </defs>
+  <!-- Canvas: warm paper surface with a soft keyline so the CTA stays legible on both GitHub light and dark backgrounds -->
+  <rect x="0" y="0" width="640" height="200" rx="20" fill="#F7F4ED"/>
+  <rect x="0.5" y="0.5" width="639" height="199" rx="19.5" fill="none" stroke="#E2DED4" stroke-width="1"/>
 
-  <!-- Container -->
-  <rect class="card-bg" x="2" y="2" width="836" height="216" rx="16" />
+  <!-- Modular skill blocks: a 3×3 lattice drawn in AzSkills' sage palette.
+       The repeated unit is the project-native motif — a bounded, composable contract. -->
+  <g transform="translate(38, 44)">
+    <rect x="0"  y="0"  width="32" height="32" rx="8" fill="#8A9E8B"/>
+    <rect x="40" y="0"  width="32" height="32" rx="8" fill="#B8C7B9"/>
+    <rect x="80" y="0"  width="32" height="32" rx="8" fill="#6B7F6D"/>
 
-  <!-- Left Icon Visual (Repository + Lightning/AI Ingest) -->
-  <g transform="translate(32, 42)">
-    <rect class="icon-box" x="0" y="0" width="76" height="76" rx="16" />
-    <path class="icon-stroke" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
-          d="M26 44V26a4 4 0 0 1 4-4h16a4 4 0 0 1 4 4v24a4 4 0 0 1-4 4H30a4 4 0 0 1-4-4z" />
-    <polyline class="icon-stroke" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
-              points="42 22 42 30 50 30" />
-    <polygon class="icon-stroke" fill="#38bdf8" fill-opacity="0.3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-             points="39 34 33 44 38 44 37 50 43 40 38 40 39 34" />
+    <rect x="0"  y="40" width="32" height="32" rx="8" fill="#B8C7B9"/>
+    <rect x="40" y="40" width="32" height="32" rx="8" fill="#6B7F6D"/>
+    <rect x="80" y="40" width="32" height="32" rx="8" fill="#8A9E8B"/>
+
+    <rect x="0"  y="80" width="32" height="32" rx="8" fill="#6B7F6D"/>
+    <rect x="40" y="80" width="32" height="32" rx="8" fill="#8A9E8B"/>
+    <rect x="80" y="80" width="32" height="32" rx="8" fill="#B8C7B9"/>
   </g>
 
-  <!-- Content Text -->
-  <g transform="translate(132, 64)">
-    <text class="title-text" x="0" y="0">SUPPORT AI GITHUB INGEST</text>
-    <text class="desc-text" x="0" y="28">Sustain zero-proxy, client-side repository ingestion &amp; browser extension maintenance.</text>
-  </g>
+  <!-- Heading -->
+  <text x="182" y="74"
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
+        font-size="24"
+        font-weight="700"
+        letter-spacing="-0.02em"
+        fill="#2C3A2E">Support AzSkills</text>
 
-  <!-- Action Button Pill -->
-  <g transform="translate(132, 132)">
-    <rect class="btn-bg" x="0" y="0" width="220" height="42" rx="21" />
-    <!-- Heart Icon inside Button -->
-    <path class="heart-icon" transform="translate(24, 13) scale(0.65)"
-          d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
-    <text class="btn-text" x="48" y="26">Sponsor on GitHub</text>
+  <!-- Support line -->
+  <text x="182" y="102"
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
+        font-size="14"
+        fill="#5A6B5C">Reusable skills for engineering and design.</text>
+
+  <!-- Canonical destination, rendered as searchable text so it remains readable even if images are blocked -->
+  <text x="182" y="150"
+        font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace"
+        font-size="15"
+        fill="#6B7F6D">cyojkoy.github.io/Payment/</text>
+
+  <!-- Directional cue: keeps the CTA's action legible without relying on color alone -->
+  <g transform="translate(566, 88)"
+     fill="none"
+     stroke="#8A9E8B"
+     stroke-width="2.5"
+     stroke-linecap="round"
+     stroke-linejoin="round">
+    <path d="M 0 20 L 32 20"/>
+    <path d="M 22 10 L 32 20 L 22 30"/>
   </g>
 </svg>

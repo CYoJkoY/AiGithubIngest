@@ -43,17 +43,45 @@ jobs:
       - name: Strict Typecheck
         run: pnpm exec tsc --noEmit
 
-      - name: Validate Manifest Version
+      - name: Validate manifest version and version_name
         shell: bash
         run: |
           set -euo pipefail
-          MANIFEST_VERSION=$(node -p "JSON.parse(require('fs').readFileSync('manifest.json','utf8')).version || ''")
-          echo "🔍 检查 manifest.json 版本有效性: ${MANIFEST_VERSION}"
-          if [[ ! "${MANIFEST_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::manifest.json 中的版本号 (${MANIFEST_VERSION}) 不符合语义化版本格式 (X.Y.Z)！"
-            exit 1
-          fi
-          echo "✅ manifest.json 版本校验通过: ${MANIFEST_VERSION}"
+          node - <<'NODE'
+          const fs = require('fs');
+
+          const manifest = JSON.parse(fs.readFileSync('manifest.json', 'utf8'));
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+
+          const stable = String(manifest.version || '').trim();
+          const name = String(manifest.version_name || '').trim();
+
+          if (!/^\d+\.\d+\.\d+$/.test(stable)) {
+            throw new Error(`manifest.version 必须符合 X.Y.Z 格式，当前为: ${stable}`);
+          }
+
+          if (name) {
+            if (!/^\d+\.\d+\.\d+\.dev\d+$/.test(name)) {
+              throw new Error(`manifest.version_name 必须符合 X.Y.Z.devN 格式，当前为: ${name}`);
+            }
+            if (!name.startsWith(`${stable}.dev`)) {
+              throw new Error(
+                `manifest.version_name (${name}) 必须以 manifest.version (${stable}) 作为前缀`
+              );
+            }
+          }
+
+          if (pkg.version !== stable) {
+            throw new Error(
+              `package.json version (${pkg.version}) 必须等于 manifest.version (${stable})`
+            );
+          }
+
+          console.log(
+            `√ 版本校验通过: version=${stable}` +
+              (name ? `, version_name=${name}` : '')
+          );
+          NODE
 
       - name: Build Extension Artifacts
         run: pnpm run build

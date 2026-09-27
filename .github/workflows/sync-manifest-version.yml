@@ -11,6 +11,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: sync-package-version-main
+  cancel-in-progress: false
+
 jobs:
   sync-version:
     name: Sync package.json with manifest.json
@@ -28,41 +32,60 @@ jobs:
         with:
           node-version: 22
 
-      - name: Synchronize Version
+      - name: Validate and synchronize version
         id: sync
+        shell: bash
         run: |
-          MANIFEST_VERSION=$(node -p "require('./manifest.json').version")
-          PKG_VERSION=$(node -p "require('./package.json').version")
+          set -euo pipefail
+          node - <<'NODE'
+          const fs = require('fs');
 
-          echo "当前 manifest.json 版本 (权威源): $MANIFEST_VERSION"
-          echo "当前 package.json 版本:           $PKG_VERSION"
+          const manifest = JSON.parse(fs.readFileSync('manifest.json', 'utf8'));
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
 
-          if [ "$PKG_VERSION" = "$MANIFEST_VERSION" ]; then
-            echo "✅ 版本已一致，无需同步更新"
-            echo "changed=false" >> $GITHUB_OUTPUT
-            exit 0
-          fi
+          const stable = String(manifest.version || '').trim();
+          const versionName = String(manifest.version_name || '').trim();
 
-          echo "🔄 将 package.json 版本更新为: $MANIFEST_VERSION"
-          node -e "
-            const fs = require('fs');
-            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-            pkg.version = '$MANIFEST_VERSION';
+          if (!/^\d+\.\d+\.\d+$/.test(stable)) {
+            throw new Error(`manifest.version 必须符合 X.Y.Z 格式，当前为: ${stable}`);
+          }
+
+          if (versionName) {
+            if (!/^\d+\.\d+\.\d+\.dev\d+$/.test(versionName)) {
+              throw new Error(`manifest.version_name 必须符合 X.Y.Z.devN 格式，当前为: ${versionName}`);
+            }
+            if (!versionName.startsWith(`${stable}.dev`)) {
+              throw new Error(
+                `manifest.version_name (${versionName}) 必须以 manifest.version (${stable}) 作为前缀`
+              );
+            }
+          }
+
+          const changed = pkg.version !== stable;
+
+          if (changed) {
+            console.log(`🔄 同步 package.json 版本: ${pkg.version} -> ${stable}`);
+            pkg.version = stable;
             fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n', 'utf8');
-          "
+          } else {
+            console.log(`✅ package.json 已与 manifest.version 一致: ${stable}`);
+          }
 
-          echo "changed=true" >> $GITHUB_OUTPUT
-          echo "new_version=$MANIFEST_VERSION" >> $GITHUB_OUTPUT
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `changed=${changed}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `new_version=${stable}\n`);
+          NODE
 
       - name: Commit and Push Package Changes
         if: steps.sync.outputs.changed == 'true'
+        shell: bash
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add package.json
           if git diff --staged --quiet; then
             echo "无实际差异，跳过提交"
           else
             git commit -m "chore(release): sync package.json version to ${{ steps.sync.outputs.new_version }} [skip ci]"
-            git push origin HEAD:${{ github.ref_name }}
+            git push origin HEAD:main
           fi

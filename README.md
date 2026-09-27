@@ -23,6 +23,7 @@ Parse public and private GitHub repositories entirely inside your browser and se
   <a href="#readme-supported-sites">Supported Platforms</a> ·
   <a href="#readme-quick-start">Quick Start</a> ·
   <a href="#readme-configuration">Configuration</a> ·
+  <a href="#readme-versioning">Versioning</a> ·
   <a href="#readme-development">Development</a> ·
   <a href="#readme-support">Support</a> ·
   <a href="#readme-license">License</a>
@@ -187,6 +188,73 @@ Click the extension icon in your browser toolbar to open the settings popup:
 
 ---
 
+<a name="readme-versioning"></a>
+
+## <img src="assets/readme/icons/engineering.svg" width="24" height="24" alt=""> Versioning Strategy
+
+AiGithubIngest follows a dual-channel release model:
+
+| Channel         | `manifest.version` | `manifest.version_name` | Git Tag       | GitHub Release |
+| :-------------- | :----------------- | :---------------------- | :------------ | :------------- |
+| **Stable**      | `X.Y.Z`            | omitted or `X.Y.Z`      | `vX.Y.Z`      | Published      |
+| **Development** | `X.Y.Z`            | `X.Y.Z.devN`            | `vX.Y.Z.devN` | Pre-release    |
+
+Key rules:
+
+- `manifest.version` must always be a Chrome-valid `X.Y.Z` string. Chrome rejects `dev` suffixes here.
+- `manifest.version_name` is the human-readable channel marker. Development builds keep the same base `X.Y.Z` but append `.devN`.
+- `package.json.version` always tracks `manifest.version` only, never `version_name`. The `sync-manifest-version.yml` workflow enforces this on every `main` push.
+- Development tags (`vX.Y.Z.devN`) publish as **Pre-release**. They are excluded from GitHub's `latest` pointer and from any future auto-update check.
+- Stable tags (`vX.Y.Z`) publish as regular releases.
+
+### Publishing a development build
+
+1. Edit `manifest.json`:
+
+   ```json
+   {
+     "version": "0.5.0",
+     "version_name": "0.5.0.dev01"
+   }
+   ```
+
+2. Commit to `main`. The sync workflow aligns `package.json` automatically.
+3. Tag and push:
+
+   ```bash
+   git tag v0.5.0.dev01
+   git push origin v0.5.0.dev01
+   ```
+
+4. The release workflow validates the tag against `version_name`, builds ZIP/CRX with the `.devN` suffix, and publishes a Pre-release.
+
+### Publishing a stable build
+
+1. Edit `manifest.json` and remove `version_name` (or set it to the same `X.Y.Z`):
+
+   ```json
+   {
+     "version": "0.5.0"
+   }
+   ```
+
+2. Ensure `package.json` is also `0.5.0`.
+3. Tag and push:
+
+   ```bash
+   git tag v0.5.0
+   git push origin v0.5.0
+   ```
+
+4. The release workflow publishes a normal release.
+
+### Notes
+
+- If you need to install a dev build and a stable build side by side, use a separate CRX signing key for the dev channel so the extension IDs differ. Otherwise they overwrite each other.
+- Never paste a `version_name` value into any field Chrome treats as strict semver.
+
+---
+
 <a name="readme-development"></a>
 
 ## <img src="assets/readme/icons/engineering.svg" width="24" height="24" alt=""> Development & Quality Gates
@@ -203,9 +271,9 @@ node build.mjs
 
 ### CI / CD Workflows
 
-- **`ci.yml`**: Enforces strict semantic manifest version checks, executes `tsc --noEmit`, builds distribution artifacts, and validates worktree cleanliness.
-- **`release.yml`**: Verifies that git tags match `manifest.json` versions, verifies critical artifact files (`background.js`, `content.js`, `popup.html`, etc.), and packages both signed CRX3 and ZIP distributions.
-- **`sync-manifest-version.yml`**: Automatically syncs `package.json` to the authoritative `manifest.json` single source of truth upon main-branch updates.
+- **`ci.yml`**: Enforces strict semantic manifest version checks, validates `version_name` prefix rules, executes `tsc --noEmit`, builds distribution artifacts, and validates worktree cleanliness.
+- **`release.yml`**: Verifies that git tags match `manifest.json` versions (`version` for stable, `version_name` for development), verifies critical artifact files (`background.js`, `content.js`, `popup.html`, etc.), and packages both signed CRX3 and ZIP distributions. Development tags are published as Pre-releases.
+- **`sync-manifest-version.yml`**: Automatically syncs `package.json` to the authoritative `manifest.version` single source of truth upon main-branch updates.
 
 ---
 
