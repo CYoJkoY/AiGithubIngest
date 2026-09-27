@@ -213,7 +213,8 @@ export class UniversalEditor {
   }
 
   /**
-   * 策略 2: 剪贴板事件仿真（保留冒泡供 React 捕获，并在 document/window 冒泡截断杜绝全局二次上传）
+   * 策略 2: 剪贴板事件仿真（修复版）
+   * 在 React 根容器上阻止事件继续冒泡到 document/window，避免触发全局二次上传
    */
   private static tryPasteEvent(
     activeEl: HTMLElement | null,
@@ -230,7 +231,6 @@ export class UniversalEditor {
     try {
       target.focus();
 
-      // bubbles 必须为 true，否则 React 18 根节点 (#root) 无法捕获合成事件
       const pasteEvent = new ClipboardEvent("paste", {
         bubbles: true,
         cancelable: true,
@@ -238,23 +238,27 @@ export class UniversalEditor {
         clipboardData: dataTransfer,
       });
 
-      // 冒泡阶段隔离阻断器：
-      // 当事件冒泡经过 #root 时，豆包的聊天输入框完成第一次正常上传；
-      // 一旦事件离开 #root 到达 document 时立即截断，杜绝其继续冒泡到 window 触发全局上传监听器
-      const stopGlobalBubble = (e: Event): void => {
+      // 查找 React 根容器（豆包等平台通常使用 #root 或 [data-reactroot]）
+      const rootContainer =
+        document.querySelector("#root") ||
+        document.querySelector("[data-reactroot]") ||
+        document.querySelector("#app") ||
+        document.body;
+
+      // 在根容器上注册冒泡阶段的停止传播监听器。
+      // 由于内容脚本在 document_idle 运行，此监听器会在 React 自身的监听器之后注册，
+      // 因此执行顺序在 React 处理完上传之后，此时阻止继续冒泡可杜绝全局监听器二次上传。
+      const stopAtRoot = (e: Event): void => {
         e.stopPropagation();
         e.stopImmediatePropagation();
       };
 
-      document.addEventListener("paste", stopGlobalBubble, false);
-      window.addEventListener("paste", stopGlobalBubble, false);
+      rootContainer.addEventListener("paste", stopAtRoot, false);
 
       try {
         target.dispatchEvent(pasteEvent);
       } finally {
-        // 同步注销拦截器，确保不影响后续用户的正常粘贴操作
-        document.removeEventListener("paste", stopGlobalBubble, false);
-        window.removeEventListener("paste", stopGlobalBubble, false);
+        rootContainer.removeEventListener("paste", stopAtRoot, false);
       }
 
       return true;
@@ -324,14 +328,20 @@ export class UniversalEditor {
 
     const currentHost = window.location.hostname.toLowerCase();
 
-    // 豆包平台优先使用带有冒泡隔离防护的 Paste 策略
+    // 豆包平台：优先使用 input[type="file"] 挂载，避免合成 paste 事件触发多次上传
     if (currentHost.includes("doubao.com")) {
+      if (this.tryUploadViaFileInput(file, activeEl, dataTransfer)) {
+        return true;
+      }
+      // 如果 file input 方式失败，再尝试修复后的 paste 策略（已隔离冒泡）
       if (this.tryPasteEvent(activeEl, dataTransfer)) {
         return true;
       }
+      // 豆包不再尝试拖拽，避免其他副作用
+      return false;
     }
 
-    // 优先策略 1: 扫描并触发 input[type="file"]（自带 300ms 自动解绑机制）
+    // 其他站点：优先策略 1: 扫描并触发 input[type="file"]
     if (this.tryUploadViaFileInput(file, activeEl, dataTransfer)) {
       return true;
     }
