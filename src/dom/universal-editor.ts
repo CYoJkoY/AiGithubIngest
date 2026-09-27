@@ -11,9 +11,6 @@ export class UniversalEditor {
     }
   }
 
-  /**
-   * 校验 file input 是否具备接收文本/文档附件的能力
-   */
   private static isValidFileInput(
     input: HTMLInputElement,
     file: File,
@@ -136,7 +133,6 @@ export class UniversalEditor {
         new Event("change", { bubbles: true, composed: true }),
       );
 
-      // Qwen 的上传管线可能需要更多时间读取文件；延长到 4 秒后再清理
       setTimeout(() => {
         UniversalEditor.cleanUpFileInput(input);
       }, 4000);
@@ -145,11 +141,6 @@ export class UniversalEditor {
     }
   }
 
-  /**
-   * 派发完整的指针 + 鼠标事件序列
-   *
-   * 用于需要 pointerdown 才能触发下拉展开的组件（Ant Design Dropdown）
-   */
   private static dispatchFullClickSequence(el: HTMLElement): void {
     let rect: DOMRect;
     try {
@@ -408,9 +399,6 @@ export class UniversalEditor {
     return true;
   }
 
-  /**
-   * 定位 Qwen "+" 模式选择按钮
-   */
   private static findQwenModeButton(): HTMLElement | null {
     const byClass = document.querySelector<HTMLElement>(".mode-select-open");
     if (byClass && !byClass.hasAttribute("disabled")) {
@@ -444,9 +432,6 @@ export class UniversalEditor {
     return null;
   }
 
-  /**
-   * 定位 "上传附件" 菜单项
-   */
   private static findQwenUploadMenuItem(): HTMLElement | null {
     const menuItems = Array.from(
       document.querySelectorAll<HTMLElement>('[role="menuitem"]'),
@@ -492,38 +477,26 @@ export class UniversalEditor {
   }
 
   /**
-   * Qwen 专用文件挂载（异步版本，精确等待真实挂载结果）
+   * Qwen 专用文件挂载（异步，挂载时机严格对齐 Qwen 内部状态）
    *
-   * 与旧版关键差异：
-   *   - 使用 Promise 异步等待，不再乐观返回 true
-   *   - 检测菜单是否已展开，避免重复点 "+" 反而关闭菜单
-   *   - 菜单项只用朴素 click（与 probe 一致），不用完整事件序列
+   * 关键洞察（来自 probe 与真机日志）：
+   *   - Qwen 页面上始终存在 <input id="filesUpload" type="file">，它并非懒创建
+   *   - 但该 input 的 onChange 处理器只有在用户点击 "上传附件" 菜单项、
+   *     Qwen 内部状态机进入 "等待文件选择" 阶段后才会被激活
+   *   - 直接给 input 设置 files 并派发 change 事件会被 React 忽略，
+   *     因为此时 input 的 React fiber 里 onChange 还是 noop
+   *
+   * 正确做法：模拟完整菜单链路，让 Qwen 自己调用 input.click()，
+   * 在拦截 input.click() 的瞬间立即挂载文件并派发 change。
    */
   private static tryQwenUploadAsync(
-    file: File,
+    _file: File,
     dataTransfer: DataTransfer,
   ): Promise<boolean> {
     return new Promise<boolean>((resolve) => {
-      // 1. 快路径：input 已存在
-      const directInput =
-        document.querySelector<HTMLInputElement>('input[type="file"]');
-      if (directInput && this.isValidFileInput(directInput, file)) {
-        this.log("fast path: direct input found, mounting");
-        this.mountFileToInput(directInput, dataTransfer);
-        resolve(true);
-        return;
-      }
-
-      // 2. 安装拦截器（早装早保护）
-      const clickBlocker = (e: Event): void => {
-        const target = e.target;
-        if (target instanceof HTMLInputElement && target.type === "file") {
-          e.preventDefault();
-          e.stopPropagation();
-          e.stopImmediatePropagation();
-        }
-      };
-      document.addEventListener("click", clickBlocker, true);
+      const timers: Array<ReturnType<typeof setTimeout>> = [];
+      let resolved = false;
+      let mounted = false;
 
       const originalShowPicker = (
         HTMLInputElement.prototype as unknown as {
@@ -531,32 +504,6 @@ export class UniversalEditor {
         }
       ).showPicker;
       let showPickerPatched = false;
-      if (typeof originalShowPicker === "function") {
-        try {
-          (
-            HTMLInputElement.prototype as unknown as {
-              showPicker: () => void;
-            }
-          ).showPicker = function (this: HTMLInputElement): void {
-            if (this.type === "file") return;
-            return originalShowPicker.call(this);
-          };
-          showPickerPatched = true;
-        } catch {
-          // 容错
-        }
-      }
-
-      const preExistingInputs = new Set<HTMLInputElement>(
-        Array.from(
-          document.querySelectorAll<HTMLInputElement>('input[type="file"]'),
-        ),
-      );
-
-      const timers: Array<ReturnType<typeof setTimeout>> = [];
-      let menuItemClicked = false;
-      let mounted = false;
-      let resolved = false;
 
       const cleanup = (): void => {
         try {
@@ -582,57 +529,90 @@ export class UniversalEditor {
         resolve(success);
       };
 
-      const tryMount = (): void => {
-        if (mounted || resolved) return;
-        const all = Array.from(
-          document.querySelectorAll<HTMLInputElement>('input[type="file"]'),
-        );
-        const newOnes = all.filter((i) => !preExistingInputs.has(i));
-        const oldOnes = all.filter((i) => preExistingInputs.has(i));
-        const ordered = [...newOnes, ...oldOnes];
-
-        for (const inp of ordered) {
-          if (this.isValidFileInput(inp, file)) {
-            this.log(
-              "mounting into input:",
-              inp.id || inp.outerHTML.slice(0, 80),
-            );
-            this.mountFileToInput(inp, dataTransfer);
-            mounted = true;
-            finish(true);
-            return;
+      // 挂载文件到 input 并派发事件
+      const doMount = (input: HTMLInputElement, source: string): void => {
+        if (mounted) return;
+        try {
+          const descriptor = Object.getOwnPropertyDescriptor(
+            HTMLInputElement.prototype,
+            "files",
+          );
+          if (descriptor?.set) {
+            descriptor.set.call(input, dataTransfer.files);
+          } else {
+            input.files = dataTransfer.files;
           }
+
+          const actualCount = input.files?.length ?? 0;
+          this.log(
+            `after mount via ${source}: input.files.length = ${actualCount}`,
+          );
+
+          input.dispatchEvent(
+            new Event("input", { bubbles: true, composed: true }),
+          );
+          input.dispatchEvent(
+            new Event("change", { bubbles: true, composed: true }),
+          );
+
+          mounted = true;
+          this.log(`file mounted via ${source}`);
+        } catch (err) {
+          this.log("mount failed:", err);
         }
       };
 
-      const clickMenuItem = (): void => {
-        if (menuItemClicked || resolved) return;
-        const item = this.findQwenUploadMenuItem();
-        if (!item) {
-          this.log("clickMenuItem: menu item not found yet");
-          return;
-        }
-        menuItemClicked = true;
-        this.log("clicking menu item:", item.textContent?.slice(0, 40));
-        // 关键：只用朴素 click，与 probe 完全一致
-        try {
-          item.dispatchEvent(
-            new MouseEvent("click", {
-              bubbles: true,
-              cancelable: true,
-              view: window,
-            }),
+      // 核心：拦截 input.click()，阻止系统文件选择器，并在拦截时挂载文件
+      const clickBlocker = (e: Event): void => {
+        const target = e.target;
+        if (target instanceof HTMLInputElement && target.type === "file") {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          this.log("intercepted input.click()");
+          doMount(target, "click-interception");
+
+          // 给 Qwen 500ms 处理时间，然后完成
+          timers.push(
+            setTimeout(() => {
+              finish(mounted);
+            }, 500),
           );
+        }
+      };
+
+      document.addEventListener("click", clickBlocker, true);
+
+      // patch showPicker（Chrome 105+），同样在拦截时挂载
+      if (typeof originalShowPicker === "function") {
+        try {
+          (
+            HTMLInputElement.prototype as unknown as {
+              showPicker: () => void;
+            }
+          ).showPicker = function (this: HTMLInputElement): void {
+            if (this.type === "file") {
+              UniversalEditor.log("intercepted input.showPicker()");
+              doMount(this, "showPicker-interception");
+              timers.push(
+                setTimeout(() => {
+                  finish(mounted);
+                }, 500),
+              );
+              return;
+            }
+            return originalShowPicker.call(this);
+          };
+          showPickerPatched = true;
         } catch {
           // 容错
         }
-      };
+      }
 
-      // 3. 判断菜单是否已经展开
+      // 检查菜单是否已经展开
       const existingItem = this.findQwenUploadMenuItem();
       if (existingItem) {
-        this.log("menu already open, clicking menu item directly");
-        menuItemClicked = true;
+        this.log("menu already open, clicking upload item directly");
         try {
           existingItem.dispatchEvent(
             new MouseEvent("click", {
@@ -645,46 +625,54 @@ export class UniversalEditor {
           // 容错
         }
       } else {
-        // 4. 需要先展开菜单
         const modeBtn = this.findQwenModeButton();
         if (!modeBtn) {
           this.log("mode button not found");
           finish(false);
           return;
         }
-        this.log("mode button found:", modeBtn.className, "dispatching click");
+        this.log("dispatching click on mode button");
         this.dispatchFullClickSequence(modeBtn);
 
-        // 与 probe 一致的时序：500ms 后点菜单项
-        timers.push(setTimeout(clickMenuItem, 500));
-        timers.push(setTimeout(clickMenuItem, 800));
-        timers.push(setTimeout(clickMenuItem, 1200));
+        const clickMenuItem = (): void => {
+          if (mounted || resolved) return;
+          const item = this.findQwenUploadMenuItem();
+          if (!item) {
+            this.log("clickMenuItem: upload item not found yet");
+            return;
+          }
+          this.log("clicking upload menu item");
+          try {
+            item.dispatchEvent(
+              new MouseEvent("click", {
+                bubbles: true,
+                cancelable: true,
+                view: window,
+              }),
+            );
+          } catch {
+            // 容错
+          }
+        };
+
+        timers.push(setTimeout(clickMenuItem, 300));
+        timers.push(setTimeout(clickMenuItem, 600));
+        timers.push(setTimeout(clickMenuItem, 1000));
+        timers.push(setTimeout(clickMenuItem, 1500));
       }
 
-      // 5. 轮询挂载（涵盖菜单刚打开时的 700ms 扫描点）
-      timers.push(setTimeout(tryMount, 300));
-      timers.push(setTimeout(tryMount, 600));
-      timers.push(setTimeout(tryMount, 900));
-      timers.push(setTimeout(tryMount, 1300));
-      timers.push(setTimeout(tryMount, 1800));
-      timers.push(setTimeout(tryMount, 2400));
-      timers.push(setTimeout(tryMount, 3000));
-
-      // 6. 超时兜底
+      // 超时兜底
       timers.push(
         setTimeout(() => {
           if (!mounted) {
             this.log("timeout: never mounted");
             finish(false);
           }
-        }, 3600),
+        }, 5000),
       );
     });
   }
 
-  /**
-   * 互斥式文件挂载入口（异步）
-   */
   public static async attachVirtualFile(
     file: File,
     targetElement?: EventTarget | null,
