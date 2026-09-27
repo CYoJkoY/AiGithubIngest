@@ -9,7 +9,13 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'json-summary'],
       include: ['src/core/**/*.ts'],
-      exclude: ['src/core/**/*.test.ts', 'src/core/errors.ts', 'src/core/logger.ts'],
+      exclude: [
+        'src/core/**/*.test.ts',
+        'src/core/errors.ts',
+        'src/core/logger.ts',
+        'src/core/github-engine.ts', // network-bound: exercised via integration tests only
+        'src/core/ingest.ts', // network + fflate: integration only
+      ],
       thresholds: { lines: 80, branches: 70 },
     },
   },

@@ -30,7 +30,7 @@ export function estimateTokenCount(text: string): number {
 }
 
 /**
- * 格式化为与 Gitingest 完全一致的展示字符（例如 1.2k, 1.5M）
+ * Format a token count as a compact display string (e.g. 1.2k, 1.5M).
  */
 export function formatTokenCount(text: string): string {
   const totalTokens = estimateTokenCount(text);

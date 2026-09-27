@@ -122,7 +122,7 @@ export const DEFAULT_IGNORE_PATTERNS = new Set<string>([
   '*.db',
   '*.sqlite',
   '*.sqlite3',
-  // Gitingest artifacts
+  // Generator-produced artifacts
   'digest.txt',
   '*.min.js',
   '*.min.css',

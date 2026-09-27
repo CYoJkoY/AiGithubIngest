@@ -62,8 +62,8 @@ export class TreeBuilder {
   }
 
   /**
-   * 复刻 Gitingest 的 FileSystemNode.sort_children:
-   * 0=README, 1=普通文件, 2=隐藏文件(点开头), 3=普通目录, 4=隐藏目录
+   * Sort children deterministically:
+   * 0 = README, 1 = normal file, 2 = dotfile, 3 = normal dir, 4 = dot-dir
    */
   private static sortRecursive(node: FileSystemNode): void {
     if (node.type !== 'DIRECTORY' || node.children.length === 0) return;
