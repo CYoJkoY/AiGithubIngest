@@ -15,6 +15,9 @@ import { formatTokenCount } from './token-estimator';
 import { t } from './i18n';
 import { DomainError } from './errors';
 
+const SEPARATOR_LINE = '='.repeat(48);
+const BINARY_PLACEHOLDER = '[Binary file]';
+
 function isBinary(buffer: Uint8Array): boolean {
   const checkLen = Math.min(buffer.length, 1024);
   for (let i = 0; i < checkLen; i++) {
@@ -34,6 +37,33 @@ interface ExtractResult {
   readonly processedFiles: ExtractedFile[];
 }
 
+/** 从 zip 键中去除 rootPrefix，并过滤掉目录项 */
+function toRelativePath(rawKey: string, rootPrefix: string): string | null {
+  if (rootPrefix && !rawKey.startsWith(rootPrefix)) return null;
+  const relative = rootPrefix ? rawKey.slice(rootPrefix.length) : rawKey;
+  if (!relative || relative.endsWith('/')) return null;
+  return relative;
+}
+
+/** 检查相对路径是否命中目标子路径（支持 tree/blob 语义） */
+function matchesSubpath(relativePath: string, cleanSubpath: string, isBlob: boolean): boolean {
+  if (!cleanSubpath) return true;
+  if (isBlob) return relativePath === cleanSubpath;
+  return relativePath.startsWith(`${cleanSubpath}/`);
+}
+
+function toProcessedFile(
+  relativePath: string,
+  data: Uint8Array,
+  decoder: TextDecoder,
+): ExtractedFile {
+  const size = data.length;
+  if (isBinary(data)) {
+    return { path: relativePath, content: BINARY_PLACEHOLDER, size };
+  }
+  return { path: relativePath, content: decoder.decode(data), size };
+}
+
 function extractFilesFromZip(
   unzipped: Record<string, Uint8Array>,
   fileKeys: string[],
@@ -48,23 +78,15 @@ function extractFilesFromZip(
   const cleanSubpath = target.subpath ? target.subpath.replace(/^\/+|\/+$/g, '') : '';
   const isBlob = target.type === 'blob' && cleanSubpath.length > 0;
   const maxBytes = (options.maxFileSizeKb ?? 100) * 1024;
-  const utf8Decoder = new TextDecoder('utf-8', { fatal: false });
+  const decoder = new TextDecoder('utf-8', { fatal: false });
 
   const treeFiles: Array<{ path: string; size: number }> = [];
   const processedFiles: ExtractedFile[] = [];
 
   for (const rawKey of fileKeys) {
-    if (rootPrefix && !rawKey.startsWith(rootPrefix)) continue;
-    const relativePath = rootPrefix ? rawKey.slice(rootPrefix.length) : rawKey;
-    if (!relativePath || relativePath.endsWith('/')) continue;
-
-    if (cleanSubpath) {
-      if (isBlob) {
-        if (relativePath !== cleanSubpath) continue;
-      } else if (!relativePath.startsWith(`${cleanSubpath}/`)) {
-        continue;
-      }
-    }
+    const relativePath = toRelativePath(rawKey, rootPrefix);
+    if (!relativePath) continue;
+    if (!matchesSubpath(relativePath, cleanSubpath, isBlob)) continue;
 
     const fileData = unzipped[rawKey];
     const fileSize = fileData.length;
@@ -81,17 +103,7 @@ function extractFilesFromZip(
     }
 
     treeFiles.push({ path: relativePath, size: fileSize });
-
-    if (isBinary(fileData)) {
-      processedFiles.push({ path: relativePath, content: '[Binary file]', size: fileSize });
-      continue;
-    }
-
-    processedFiles.push({
-      path: relativePath,
-      content: utf8Decoder.decode(fileData),
-      size: fileSize,
-    });
+    processedFiles.push(toProcessedFile(relativePath, fileData, decoder));
   }
 
   if (processedFiles.length === 0) {
@@ -99,6 +111,14 @@ function extractFilesFromZip(
   }
 
   return { treeFiles, processedFiles };
+}
+
+function buildRawContentPart(files: readonly ExtractedFile[]): string {
+  let out = '';
+  for (const f of files) {
+    out += `\n${SEPARATOR_LINE}\nFILE: ${f.path}\n${SEPARATOR_LINE}\n${f.content}\n`;
+  }
+  return out;
 }
 
 export async function ingestRepository(
@@ -141,11 +161,7 @@ export async function ingestRepository(
   const fileTree = TreeBuilder.build(treeFiles, rootSlug);
   const treeVisual = TreeBuilder.renderAscii(fileTree);
 
-  let rawContentPart = '';
-  for (const f of processedFiles) {
-    rawContentPart += `\n================================================\nFILE: ${f.path}\n================================================\n${f.content}\n`;
-  }
-
+  const rawContentPart = buildRawContentPart(processedFiles);
   const estimatedTokens = formatTokenCount(treeVisual + rawContentPart);
   const summaryPrefix = OutputFormatter.createSummaryPrefix(
     target,

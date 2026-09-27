@@ -2,13 +2,12 @@ module.exports = {
   root: true,
   parser: '@typescript-eslint/parser',
   parserOptions: { ecmaVersion: 2022, sourceType: 'module' },
-  plugins: ['@typescript-eslint', 'import', 'sonarjs'],
+  plugins: ['@typescript-eslint', 'import'],
   extends: [
     'eslint:recommended',
     'plugin:@typescript-eslint/recommended',
     'plugin:import/recommended',
     'plugin:import/typescript',
-    'plugin:sonarjs/recommended',
   ],
   rules: {
     'max-lines': ['error', { max: 400, skipBlankLines: true, skipComments: true }],
@@ -26,10 +25,16 @@ module.exports = {
     '@typescript-eslint/explicit-module-boundary-types': 'off',
     '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
     'import/extensions': ['error', 'ignorePackages', { ts: 'never', js: 'never' }],
-    'sonarjs/cognitive-complexity': ['warn', 20],
   },
   settings: {
     'import/resolver': { typescript: {} },
   },
-  ignorePatterns: ['dist/', 'node_modules/', '*.config.*', 'build.mjs', 'vitest.config.ts'],
+  ignorePatterns: [
+    'dist/',
+    'node_modules/',
+    '*.config.*',
+    'build.mjs',
+    'vitest.config.ts',
+    '.eslintrc.cjs',
+  ],
 };

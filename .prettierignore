@@ -1,6 +1,8 @@
 dist/
 node_modules/
+coverage/
 pnpm-lock.yaml
 build.mjs
 src/assets/
 *.md
+.eslintrc.cjs

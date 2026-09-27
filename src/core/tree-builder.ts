@@ -1,10 +1,12 @@
 import { FileSystemNode } from '../types';
 
+interface FileInput {
+  readonly path: string;
+  readonly size: number;
+}
+
 export class TreeBuilder {
-  public static build(
-    files: Array<{ path: string; size: number }>,
-    rootSlug: string,
-  ): FileSystemNode {
+  public static build(files: FileInput[], rootSlug: string): FileSystemNode {
     const root: FileSystemNode = {
       name: rootSlug,
       type: 'DIRECTORY',
@@ -16,49 +18,80 @@ export class TreeBuilder {
     };
 
     for (const f of files) {
-      const parts = f.path.split('/').filter(Boolean);
-      let curr = root;
+      this.insertFile(root, f);
+    }
 
-      for (let i = 0; i < parts.length; i++) {
-        const part = parts[i];
-        const isLeaf = i === parts.length - 1;
+    this.aggregate(root);
+    this.sortRecursive(root);
+    return root;
+  }
 
-        if (isLeaf) {
-          curr.children.push({
+  /**
+   * 将单个文件插入目录树（不进行 size/fileCount 累加，由 aggregate 统一处理）。
+   */
+  private static insertFile(root: FileSystemNode, f: FileInput): void {
+    const parts = f.path.split('/').filter(Boolean);
+    let curr = root;
+
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      const isLeaf = i === parts.length - 1;
+
+      if (isLeaf) {
+        curr.children.push({
+          name: part,
+          type: 'FILE',
+          path: f.path,
+          size: f.size,
+          fileCount: 1,
+          dirCount: 0,
+          children: [],
+        });
+      } else {
+        let childDir = curr.children.find((c) => c.type === 'DIRECTORY' && c.name === part);
+        if (!childDir) {
+          childDir = {
             name: part,
-            type: 'FILE',
-            path: f.path,
-            size: f.size,
-            fileCount: 1,
+            type: 'DIRECTORY',
+            path: parts.slice(0, i + 1).join('/'),
+            size: 0,
+            fileCount: 0,
             dirCount: 0,
             children: [],
-          });
-          curr.size += f.size;
-          curr.fileCount += 1;
-        } else {
-          let childDir = curr.children.find((c) => c.type === 'DIRECTORY' && c.name === part);
-          if (!childDir) {
-            childDir = {
-              name: part,
-              type: 'DIRECTORY',
-              path: parts.slice(0, i + 1).join('/'),
-              size: 0,
-              fileCount: 0,
-              dirCount: 0,
-              children: [],
-            };
-            curr.children.push(childDir);
-            curr.dirCount += 1;
-          }
-          childDir.size += f.size;
-          childDir.fileCount += 1;
-          curr = childDir;
+          };
+          curr.children.push(childDir);
         }
+        curr = childDir;
+      }
+    }
+  }
+
+  /**
+   * 自底向上汇总：目录的 size / fileCount 递归累加所有后代文件；
+   * dirCount 统计**直接**子目录数。
+   */
+  private static aggregate(node: FileSystemNode): void {
+    if (node.type !== 'DIRECTORY') return;
+
+    let size = 0;
+    let fileCount = 0;
+    let dirCount = 0;
+
+    for (const child of node.children) {
+      if (child.type === 'FILE') {
+        size += child.size;
+        fileCount += 1;
+      } else {
+        this.aggregate(child);
+        size += child.size;
+        fileCount += child.fileCount;
+        dirCount += 1;
       }
     }
 
-    this.sortRecursive(root);
-    return root;
+    node.size = size;
+    node.fileCount = fileCount;
+    node.dirCount = dirCount;
   }
 
   /**
