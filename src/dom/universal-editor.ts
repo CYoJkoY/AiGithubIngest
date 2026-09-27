@@ -135,6 +135,7 @@ export class UniversalEditor {
 
       console.log("[AiIngest] mountFileToInput: dispatched input/change");
 
+      // 挂载完成后延迟清空物理 input，避免文件常驻
       setTimeout(() => {
         UniversalEditor.cleanUpFileInput(input);
       }, 1000);
@@ -263,16 +264,15 @@ export class UniversalEditor {
    *   - 文件输入：input[data-testid="upload-file-input"] 或 input[type="file"]
    *   - input 的 accept 明确包含 .md，可直接上传 Markdown
    *
-   * 流程：
-   *   1. 直接查 input[data-testid="upload-file-input"]（快路径，input 可能已存在）
-   *   2. 若不存在，合成 click 到 button[data-testid="upload_file_button"]，
-   *      等待 200ms 后重新查 input 并挂载
+   * 关键难点与解决方案：
+   *   合成 click 到附件按钮时，我们仍处于 paste 事件的 user gesture 上下文，
+   *   豆包 React onClick 内部会调用 input.click()，Chrome 判定为"用户主动点击"，
+   *   于是弹出系统文件选择器——但我们其实不需要它弹窗，因为文件我们直接挂载。
    *
-   * 说明：
-   *   - 合成 click 不满足 transient activation，Chrome 不会弹出系统文件选择器，
-   *     但会触发 React 的 onClick，让框架渲染出隐藏 input。
-   *   - 之前的 paste / drop 路径均已被实测证明不可行（豆包内部剥离 clipboardData，
-   *     tiptap handleDrop 只处理图片），此方案为唯一可行路径。
+   *   解决方案：在派发 click 期间临时 patch HTMLInputElement.prototype.click 和
+   *   showPicker，让 type="file" 的 input 静默失败（阻止系统弹窗），同时让 React
+   *   onClick 正常执行、input 正常渲染到 DOM。派发结束后立即恢复原型链，
+   *   保证用户后续手动点击加号按钮时系统选择器仍正常弹出。
    */
   private static tryDoubaoUpload(
     file: File,
@@ -291,7 +291,7 @@ export class UniversalEditor {
       return true;
     }
 
-    // 2. 慢路径：点击附件按钮触发 input 渲染
+    // 2. 慢路径：点击附件按钮触发 input 渲染（需临时 patch click / showPicker）
     const attachBtn = document.querySelector<HTMLElement>(
       'button[data-testid="upload_file_button"]',
     );
@@ -301,6 +301,53 @@ export class UniversalEditor {
       return false;
     }
 
+    // 保存原始方法
+    const originalClick = HTMLInputElement.prototype.click;
+    const originalShowPicker = (
+      HTMLInputElement.prototype as unknown as {
+        showPicker?: () => void;
+      }
+    ).showPicker;
+
+    let patched = false;
+
+    // 临时 patch：拦截 type="file" 的 input，阻止系统文件选择器弹出
+    try {
+      HTMLInputElement.prototype.click = function (
+        this: HTMLInputElement,
+      ): void {
+        if (this.type === "file") {
+          console.log(
+            "[AiIngest] doubao: suppressed native file picker (click)",
+          );
+          return;
+        }
+        return originalClick.call(this);
+      };
+
+      if (typeof originalShowPicker === "function") {
+        (
+          HTMLInputElement.prototype as unknown as {
+            showPicker: () => void;
+          }
+        ).showPicker = function (this: HTMLInputElement): void {
+          if (this.type === "file") {
+            console.log(
+              "[AiIngest] doubao: suppressed native file picker (showPicker)",
+            );
+            return;
+          }
+          return originalShowPicker.call(this);
+        };
+      }
+
+      patched = true;
+      console.log("[AiIngest] doubao: click/showPicker patched");
+    } catch (e) {
+      console.log("[AiIngest] doubao: patch failed", e);
+    }
+
+    // 派发合成 click 触发 React onClick，让豆包渲染出 input
     console.log(
       "[AiIngest] doubao: dispatching synthetic click on attach button",
     );
@@ -314,10 +361,26 @@ export class UniversalEditor {
       );
     } catch (e) {
       console.log("[AiIngest] doubao: click dispatch failed", e);
-      return false;
+    } finally {
+      // 立即恢复原始方法，避免影响后续用户正常操作
+      if (patched) {
+        try {
+          HTMLInputElement.prototype.click = originalClick;
+          if (typeof originalShowPicker === "function") {
+            (
+              HTMLInputElement.prototype as unknown as {
+                showPicker: () => void;
+              }
+            ).showPicker = originalShowPicker;
+          }
+          console.log("[AiIngest] doubao: click/showPicker restored");
+        } catch (e) {
+          console.log("[AiIngest] doubao: restore failed", e);
+        }
+      }
     }
 
-    // 3. 延迟扫描新出现的 input
+    // 3. 延迟扫描新出现的 input 并挂载文件
     setTimeout(() => {
       const newInput = document.querySelector<HTMLInputElement>(
         'input[data-testid="upload-file-input"], input[type="file"]',
