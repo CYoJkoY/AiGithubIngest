@@ -6,15 +6,26 @@
   "packageManager": "pnpm@9.15.4",
   "scripts": {
     "build": "tsc --noEmit && node build.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "verify": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test && pnpm build"
   },
   "dependencies": {
     "fflate": "^0.8.2"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.268",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
     "esbuild": "^0.20.2",
-    "typescript": "^5.4.5"
+    "eslint": "^8.57.0",
+    "eslint-plugin-import": "^2.29.1",
+    "eslint-plugin-sonarjs": "^1.0.3",
+    "prettier": "^3.2.5",
+    "typescript": "^5.4.5",
+    "vitest": "^1.4.0"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
