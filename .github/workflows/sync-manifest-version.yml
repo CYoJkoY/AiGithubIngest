@@ -44,21 +44,13 @@ jobs:
           const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
 
           const stable = String(manifest.version || '').trim();
-          const versionName = String(manifest.version_name || '').trim();
 
           if (!/^\d+\.\d+\.\d+$/.test(stable)) {
             throw new Error(`manifest.version 必须符合 X.Y.Z 格式，当前为: ${stable}`);
           }
 
-          if (versionName) {
-            if (!/^\d+\.\d+\.\d+\.dev\d+$/.test(versionName)) {
-              throw new Error(`manifest.version_name 必须符合 X.Y.Z.devN 格式，当前为: ${versionName}`);
-            }
-            if (!versionName.startsWith(`${stable}.dev`)) {
-              throw new Error(
-                `manifest.version_name (${versionName}) 必须以 manifest.version (${stable}) 作为前缀`
-              );
-            }
+          if (Object.prototype.hasOwnProperty.call(manifest, 'version_name')) {
+            throw new Error('已禁用开发版发布模式，manifest.json 不应包含 version_name。');
           }
 
           const changed = pkg.version !== stable;

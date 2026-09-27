@@ -4,11 +4,10 @@ on:
   push:
     tags:
       - 'v*.*.*'
-      - 'v*.*.*.dev*'
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Existing release tag to build (for example v0.6.0 or v0.6.0.dev01)'
+        description: 'Existing stable release tag to build (for example v0.6.0)'
         required: true
         type: string
 
@@ -46,11 +45,11 @@ jobs:
         run: pnpm exec tsc --noEmit
 
       # -----------------------------------------------------------------------
-      # Tag 是发布的唯一真相源：
-      #   - vX.Y.Z          → 正式通道，产物移除 version_name
-      #   - vX.Y.Z.devN     → 开发通道，产物 version_name = X.Y.Z.devN
-      # manifest.json 仅需维护基线 version = X.Y.Z；
-      # 打 tag 前无需修改 manifest.json，无需切换 version_name。
+      # 单通道发布：
+      #   - Git Tag 只允许 vX.Y.Z
+      #   - Tag 必须等于 manifest.version
+      #   - package.json.version 必须等于 manifest.version
+      #   - manifest.version_name 已停用
       # -----------------------------------------------------------------------
       - name: Read and validate version
         id: version
@@ -59,6 +58,7 @@ jobs:
           set -euo pipefail
 
           MANIFEST_VERSION=$(node -p "JSON.parse(require('fs').readFileSync('manifest.json','utf8')).version || ''")
+          MANIFEST_VERSION_NAME=$(node -p "JSON.parse(require('fs').readFileSync('manifest.json','utf8')).version_name || ''")
           PKG_VERSION=$(node -p "JSON.parse(require('fs').readFileSync('package.json','utf8')).version || ''")
 
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
@@ -67,31 +67,26 @@ jobs:
             TAG="${GITHUB_REF_NAME}"
           fi
 
-          echo "🔍 版本契约复核（Tag 为唯一真相源）："
+          echo "🔍 版本契约复核（单通道稳定发布）："
           echo "  - Git Tag:           ${TAG}"
           echo "  - manifest.version:  ${MANIFEST_VERSION}"
           echo "  - package.json:      ${PKG_VERSION}"
 
-          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ && ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+\.dev[0-9]+$ ]]; then
-            echo "::error::无效的 Release Tag 格式: $TAG （应为 vX.Y.Z 或 vX.Y.Z.devN）"
+          if [[ -n "${MANIFEST_VERSION_NAME}" ]]; then
+            echo "::error::已禁用开发版发布模式，manifest.json 不应包含 version_name。"
+            exit 1
+          fi
+
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::无效的稳定版 Release Tag: $TAG （应为 vX.Y.Z）"
             exit 1
           fi
 
           TAG_VERSION="${TAG#v}"
-          IS_DEV="false"
 
-          if [[ "$TAG_VERSION" == *.dev[0-9]* ]]; then
-            IS_DEV="true"
-            TAG_BASE="${TAG_VERSION%%.dev*}"
-            if [[ "$TAG_BASE" != "$MANIFEST_VERSION" ]]; then
-              echo "::error::开发版 Tag 基础版本 ($TAG_BASE) 必须等于 manifest.version ($MANIFEST_VERSION)"
-              exit 1
-            fi
-          else
-            if [[ "$TAG_VERSION" != "$MANIFEST_VERSION" ]]; then
-              echo "::error::正式版 Tag ($TAG_VERSION) 必须等于 manifest.version ($MANIFEST_VERSION)"
-              exit 1
-            fi
+          if [[ "$TAG_VERSION" != "$MANIFEST_VERSION" ]]; then
+            echo "::error::Tag 版本 ($TAG_VERSION) 必须等于 manifest.version ($MANIFEST_VERSION)"
+            exit 1
           fi
 
           if [[ "$PKG_VERSION" != "$MANIFEST_VERSION" ]]; then
@@ -101,39 +96,32 @@ jobs:
 
           echo "version=$TAG_VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "is_dev=$IS_DEV" >> "$GITHUB_OUTPUT"
-          echo "✅ 版本复核通过：RELEASE_VERSION=${TAG_VERSION}, IS_DEV=${IS_DEV}"
+          echo "✅ 版本复核通过：RELEASE_VERSION=${TAG_VERSION}"
 
       - name: Build production bundle
         run: pnpm run build
 
-      - name: Normalize dist/manifest.json by release channel
+      - name: Validate dist manifest
         shell: bash
         env:
-          IS_DEV: ${{ steps.version.outputs.is_dev }}
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
           node - <<'NODE'
           const fs = require('fs');
-          const manifestPath = 'dist/manifest.json';
-          const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-          const isDev = process.env.IS_DEV === 'true';
-          const tagVersion = process.env.RELEASE_VERSION;
+          const manifest = JSON.parse(fs.readFileSync('dist/manifest.json', 'utf8'));
 
-          // Chrome 强制要求 manifest.version 为纯数字 X.Y.Z，
-          // dev 语义必须借助 version_name 承载。
-          if (isDev) {
-            manifest.version_name = tagVersion;
-            console.log(
-              `[Normalize] Dev channel → version=${manifest.version}, version_name=${manifest.version_name}`
-            );
-          } else {
-            delete manifest.version_name;
-            console.log(`[Normalize] Stable channel → version=${manifest.version}, version_name=<removed>`);
+          if (Object.prototype.hasOwnProperty.call(manifest, 'version_name')) {
+            throw new Error('dist/manifest.json 不应包含 version_name。');
           }
 
-          fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n', 'utf8');
+          if (manifest.version !== process.env.RELEASE_VERSION) {
+            throw new Error(
+              `dist/manifest.json version (${manifest.version}) 必须等于 RELEASE_VERSION (${process.env.RELEASE_VERSION})`
+            );
+          }
+
+          console.log(`✅ dist manifest 校验通过：version=${manifest.version}`);
           NODE
 
       - name: Validate distribution integrity
@@ -158,8 +146,14 @@ jobs:
 
           BUILT_VERSION=$(node -p "JSON.parse(require('fs').readFileSync('dist/manifest.json','utf8')).version || ''")
           BUILT_VERSION_NAME=$(node -p "JSON.parse(require('fs').readFileSync('dist/manifest.json','utf8')).version_name || ''")
+
+          if [ -n "$BUILT_VERSION_NAME" ]; then
+            echo "❌ 构建产物仍包含 version_name: ${BUILT_VERSION_NAME}"
+            exit 1
+          fi
+
           echo "  - 构建产物 version:        ${BUILT_VERSION}"
-          echo "  - 构建产物 version_name:   ${BUILT_VERSION_NAME:-<empty>}"
+          echo "  - 构建产物 version_name:   <empty>"
           echo "✅ 产物契约校验通过"
 
       - name: Package extension archive (ZIP & CRX)
@@ -204,5 +198,5 @@ jobs:
             ai-github-ingest-v${{ steps.version.outputs.version }}*.crx
             ai-github-ingest-v${{ steps.version.outputs.version }}*.crx.sha256
           draft: false
-          prerelease: ${{ steps.version.outputs.is_dev == 'true' }}
+          prerelease: false
           generate_release_notes: true

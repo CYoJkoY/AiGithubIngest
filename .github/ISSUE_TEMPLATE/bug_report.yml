@@ -14,10 +14,8 @@ body:
       label: Extension Version
       description: >
         Open `chrome://extensions`, locate the AiGithubIngest card, and copy the displayed
-        version. If you are running a development build, include the full
-        `version_name` (for example `0.5.0.dev01`); otherwise use the stable `version`
-        (for example `0.5.0`).
-      placeholder: 'e.g. 0.5.0 or 0.5.0.dev01'
+        version. For example `0.6.0`. Development/version_name builds are no longer published.
+      placeholder: 'e.g. 0.6.0'
     validations:
       required: true
 
@@ -28,7 +26,6 @@ body:
       description: Which channel did you install from?
       options:
         - 'Stable release (GitHub Release, tag vX.Y.Z)'
-        - 'Development pre-release (GitHub Pre-release, tag vX.Y.Z.devN)'
         - 'Built from source (pnpm run build, loaded unpacked)'
         - 'Other / not sure'
     validations:

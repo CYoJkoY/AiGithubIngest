@@ -10,7 +10,7 @@ Parse public and private GitHub repositories entirely inside your browser and se
 
 <p>
   <img src="https://img.shields.io/badge/Manifest-V3-38bdf8?style=flat-square" alt="Manifest V3">
-  <img src="https://img.shields.io/badge/Version-0.5.0-0284c7?style=flat-square" alt="Version 0.5.0">
+  <img src="https://img.shields.io/badge/Version-0.6.0-0284c7?style=flat-square" alt="Version 0.6.0">
   <img src="https://img.shields.io/badge/Runtime-Pure%20TypeScript%20%2F%20DOM-3178c6?style=flat-square" alt="TypeScript">
   <img src="https://img.shields.io/badge/Privacy-100%25%20In--Browser%20(Zero%20Servers)-059669?style=flat-square" alt="Zero-Server Privacy">
   <img src="https://img.shields.io/badge/License-MIT-9e8f7e?style=flat-square" alt="MIT License">
@@ -263,65 +263,50 @@ Click the extension icon in your browser toolbar to open the settings popup:
 
 ## <img src="assets/readme/icons/engineering.svg" width="24" height="24" alt=""> Versioning Strategy
 
-AiGithubIngest follows a dual-channel release model:
+AiGithubIngest uses a single stable release channel.
 
-| Channel         | `manifest.version` | `manifest.version_name` | Git Tag       | GitHub Release |
-| :-------------- | :----------------- | :---------------------- | :------------ | :------------- |
-| **Stable**      | `X.Y.Z`            | omitted or `X.Y.Z`      | `vX.Y.Z`      | Published      |
-| **Development** | `X.Y.Z`            | `X.Y.Z.devN`            | `vX.Y.Z.devN` | Pre-release    |
+| Item | Rule |
+| :--- | :--- |
+| `manifest.version` | Must be `X.Y.Z` |
+| `manifest.version_name` | Removed and forbidden |
+| `package.json.version` | Always tracks `manifest.version` |
+| Git Tag | `vX.Y.Z` only |
+| GitHub Release | Normal release, not a pre-release |
 
 Key rules:
 
-- `manifest.version` must always be a Chrome-valid `X.Y.Z` string. Chrome rejects `dev` suffixes here.
-- `manifest.version_name` is the human-readable channel marker. Development builds keep the same base `X.Y.Z` but append `.devN`.
-- `package.json.version` always tracks `manifest.version` only, never `version_name`. The `sync-manifest-version.yml` workflow enforces this on every `main` push.
-- Development tags (`vX.Y.Z.devN`) publish as **Pre-release**. They are excluded from GitHub's `latest` pointer and from any future auto-update check.
-- Stable tags (`vX.Y.Z`) publish as regular releases.
+- `manifest.version` is the only version source of truth.
+- `package.json.version` must always equal `manifest.version`.
+- Development tags such as `vX.Y.Z.devN` are no longer supported.
+- `manifest.version_name` must not be present.
+- GitHub Releases are always published as regular releases.
+- `sync-manifest-version.yml` keeps `package.json` aligned with `manifest.version` on every `main` push.
 
-### Publishing a development build
+### Publishing a stable build
 
 1. Edit `manifest.json`:
 
    ```json
    {
-     "version": "0.5.0",
-     "version_name": "0.5.0.dev01"
+     "version": "0.6.0"
    }
    ```
 
-2. Commit to `main`. The sync workflow aligns `package.json` automatically.
-3. Tag and push:
+2. Ensure `package.json` is also `0.6.0`. The sync workflow will align it automatically on `main`.
+3. Commit to `main`.
+4. Tag and push:
 
    ```bash
-   git tag v0.5.0.dev01
-   git push origin v0.5.0.dev01
+   git tag v0.6.0
+   git push origin v0.6.0
    ```
 
-4. The release workflow validates the tag against `version_name`, builds ZIP/CRX with the `.devN` suffix, and publishes a Pre-release.
-
-### Publishing a stable build
-
-1. Edit `manifest.json` and remove `version_name` (or set it to the same `X.Y.Z`):
-
-   ```json
-   {
-     "version": "0.5.0"
-   }
-   ```
-
-2. Ensure `package.json` is also `0.5.0`.
-3. Tag and push:
-
-   ```bash
-   git tag v0.5.0
-   git push origin v0.5.0
-   ```
-
-4. The release workflow publishes a normal release.
+5. The release workflow validates the tag against `manifest.version`, builds ZIP/CRX, and publishes a normal GitHub Release.
 
 ### Notes
 
-- If you need to install a dev build and a stable build side by side, use a separate CRX signing key for the dev channel so the extension IDs differ. Otherwise they overwrite each other.
+- `manifest.version_name` is no longer used. Do not add it back to `manifest.json`.
+- Do not create tags with a `.devN` suffix.
 - Never paste a `version_name` value into any field Chrome treats as strict semver.
 
 ---
@@ -385,7 +370,7 @@ The following conditions fail the build:
 ### CI / CD Workflows
 
 - **`ci.yml`**: Runs `tsc --noEmit`, `eslint .`, `prettier --check .`, `vitest run --coverage`, manifest version contract validation, extension bundle build, and clean-worktree verification on every push to `main` and every PR.
-- **`release.yml`**: Verifies that git tags match `manifest.json` versions (`version` for stable, `version_name` for development), validates critical artifact files (`background.js`, `content.js`, `popup.html`, etc.), and packages both signed CRX3 and ZIP distributions. Development tags are published as Pre-releases.
+- **`release.yml`**: Verifies that git tags (`vX.Y.Z`) match `manifest.json` `version`, validates critical artifact files (`background.js`, `content.js`, `popup.html`, etc.), and packages both signed CRX3 and ZIP distributions. All releases are normal GitHub Releases; development tags and `version_name` are no longer supported.
 - **`sync-manifest-version.yml`**: Automatically syncs `package.json` to the authoritative `manifest.version` single source of truth upon main-branch updates.
 
 ### Architecture enforcement

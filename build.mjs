@@ -19,10 +19,10 @@ try {
   // ---------------------------------------------------------------------------
   // 1. 版本一致性守护检查与自动补正（以 manifest.json 为权威单一真相源）
   //
-  // 约定：
-  //   - manifest.version      : 稳定基础版本，格式必须为 X.Y.Z（Chrome 强制）
-  //   - manifest.version_name : 可选展示版本，格式为 X.Y.Z.devN（开发版）
-  //   - package.json          : 永远只跟随 manifest.version，不跟随 version_name
+  // 单通道发布约定：
+  //   - manifest.version : 稳定版本，格式必须为 X.Y.Z（Chrome 强制）
+  //   - manifest.version_name : 已停用，必须移除
+  //   - package.json : 永远只跟随 manifest.version
   // ---------------------------------------------------------------------------
   const manifestPath = resolve("manifest.json");
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
@@ -30,7 +30,6 @@ try {
   const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
 
   const stableVersion = String(manifest.version || "").trim();
-  const versionName = String(manifest.version_name || "").trim();
 
   if (!/^\d+\.\d+\.\d+$/.test(stableVersion)) {
     throw new Error(
@@ -38,17 +37,10 @@ try {
     );
   }
 
-  if (versionName) {
-    if (!/^\d+\.\d+\.\d+\.dev\d+$/.test(versionName)) {
-      throw new Error(
-        `[Version Guard] manifest.version_name 必须符合 X.Y.Z.devN 格式，当前为: ${versionName}`,
-      );
-    }
-    if (!versionName.startsWith(`${stableVersion}.dev`)) {
-      throw new Error(
-        `[Version Guard] manifest.version_name (${versionName}) 必须以 manifest.version (${stableVersion}) 作为前缀`,
-      );
-    }
+  if (Object.prototype.hasOwnProperty.call(manifest, "version_name")) {
+    throw new Error(
+      "[Version Guard] 已禁用开发版发布模式，manifest.json 不应再包含 version_name。",
+    );
   }
 
   if (pkg.version !== stableVersion) {
@@ -118,12 +110,7 @@ try {
     copyFileSync(sourcePath, targetPath);
   }
 
-  const displayVersion = versionName
-    ? `${stableVersion} (${versionName})`
-    : stableVersion;
-  console.log(
-    `✅ 构建成功：产物已生成至 dist/ 目录 (version: ${displayVersion})`,
-  );
+  console.log(`✅ 构建成功：产物已生成至 dist/ 目录 (version: ${stableVersion})`);
 } catch (caughtException) {
   console.error("❌ 构建失败:", caughtException);
   process.exit(1);
