@@ -135,7 +135,6 @@ export class UniversalEditor {
 
       console.log("[AiIngest] mountFileToInput: dispatched input/change");
 
-      // 挂载完成后延迟清空物理 input，避免文件常驻
       setTimeout(() => {
         UniversalEditor.cleanUpFileInput(input);
       }, 1000);
@@ -262,21 +261,22 @@ export class UniversalEditor {
    * 从用户提供的豆包 DOM 得出精确选择器：
    *   - 附件按钮：button[data-testid="upload_file_button"]
    *   - 文件输入：input[data-testid="upload-file-input"] 或 input[type="file"]
-   *   - input 的 accept 明确包含 .md，可直接上传 Markdown
    *
-   * 关键难点与解决方案（最终版）：
+   * 关键难点与最终解决方案：
    *
-   *   合成 click 到附件按钮时，我们仍处于 paste 事件的 user gesture 上下文，
-   *   豆包 React onClick 内部会调用 input.click()，Chrome 判定为"用户主动点击"，
-   *   于是弹出系统文件选择器——但我们其实不需要它弹窗，因为文件我们直接挂载。
+   *   诊断日志证明：豆包不是通过 HTMLInputElement.prototype.click() 打开
+   *   文件选择器（否则我们的 prototype patch 会命中并打印 suppressed 日志），
+   *   也不是通过 showPicker()。它走的是**直接向 input 元素派发 click 事件**
+   *   （input.dispatchEvent(new MouseEvent('click')) 或类似），
+   *   浏览器识别为 trusted click 后弹出系统文件选择器，绕过所有 prototype 方法。
    *
-   *   诊断日志表明：补丁在 dispatch 返回后立即恢复，但豆包实际是在
-   *   dispatch 返回之后的**异步阶段**（Promise 微任务 / rAF / setTimeout）
-   *   才调用 input.click()。导致我们的补丁已经恢复，系统选择器照常弹出。
+   *   解决方案：在 document 上以**捕获阶段**监听 click 事件，一旦发现事件
+   *   目标是 type="file" 的 input，立即 preventDefault + stopImmediatePropagation，
+   *   阻止浏览器的默认"打开文件选择器"行为。
    *
-   *   解决方案：补丁**延迟 2 秒恢复**，覆盖豆包任何异步触发的 click / showPicker。
-   *   在这 2 秒窗口内，用户手动点击附件按钮会被静默忽略；2 秒后一切恢复正常。
-   *   该窗口对用户体验影响可忽略（用户刚刚完成粘贴，不会立即手动点击）。
+   *   捕获阶段在 document 上，会先于豆包任何监听器执行，因此 100% 拦截。
+   *   拦截窗口为 1 秒，覆盖豆包所有同步 + 异步的 click 派发。
+   *   1 秒后自动移除拦截器，用户后续手动操作完全正常。
    */
   private static tryDoubaoUpload(
     file: File,
@@ -295,7 +295,7 @@ export class UniversalEditor {
       return true;
     }
 
-    // 2. 慢路径：点击附件按钮触发 input 渲染（延迟恢复补丁）
+    // 2. 慢路径：安装 click 捕获拦截器 → 派发 click → 挂载文件
     const attachBtn = document.querySelector<HTMLElement>(
       'button[data-testid="upload_file_button"]',
     );
@@ -305,43 +305,50 @@ export class UniversalEditor {
       return false;
     }
 
-    // 保存原始方法
-    const originalClick = HTMLInputElement.prototype.click;
+    // 安装捕获阶段的 click 拦截器：阻止浏览器弹出系统文件选择器
+    // 只拦截 input[type="file"] 上的 click，不影响其他元素
+    const clickBlocker = (e: Event): void => {
+      const target = e.target;
+      if (target instanceof HTMLInputElement && target.type === "file") {
+        console.log(
+          "[AiIngest] doubao: blocked click on file input (capture phase)",
+        );
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+      }
+    };
+
+    document.addEventListener("click", clickBlocker, true);
+
+    // 兼容 patch：也拦截 showPicker（部分 Chrome 版本会走这条路径）
     const originalShowPicker = (
       HTMLInputElement.prototype as unknown as {
         showPicker?: () => void;
       }
     ).showPicker;
-
-    // 安装补丁：拦截 type="file" 的 input，阻止系统文件选择器弹出
-    // 注意：补丁不会立即恢复，会在下方 setTimeout 里延迟恢复
-    HTMLInputElement.prototype.click = function (this: HTMLInputElement): void {
-      if (this.type === "file") {
-        console.log("[AiIngest] doubao: suppressed native file picker (click)");
-        return;
-      }
-      return originalClick.call(this);
-    };
+    let showPickerPatched = false;
 
     if (typeof originalShowPicker === "function") {
-      (
-        HTMLInputElement.prototype as unknown as {
-          showPicker: () => void;
-        }
-      ).showPicker = function (this: HTMLInputElement): void {
-        if (this.type === "file") {
-          console.log(
-            "[AiIngest] doubao: suppressed native file picker (showPicker)",
-          );
-          return;
-        }
-        return originalShowPicker.call(this);
-      };
+      try {
+        (
+          HTMLInputElement.prototype as unknown as {
+            showPicker: () => void;
+          }
+        ).showPicker = function (this: HTMLInputElement): void {
+          if (this.type === "file") {
+            console.log("[AiIngest] doubao: blocked showPicker on file input");
+            return;
+          }
+          return originalShowPicker.call(this);
+        };
+        showPickerPatched = true;
+      } catch (e) {
+        console.log("[AiIngest] doubao: showPicker patch failed", e);
+      }
     }
 
-    console.log(
-      "[AiIngest] doubao: click/showPicker patched (will restore after 2s)",
-    );
+    console.log("[AiIngest] doubao: click blocker installed");
 
     // 派发合成 click 触发 React onClick，让豆包渲染出 input
     console.log(
@@ -377,24 +384,22 @@ export class UniversalEditor {
       }
     }, 200);
 
-    // 4. 延迟 2 秒后恢复原始方法，覆盖豆包的异步 click / showPicker 调用
+    // 4. 1 秒后移除拦截器和恢复 patch，保证用户后续操作完全正常
     setTimeout(() => {
       try {
-        HTMLInputElement.prototype.click = originalClick;
-        if (typeof originalShowPicker === "function") {
+        document.removeEventListener("click", clickBlocker, true);
+        if (showPickerPatched) {
           (
             HTMLInputElement.prototype as unknown as {
-              showPicker: () => void;
+              showPicker?: () => void;
             }
           ).showPicker = originalShowPicker;
         }
-        console.log(
-          "[AiIngest] doubao: click/showPicker fully restored (after 2s)",
-        );
+        console.log("[AiIngest] doubao: click blocker removed (after 1s)");
       } catch (e) {
-        console.log("[AiIngest] doubao: restore failed", e);
+        console.log("[AiIngest] doubao: cleanup failed", e);
       }
-    }, 2000);
+    }, 1000);
 
     return true;
   }
