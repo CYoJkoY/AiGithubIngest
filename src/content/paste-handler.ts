@@ -9,6 +9,8 @@ import { IngestGuard } from '../core/ingest-guard';
 import { DomainError } from '../core/errors';
 import { logger } from '../core/logger';
 import { resolvePolicyHostnames, resolveActiveEditor, resolveEventTarget } from './policy-resolver';
+import { sleep } from '../dom/dom-utils';
+import { SavedRange } from '../dom/editor-writer';
 import {
   cachedWhitelist,
   cachedBlacklist,
@@ -16,11 +18,6 @@ import {
   cachedSiteFileSizeLimits,
   cachedDefaultFileSizeLimit,
 } from './storage-cache';
-
-interface SavedRange {
-  start: number;
-  end: number;
-}
 
 interface IngestContext {
   readonly rawText: string;
@@ -134,8 +131,7 @@ async function handleIngestResponse(
     const summary = response.payload;
     const outcome = await mountDigestParts(summary, targetElement);
 
-    if (outcome === 'mounted') return;
-    if (outcome === 'partial') return; // error toast already shown
+    if (outcome === 'mounted' || outcome === 'partial') return;
 
     insertFallback(summary, targetElement, savedRange);
   } catch (err) {
@@ -161,10 +157,6 @@ function resolveErrorMessage(response: ExtensionResponse | undefined): string {
 function extractOwnerRepo(canonicalUrl: string): { owner: string; repo: string } {
   const m = /github\.com\/([^/]+)\/([^/?#]+)/.exec(canonicalUrl);
   return { owner: m?.[1] ?? 'repo', repo: m?.[2] ?? 'digest' };
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
 }
 
 async function mountDigestParts(

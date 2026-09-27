@@ -14,11 +14,17 @@ describe('OutputFormatter.createSummaryPrefix', () => {
     const prefix = OutputFormatter.createSummaryPrefix(target, 'main', 5, '1.2k');
     expect(prefix).toContain('Repository: foo/bar');
     expect(prefix).not.toContain('Branch:');
+    expect(prefix).not.toContain('Subpath:');
   });
 
-  it('includes branch when not main/master', () => {
-    const prefix = OutputFormatter.createSummaryPrefix(target, 'dev', 5, '1.2k');
+  it('includes branch when not main/master and subpath when not root', () => {
+    const subTarget: RepoTarget = {
+      ...target,
+      subpath: '/packages/core',
+    };
+    const prefix = OutputFormatter.createSummaryPrefix(subTarget, 'dev', 5, '1.2k');
     expect(prefix).toContain('Branch: dev');
+    expect(prefix).toContain('Subpath: /packages/core');
   });
 });
 

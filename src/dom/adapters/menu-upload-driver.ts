@@ -1,6 +1,7 @@
 import type { AdapterResult } from './types';
 import type { Logger } from '../../core/logger';
 import { installShowPickerGuard, mountFilesToInput } from './show-picker-guard';
+import { safeClick } from '../dom-utils';
 
 export interface MenuUploadOptions {
   readonly dataTransfer: DataTransfer;
@@ -15,14 +16,6 @@ export interface MenuUploadOptions {
 const DEFAULT_RETRY_DELAYS_MS = [300, 600, 1000, 1500] as const;
 const DEFAULT_TIMEOUT_MS = 5000;
 const DEFAULT_MOUNT_DELAY_MS = 500;
-
-function safeClick(el: HTMLElement, logger: Logger): void {
-  try {
-    el.click();
-  } catch (err) {
-    logger.warn('menu-upload click failed', err);
-  }
-}
 
 export function driveMenuUpload(opts: MenuUploadOptions): Promise<AdapterResult> {
   const {
@@ -64,7 +57,7 @@ export function driveMenuUpload(opts: MenuUploadOptions): Promise<AdapterResult>
 
     const existingItem = findMenuItem();
     if (existingItem) {
-      safeClick(existingItem, logger);
+      safeClick(existingItem, logger, 'menu-existing-item');
     } else if (!openMenu()) {
       finish(false);
       return;
@@ -73,7 +66,7 @@ export function driveMenuUpload(opts: MenuUploadOptions): Promise<AdapterResult>
     const clickItem = (): void => {
       if (mounted || resolved) return;
       const item = findMenuItem();
-      if (item) safeClick(item, logger);
+      if (item) safeClick(item, logger, 'menu-item-retry');
     };
 
     for (const delay of retryDelaysMs) timers.push(setTimeout(clickItem, delay));

@@ -2,6 +2,7 @@ import { evaluateSitePolicy, normalizeHostname } from '../core/policy';
 import { t } from '../core/i18n';
 import { StorageSchema, SupportedLang } from '../types';
 import { logger } from '../core/logger';
+import { StorageService } from './storage-service';
 
 export async function renderSitePolicy(
   storage: StorageSchema,
@@ -44,8 +45,6 @@ export async function renderSitePolicy(
   applyPolicyUi({
     policy,
     cleanHost,
-    whitelist,
-    blacklist,
     badgeEl,
     toggleBtn,
     blacklistCurrentBtn,
@@ -69,8 +68,6 @@ function showCantGetDomain(
 interface PolicyUiArgs {
   policy: ReturnType<typeof evaluateSitePolicy>;
   cleanHost: string;
-  whitelist: readonly string[];
-  blacklist: readonly string[];
   badgeEl: HTMLElement;
   toggleBtn: HTMLButtonElement;
   blacklistCurrentBtn: HTMLButtonElement;
@@ -83,8 +80,6 @@ function applyPolicyUi(args: PolicyUiArgs): void {
   const {
     policy,
     cleanHost,
-    whitelist,
-    blacklist,
     badgeEl,
     toggleBtn,
     blacklistCurrentBtn,
@@ -99,9 +94,7 @@ function applyPolicyUi(args: PolicyUiArgs): void {
     toggleBtn.textContent = t('removeFromBlacklistBtn', currentLang);
     toggleBtn.className = 'btn btn-primary';
     toggleBtn.onclick = async () => {
-      await chrome.storage.sync.set({
-        userBlacklist: blacklist.filter((d) => d !== cleanHost),
-      });
+      await StorageService.removeBlacklist(cleanHost);
       await onUpdate();
       await reloadTab();
     };
@@ -115,7 +108,7 @@ function applyPolicyUi(args: PolicyUiArgs): void {
     toggleBtn.textContent = t('disableBuiltinBtn', currentLang);
     toggleBtn.className = 'btn btn-secondary';
     toggleBtn.onclick = async () => {
-      await chrome.storage.sync.set({ userBlacklist: [...blacklist, cleanHost] });
+      await StorageService.addBlacklist(cleanHost);
       await onUpdate();
       await reloadTab();
     };
@@ -129,17 +122,14 @@ function applyPolicyUi(args: PolicyUiArgs): void {
     toggleBtn.textContent = t('removeWhitelist', currentLang);
     toggleBtn.className = 'btn btn-secondary';
     toggleBtn.onclick = async () => {
-      await chrome.storage.sync.set({ userWhitelist: whitelist.filter((d) => d !== cleanHost) });
+      await StorageService.removeWhitelist(cleanHost);
       await onUpdate();
       await reloadTab();
     };
     blacklistCurrentBtn.classList.remove('hidden');
     blacklistCurrentBtn.textContent = t('addToBlacklistBtn', currentLang);
     blacklistCurrentBtn.onclick = async () => {
-      await chrome.storage.sync.set({
-        userWhitelist: whitelist.filter((d) => d !== cleanHost),
-        userBlacklist: [...blacklist, cleanHost],
-      });
+      await StorageService.addBlacklist(cleanHost);
       await onUpdate();
       await reloadTab();
     };
@@ -151,14 +141,14 @@ function applyPolicyUi(args: PolicyUiArgs): void {
   toggleBtn.textContent = t('addWhitelist', currentLang);
   toggleBtn.className = 'btn btn-primary';
   toggleBtn.onclick = async () => {
-    await chrome.storage.sync.set({ userWhitelist: [...whitelist, cleanHost] });
+    await StorageService.addWhitelist(cleanHost);
     await onUpdate();
     await reloadTab();
   };
   blacklistCurrentBtn.classList.remove('hidden');
   blacklistCurrentBtn.textContent = t('addToBlacklistBtn', currentLang);
   blacklistCurrentBtn.onclick = async () => {
-    await chrome.storage.sync.set({ userBlacklist: [...blacklist, cleanHost] });
+    await StorageService.addBlacklist(cleanHost);
     await onUpdate();
     await reloadTab();
   };

@@ -1,5 +1,6 @@
 import { SiteAdapter } from './types';
 import { driveMenuUpload } from './menu-upload-driver';
+import { safeClick } from '../dom-utils';
 
 function findQwenModeButton(): HTMLElement | null {
   const byClass = document.querySelector<HTMLElement>('.mode-select-open');
@@ -69,13 +70,8 @@ export const qwenAdapter: SiteAdapter = {
       openMenu: () => {
         const btn = findQwenModeButton();
         if (!btn) return false;
-        try {
-          btn.click();
-          return true;
-        } catch (err) {
-          ctx.logger.warn('qwen mode click failed', err);
-          return false;
-        }
+        safeClick(btn, ctx.logger, 'qwen-mode-btn');
+        return true;
       },
       findMenuItem: findQwenUploadMenuItem,
       timeoutMs: 5000,

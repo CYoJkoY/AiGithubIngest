@@ -7,6 +7,7 @@ import {
 } from '../core/constants';
 import { normalizeHostname } from '../core/policy';
 import { logger } from '../core/logger';
+import { StorageService } from './storage-service';
 
 const KB = 1024;
 const MB = 1024 * 1024;
@@ -19,15 +20,10 @@ interface RowContext {
   readonly onUpdate: () => Promise<void>;
 }
 
-/* ------------------------------------------------------------------ */
-/* Byte / display helpers                                              */
-/* ------------------------------------------------------------------ */
-
 function clampBytes(bytes: number): number {
   return Math.max(MIN_FILE_SIZE_LIMIT, Math.min(MAX_FILE_SIZE_LIMIT, bytes));
 }
 
-/** Auto-pick a sensible display unit for a stored byte value. */
 function pickUnit(bytes: number): Unit {
   return bytes >= MB ? 'MB' : 'KB';
 }
@@ -45,10 +41,6 @@ function toBytes(value: number, unit: Unit): number {
   return Math.round(value * (unit === 'MB' ? MB : KB));
 }
 
-/* ------------------------------------------------------------------ */
-/* Async helpers                                                       */
-/* ------------------------------------------------------------------ */
-
 async function resolveCurrentHostname(): Promise<string | null> {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -63,10 +55,6 @@ async function resolveCurrentHostname(): Promise<string | null> {
     return null;
   }
 }
-
-/* ------------------------------------------------------------------ */
-/* DOM primitives                                                      */
-/* ------------------------------------------------------------------ */
 
 function makeSectionTitle(text: string): HTMLElement {
   const el = document.createElement('div');
@@ -108,10 +96,6 @@ function makeNumberInput(bytes: number, unit: Unit): HTMLInputElement {
   return input;
 }
 
-/**
- * When the unit select changes, convert the currently displayed number into
- * bytes using the previously active unit, then re-format it in the new unit.
- */
 function attachUnitConversion(
   input: HTMLInputElement,
   select: HTMLSelectElement,
@@ -147,10 +131,6 @@ function makeIconButton(
   return btn;
 }
 
-/* ------------------------------------------------------------------ */
-/* Persistence                                                         */
-/* ------------------------------------------------------------------ */
-
 async function saveSiteLimit(
   host: string,
   rawValue: string,
@@ -160,15 +140,12 @@ async function saveSiteLimit(
   const parsed = Number.parseFloat(rawValue);
   if (!Number.isFinite(parsed) || parsed <= 0) return;
   const bytes = clampBytes(toBytes(parsed, unit));
-  const next = { ...ctx.userLimits, [host]: bytes };
-  await chrome.storage.sync.set({ siteFileSizeLimits: next });
+  await StorageService.saveSiteLimit(host, bytes);
   await ctx.onUpdate();
 }
 
 async function removeSiteLimit(host: string, ctx: RowContext): Promise<void> {
-  const next = { ...ctx.userLimits };
-  delete next[host];
-  await chrome.storage.sync.set({ siteFileSizeLimits: next });
+  await StorageService.removeSiteLimit(host);
   await ctx.onUpdate();
 }
 
@@ -176,7 +153,7 @@ async function saveFallbackLimit(rawValue: string, unit: Unit, ctx: RowContext):
   const parsed = Number.parseFloat(rawValue);
   if (!Number.isFinite(parsed) || parsed <= 0) return;
   const bytes = clampBytes(toBytes(parsed, unit));
-  await chrome.storage.sync.set({ defaultFileSizeLimit: bytes });
+  await StorageService.saveFallbackLimit(bytes);
   await ctx.onUpdate();
 }
 
@@ -203,14 +180,9 @@ async function addSiteLimit(
   if (!Number.isFinite(parsed) || parsed <= 0) return;
 
   const bytes = clampBytes(toBytes(parsed, unitSelect.value as Unit));
-  const next = { ...ctx.userLimits, [host]: bytes };
-  await chrome.storage.sync.set({ siteFileSizeLimits: next });
+  await StorageService.saveSiteLimit(host, bytes);
   await ctx.onUpdate();
 }
-
-/* ------------------------------------------------------------------ */
-/* Row builders                                                        */
-/* ------------------------------------------------------------------ */
 
 function buildConfiguredRow(
   host: string,
@@ -238,9 +210,7 @@ function buildConfiguredRow(
   const saveBtn = makeIconButton(
     '✓',
     t('siteFileLimitSaveBtn', ctx.currentLang),
-    () => {
-      void saveSiteLimit(host, input.value, select.value as Unit, ctx);
-    },
+    () => void saveSiteLimit(host, input.value, select.value as Unit, ctx),
     'save',
   );
   row.appendChild(saveBtn);
@@ -248,9 +218,7 @@ function buildConfiguredRow(
   const removeBtn = makeIconButton(
     '×',
     t('siteFileLimitRemoveBtn', ctx.currentLang),
-    () => {
-      void removeSiteLimit(host, ctx);
-    },
+    () => void removeSiteLimit(host, ctx),
     'remove',
   );
   row.appendChild(removeBtn);
@@ -280,9 +248,7 @@ function buildUnsetCurrentRow(host: string, ctx: RowContext): HTMLElement {
   const saveBtn = makeIconButton(
     '✓',
     t('siteFileLimitSaveBtn', ctx.currentLang),
-    () => {
-      void saveSiteLimit(host, input.value, select.value as Unit, ctx);
-    },
+    () => void saveSiteLimit(host, input.value, select.value as Unit, ctx),
     'save',
   );
   row.appendChild(saveBtn);
@@ -306,9 +272,7 @@ function buildFallbackRow(bytes: number, ctx: RowContext): HTMLElement {
   const saveBtn = makeIconButton(
     '✓',
     t('siteFileLimitSaveBtn', ctx.currentLang),
-    () => {
-      void saveFallbackLimit(input.value, select.value as Unit, ctx);
-    },
+    () => void saveFallbackLimit(input.value, select.value as Unit, ctx),
     'save',
   );
   row.appendChild(saveBtn);
@@ -352,10 +316,6 @@ function buildAddRow(currentHost: string | null, ctx: RowContext): HTMLElement {
   return row;
 }
 
-/* ------------------------------------------------------------------ */
-/* Entry point                                                         */
-/* ------------------------------------------------------------------ */
-
 export async function renderSiteLimits(
   storage: StorageSchema,
   currentLang: SupportedLang,
@@ -370,7 +330,6 @@ export async function renderSiteLimits(
   const currentHost = await resolveCurrentHostname();
   const ctx: RowContext = { userLimits, currentLang, onUpdate };
 
-  // 1. Current site ---------------------------------------------------
   if (currentHost) {
     container.appendChild(makeSectionTitle(t('siteFileLimitCurrentSite', currentLang)));
     const configuredBytes = userLimits[currentHost];
@@ -381,7 +340,6 @@ export async function renderSiteLimits(
     );
   }
 
-  // 2. Other configured sites ----------------------------------------
   const otherHosts = Object.keys(userLimits)
     .filter((h) => h !== currentHost)
     .sort();
@@ -394,11 +352,9 @@ export async function renderSiteLimits(
     }
   }
 
-  // 3. Add custom site ------------------------------------------------
   container.appendChild(makeSectionTitle(t('siteFileLimitAddTitle', currentLang)));
   container.appendChild(buildAddRow(currentHost, ctx));
 
-  // 4. Fallback for unlisted sites ------------------------------------
   container.appendChild(makeSectionTitle(t('siteFileLimitFallback', currentLang)));
   container.appendChild(buildFallbackRow(defaultBytes, ctx));
 }
