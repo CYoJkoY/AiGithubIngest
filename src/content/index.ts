@@ -1,4 +1,7 @@
-import { evaluateSitePolicy } from "../core/policy";
+import {
+  evaluateSitePolicyForHostnames,
+  normalizeHostname,
+} from "../core/policy";
 import { extractGitHubRepo } from "../core/parser";
 import { UniversalEditor } from "../dom/universal-editor";
 import { showToast } from "../ui/toast";
@@ -43,6 +46,51 @@ const resetProcessingLock = (): void => {
 };
 
 /**
+ * 解析所有候选 hostname：current / ancestorOrigins / referrer / top
+ * 用于 iframe、about:blank、blob: 等场景的策略裁决
+ */
+const resolvePolicyHostnames = (): string[] => {
+  const hostnames = new Set<string>();
+
+  const add = (value?: string | null): void => {
+    if (!value) return;
+    try {
+      const url = value.includes("://")
+        ? new URL(value)
+        : new URL(`https://${value}`);
+      const host = normalizeHostname(url.hostname);
+      if (host) hostnames.add(host);
+    } catch {
+      // ignore
+    }
+  };
+
+  add(window.location.hostname);
+  add(document.referrer);
+
+  try {
+    const ancestorOrigins = window.location.ancestorOrigins;
+    if (ancestorOrigins) {
+      for (let i = 0; i < ancestorOrigins.length; i++) {
+        add(ancestorOrigins.item(i));
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  try {
+    if (window.top && window.top.location) {
+      add(window.top.location.hostname);
+    }
+  } catch {
+    // 跨域 top，忽略
+  }
+
+  return Array.from(hostnames);
+};
+
+/**
  * 寻找当前界面最匹配的主输入框容器
  */
 const resolveActiveEditor = (
@@ -70,12 +118,35 @@ const resolveActiveEditor = (
 };
 
 /**
+ * 从 event.composedPath() 中提取真正的可编辑节点，
+ * 以支持 Shadow DOM / Quill / Lexical / ProseMirror 等嵌套编辑器。
+ */
+const resolveEventTarget = (event: ClipboardEvent): HTMLElement | null => {
+  const path =
+    typeof event.composedPath === "function" ? event.composedPath() : [];
+
+  for (const node of path) {
+    if (!(node instanceof HTMLElement)) continue;
+
+    if (
+      node instanceof HTMLTextAreaElement ||
+      node instanceof HTMLInputElement ||
+      node.isContentEditable ||
+      node.closest('[contenteditable="true"]')
+    ) {
+      return node;
+    }
+  }
+
+  return event.target instanceof HTMLElement ? event.target : null;
+};
+
+/**
  * 核心粘贴拦截调度器
  */
 const handlePasteEvent = async (event: ClipboardEvent): Promise<void> => {
-  const currentHost = window.location.hostname;
-  const policy = evaluateSitePolicy(
-    currentHost,
+  const policy = evaluateSitePolicyForHostnames(
+    resolvePolicyHostnames(),
     cachedWhitelist,
     cachedBlacklist,
   );
@@ -92,7 +163,7 @@ const handlePasteEvent = async (event: ClipboardEvent): Promise<void> => {
   event.stopPropagation();
   event.stopImmediatePropagation();
 
-  const targetElement = resolveActiveEditor(event.target as HTMLElement | null);
+  const targetElement = resolveActiveEditor(resolveEventTarget(event));
 
   let savedRange: { start: number; end: number } | undefined;
   if (
@@ -129,7 +200,6 @@ const handlePasteEvent = async (event: ClipboardEvent): Promise<void> => {
     chrome.runtime.sendMessage(
       { type: "INGEST_REPO", payload: { url: repo.canonicalUrl } },
       (response: ExtensionResponse) => {
-        // 使用 async IIFE 包装，以便 await 异步的文件挂载流程
         void (async () => {
           try {
             if (chrome.runtime.lastError || !response || !response.success) {
@@ -174,7 +244,6 @@ const handlePasteEvent = async (event: ClipboardEvent): Promise<void> => {
                 4000,
               );
             } else {
-              // 降级回退：插入 ASCII 目录树概览，激活防卡死机制
               const safeFallbackText = [
                 `\n${t("fallbackDigestHeader", cachedLang, { repo: `${repo.owner}/${repo.repo}` })}`,
                 `> ${t("fallbackFileCount", cachedLang, { count: summary.files.length, tokens: summary.estimatedTokens })}`,
@@ -193,7 +262,6 @@ const handlePasteEvent = async (event: ClipboardEvent): Promise<void> => {
               showToast(t("fallbackMounted", cachedLang), "info", 4000);
             }
           } finally {
-            // 确保整个挂载或降级流程全部执行完毕后再释放锁，防止异步重入
             resetProcessingLock();
           }
         })();
@@ -219,7 +287,6 @@ const setupSpaRouteListener = (): void => {
   window.addEventListener("popstate", onLocationChange);
   window.addEventListener("hashchange", onLocationChange);
 
-  // 劫持 history.pushState 与 replaceState
   const originalPushState = history.pushState;
   history.pushState = function (...args) {
     const result = originalPushState.apply(this, args);
@@ -252,12 +319,18 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   }
 });
 
-const initialize = async (): Promise<void> => {
-  await refreshStorageConfig();
+const initialize = (): void => {
+  // 1. 同步注册捕获监听 —— 必须在任何 await 之前执行，
+  //    否则宿主 SPA 的 stopImmediatePropagation 会吃掉事件。
+  //    同时挂 window 与 document 作为双保险。
+  window.addEventListener("paste", handlePasteEvent, true);
+  document.addEventListener("paste", handlePasteEvent, true);
+
+  // 2. SPA 路由监听（同步即可完成，不需要 await）
   setupSpaRouteListener();
 
-  // 单通道 window 顶层捕获即可保证在宿主应用之前拦截
-  window.addEventListener("paste", handlePasteEvent, true);
+  // 3. 异步刷新 storage 缓存，不阻塞监听注册
+  void refreshStorageConfig();
 };
 
 void initialize();

@@ -4,10 +4,13 @@ export class Toast {
   private static container: HTMLElement | null = null;
 
   private static getOrCreateContainer(): HTMLElement {
-    if (!this.container || !document.body.contains(this.container)) {
+    // document_start 阶段 <body> 可能尚未创建，回退到 <html>
+    const parent = document.body || document.documentElement;
+
+    if (!this.container || !parent.contains(this.container)) {
       this.container = document.createElement("div");
       this.container.className = "ai-github-ingest-toast-container";
-      document.body.appendChild(this.container);
+      parent.appendChild(this.container);
     }
     return this.container;
   }
