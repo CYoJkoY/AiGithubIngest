@@ -3,6 +3,36 @@ export class UniversalEditor {
   private static lastUploadKey = "";
 
   /**
+   * 重置并解绑指定 input[type="file"]，清除物理挂载的文件缓存与跟踪状态
+   */
+  private static cleanUpFileInput(fileInput: HTMLInputElement): void {
+    try {
+      const descriptor = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "files",
+      );
+      const emptyDT = new DataTransfer();
+      if (descriptor?.set) {
+        descriptor.set.call(fileInput, emptyDT.files);
+      } else {
+        fileInput.files = emptyDT.files;
+      }
+      fileInput.value = "";
+
+      const tracker = (
+        fileInput as unknown as {
+          _valueTracker?: { setValue: (val: string) => void };
+        }
+      )._valueTracker;
+      if (tracker) {
+        tracker.setValue("");
+      }
+    } catch {
+      // 忽略受保护 DOM 节点的异常
+    }
+  }
+
+  /**
    * 校验 file input 是否具备接收文本/文档附件的能力
    * 采用宽松防御策略：只要不是明确仅限图片/音视频的输入框，均允许挂载 Markdown
    */
@@ -106,6 +136,7 @@ export class UniversalEditor {
 
   /**
    * 策略 1: 扫描并触发原生 input[type="file"] 挂载
+   * 并在框架消费后自动解绑物理 DOM，切断长期驻留引发的二次上传或残留问题
    */
   private static tryUploadViaFileInput(
     file: File,
@@ -160,10 +191,19 @@ export class UniversalEditor {
             tracker.setValue("");
           }
 
-          // 派发标准冒泡事件，使 React 根节点委托能正确捕获并同步组件内部状态
+          // 派发标准输入与变更事件，供宿主框架捕获同步
+          fileInput.dispatchEvent(
+            new Event("input", { bubbles: true, composed: true }),
+          );
           fileInput.dispatchEvent(
             new Event("change", { bubbles: true, composed: true }),
           );
+
+          // 核心修复：宿主框架在当前同步/微任务中读取文件后，80ms 后清除物理 DOM 引用
+          // 彻底阻断表单提交、失焦校验或发送按钮重新扫描时的二次重复上传，并消除残留
+          setTimeout(() => {
+            this.cleanUpFileInput(fileInput);
+          }, 80);
 
           return true;
         } catch {
@@ -177,16 +217,19 @@ export class UniversalEditor {
 
   /**
    * 策略 2: 单靶向精准模拟 ClipboardEvent('paste')
-   * 构建 15ms 生命周期时钟门，彻底解决 ProseMirror 框架在 50ms setTimeout 宏任务中重复消费的缺陷
+   * 禁止冒泡穿透至 window 外部全局监听器，并在微任务生命周期关闭时钟门
    */
   private static tryPasteEvent(
     activeEl: HTMLElement | null,
     dataTransfer: DataTransfer,
   ): boolean {
     const target =
-      activeEl ||
+      (activeEl?.isContentEditable
+        ? (activeEl.closest('[contenteditable="true"]') as HTMLElement) ||
+          activeEl
+        : activeEl) ||
       (document.querySelector(
-        'textarea, [contenteditable="true"], [role="textbox"]',
+        '[contenteditable="true"], textarea, [role="textbox"]',
       ) as HTMLElement | null);
 
     if (!target) return false;
@@ -198,15 +241,15 @@ export class UniversalEditor {
       const rawItems = dataTransfer.items;
       const emptyDT = new DataTransfer();
 
+      // 核心修复：将 bubbles 设置为 false，禁止合成事件向外部 Form/Window 冒泡，
+      // 防止宿主在全局注册的后备 paste 监听器二次捕获同一份剪贴板文件
       const pasteEvent = new ClipboardEvent("paste", {
-        bubbles: true,
+        bubbles: false,
         cancelable: true,
         composed: true,
         clipboardData: dataTransfer,
       });
 
-      // 核心时钟门锁：由于 Chromium 会在构建 ClipboardEvent 时在底层深拷贝 DataTransfer，
-      // 我们直接在生成的 pasteEvent 及其内建 clipboardData 上注入双层属性拦截。
       let isGateOpen = true;
       const internalClipboardData =
         (pasteEvent as unknown as { clipboardData?: DataTransfer })
@@ -234,7 +277,7 @@ export class UniversalEditor {
         // 环境受限时静默跳过
       }
 
-      // 第二道防线：防止某些框架在第一阶段缓存了 clipboardData 引用后直接读取 .files
+      // 第二道防线：防止部分框架在初次访问后持久缓存引用
       try {
         Object.defineProperty(internalClipboardData, "files", {
           get: () => {
@@ -255,11 +298,10 @@ export class UniversalEditor {
         // 忽略非配置属性异常
       }
 
-      // 同步派发：豆包业务层在此步骤内同步获取 files 并触发第一次正常上传
+      // 同步派发目标事件
       target.dispatchEvent(pasteEvent);
 
-      // 15ms 延迟关闭时钟门：既给当前宏任务/微任务留足消费窗口，
-      // 又能赶在 ProseMirror 的 50ms setTimeout 后备宏任务执行前关死阀门
+      // 派发后迅速在 10ms 内关死阀门并清空数据容器，防止异步宏任务重新回读
       setTimeout(() => {
         isGateOpen = false;
         try {
@@ -267,7 +309,7 @@ export class UniversalEditor {
         } catch {
           // 忽略
         }
-      }, 15);
+      }, 10);
 
       return true;
     } catch {
@@ -314,6 +356,15 @@ export class UniversalEditor {
         target.dispatchEvent(dragOver);
         target.dispatchEvent(drop);
       }
+
+      setTimeout(() => {
+        try {
+          dataTransfer.items.clear();
+        } catch {
+          // 忽略
+        }
+      }, 50);
+
       return true;
     } catch {
       return false;
@@ -321,7 +372,7 @@ export class UniversalEditor {
   }
 
   /**
-   * 互斥式文件挂载入口：增加 1500ms 任务指纹时间锁与精准熔断机制
+   * 互斥式文件挂载入口：提供 1500ms 指纹时间锁与精确熔断机制
    */
   public static attachVirtualFile(
     file: File,
@@ -346,14 +397,14 @@ export class UniversalEditor {
 
     const currentHost = window.location.hostname.toLowerCase();
 
-    // 豆包平台优先且唯一使用带有双层时钟门防护的 Paste 策略
+    // 针对豆包等富文本聊天平台，优先使用精准定向且防冒泡的 Paste 策略
     if (currentHost.includes("doubao.com")) {
       if (this.tryPasteEvent(activeEl, dataTransfer)) {
         return true;
       }
     }
 
-    // 优先策略 1: 扫描并触发 input[type="file"]
+    // 优先策略 1: 扫描并触发 input[type="file"]（内置自动解绑与 Unmount 机制）
     if (this.tryUploadViaFileInput(file, activeEl, dataTransfer)) {
       return true;
     }
