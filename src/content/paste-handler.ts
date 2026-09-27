@@ -16,6 +16,19 @@ interface SavedRange {
 }
 
 /**
+ * 一次 ingest 流程中需要跨多个阶段共享的上下文。
+ * 打包成对象以降低参数个数，同时让 send / handle 两段逻辑共享同一份引用。
+ */
+interface IngestContext {
+  readonly rawText: string;
+  readonly targetElement: HTMLElement | null;
+  readonly savedRange: SavedRange | undefined;
+  readonly guard: IngestGuard;
+  /** 「正在解析」Toast 的延迟定时器 id；收到结果后立即清除 */
+  readonly ingestingTimer: number;
+}
+
+/**
  * 所有与「当前这次 ingest 流程」相关的 Toast 共享同一个 replaceKey，
  * 保证「正在解析」「成功」「失败」「降级」这几类提示互相顶替，不会叠加闪烁。
  */
@@ -64,8 +77,10 @@ export async function handlePasteEvent(event: ClipboardEvent, guard: IngestGuard
     );
   }, INGESTING_TOAST_DELAY_MS);
 
+  const ctx: IngestContext = { rawText, targetElement, savedRange, guard, ingestingTimer };
+
   try {
-    sendIngestMessage(repo.canonicalUrl, rawText, targetElement, savedRange, guard, ingestingTimer);
+    sendIngestMessage(repo.canonicalUrl, ctx);
   } catch (err) {
     window.clearTimeout(ingestingTimer);
     guard.reset();
@@ -91,31 +106,23 @@ function captureRange(el: HTMLElement | null): SavedRange | undefined {
   return undefined;
 }
 
-function sendIngestMessage(
-  url: string,
-  rawText: string,
-  targetElement: HTMLElement | null,
-  savedRange: SavedRange | undefined,
-  guard: IngestGuard,
-  ingestingTimer: number,
-): void {
+function sendIngestMessage(url: string, ctx: IngestContext): void {
   chrome.runtime.sendMessage(
     { type: 'INGEST_REPO', payload: { url } },
     (response: ExtensionResponse) => {
       // 无论成功失败，先取消延迟中的「正在解析」Toast，避免它晚于结果出现
-      window.clearTimeout(ingestingTimer);
-      void handleIngestResponse(response, rawText, targetElement, savedRange, guard);
+      window.clearTimeout(ctx.ingestingTimer);
+      void handleIngestResponse(response, ctx);
     },
   );
 }
 
 async function handleIngestResponse(
   response: ExtensionResponse,
-  rawText: string,
-  targetElement: HTMLElement | null,
-  savedRange: SavedRange | undefined,
-  guard: IngestGuard,
+  ctx: IngestContext,
 ): Promise<void> {
+  const { rawText, targetElement, savedRange, guard } = ctx;
+
   try {
     if (chrome.runtime.lastError || !response || !response.success) {
       const errorMsg = resolveErrorMessage(response);
