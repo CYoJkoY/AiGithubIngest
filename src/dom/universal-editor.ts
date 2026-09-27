@@ -7,7 +7,7 @@ export class UniversalEditor {
   private static log(...args: unknown[]): void {
     if (QWEN_DEBUG) {
       // eslint-disable-next-line no-console
-      console.log("[AiGithubIngest/Qwen]", ...args);
+      console.log("[AiGithubIngest/UniversalEditor]", ...args);
     }
   }
 
@@ -234,7 +234,7 @@ export class UniversalEditor {
       }
     }
 
-    // 2. 全局兜底：腾讯元宝等站点会把 <input type="file"> 挂在 </body> 之外，
+    // 2. 全局兜底：部分站点会把 <input type="file"> 挂在 </body> 之外，
     //    document.body.querySelectorAll 无法覆盖这种情况。
     const globalInputs = Array.from(
       document.querySelectorAll<HTMLInputElement>('input[type="file"]'),
@@ -541,7 +541,7 @@ export class UniversalEditor {
       const finish = (success: boolean): void => {
         if (resolved) return;
         resolved = true;
-        this.log("finish:", success);
+        this.log("qwen finish:", success);
         cleanup();
         resolve(success);
       };
@@ -562,7 +562,7 @@ export class UniversalEditor {
 
           const actualCount = input.files?.length ?? 0;
           this.log(
-            `after mount via ${source}: input.files.length = ${actualCount}`,
+            `qwen after mount via ${source}: input.files.length = ${actualCount}`,
           );
 
           input.dispatchEvent(
@@ -573,9 +573,9 @@ export class UniversalEditor {
           );
 
           mounted = true;
-          this.log(`file mounted via ${source}`);
+          this.log(`qwen file mounted via ${source}`);
         } catch (err) {
-          this.log("mount failed:", err);
+          this.log("qwen mount failed:", err);
         }
       };
 
@@ -586,7 +586,7 @@ export class UniversalEditor {
           e.preventDefault();
           e.stopPropagation();
           e.stopImmediatePropagation();
-          this.log("intercepted input.click()");
+          this.log("qwen intercepted input.click()");
           doMount(target, "click-interception");
 
           // 给 Qwen 500ms 处理时间，然后完成
@@ -609,7 +609,7 @@ export class UniversalEditor {
             }
           ).showPicker = function (this: HTMLInputElement): void {
             if (this.type === "file") {
-              UniversalEditor.log("intercepted input.showPicker()");
+              UniversalEditor.log("qwen intercepted input.showPicker()");
               doMount(this, "showPicker-interception");
               timers.push(
                 setTimeout(() => {
@@ -629,7 +629,7 @@ export class UniversalEditor {
       // 检查菜单是否已经展开
       const existingItem = this.findQwenUploadMenuItem();
       if (existingItem) {
-        this.log("menu already open, clicking upload item directly");
+        this.log("qwen menu already open, clicking upload item directly");
         try {
           existingItem.dispatchEvent(
             new MouseEvent("click", {
@@ -644,21 +644,21 @@ export class UniversalEditor {
       } else {
         const modeBtn = this.findQwenModeButton();
         if (!modeBtn) {
-          this.log("mode button not found");
+          this.log("qwen mode button not found");
           finish(false);
           return;
         }
-        this.log("dispatching click on mode button");
+        this.log("qwen dispatching click on mode button");
         this.dispatchFullClickSequence(modeBtn);
 
         const clickMenuItem = (): void => {
           if (mounted || resolved) return;
           const item = this.findQwenUploadMenuItem();
           if (!item) {
-            this.log("clickMenuItem: upload item not found yet");
+            this.log("qwen clickMenuItem: upload item not found yet");
             return;
           }
-          this.log("clicking upload menu item");
+          this.log("qwen clicking upload menu item");
           try {
             item.dispatchEvent(
               new MouseEvent("click", {
@@ -682,7 +682,238 @@ export class UniversalEditor {
       timers.push(
         setTimeout(() => {
           if (!mounted) {
-            this.log("timeout: never mounted");
+            this.log("qwen timeout: never mounted");
+            finish(false);
+          }
+        }, 5000),
+      );
+    });
+  }
+
+  /**
+   * 腾讯元宝专用文件挂载（异步）
+   *
+   * 关键洞察（来自最新 DOM 快照）：
+   *   - 干净页面里 body 中根本没有 <input type="file">
+   *   - 元宝的 input 是懒创建的：只有用户点击"添加"按钮 → 在弹出菜单中
+   *     选择"本地文件"后，元宝才会动态创建 input 并立即调用 input.click()
+   *   - 因此必须模拟完整菜单链路，并在拦截 input.click() 的瞬间挂载文件
+   *
+   * 与 Qwen 的差异：
+   *   - Qwen 的 input 一直在，只需要拦截 click
+   *   - 元宝的 input 本身需要先通过点击"添加"按钮触发创建，所以必须先点击
+   *     "[data-new-input-control=add-tools-trigger]"
+   *   - 元宝当前版本的菜单项文案是"本地文件"，而非"上传文件"
+   */
+  private static tryYuanbaoUploadAsync(
+    _file: File,
+    dataTransfer: DataTransfer,
+  ): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+      const timers: Array<ReturnType<typeof setTimeout>> = [];
+      let resolved = false;
+      let mounted = false;
+
+      const originalShowPicker = (
+        HTMLInputElement.prototype as unknown as {
+          showPicker?: () => void;
+        }
+      ).showPicker;
+      let showPickerPatched = false;
+
+      const cleanup = (): void => {
+        try {
+          document.removeEventListener("click", clickBlocker, true);
+          if (showPickerPatched) {
+            (
+              HTMLInputElement.prototype as unknown as {
+                showPicker?: () => void;
+              }
+            ).showPicker = originalShowPicker;
+          }
+        } catch {
+          // 容错
+        }
+        for (const t of timers) clearTimeout(t);
+      };
+
+      const finish = (success: boolean): void => {
+        if (resolved) return;
+        resolved = true;
+        this.log("yuanbao finish:", success);
+        cleanup();
+        resolve(success);
+      };
+
+      const doMount = (input: HTMLInputElement, source: string): void => {
+        if (mounted) return;
+        try {
+          const descriptor = Object.getOwnPropertyDescriptor(
+            HTMLInputElement.prototype,
+            "files",
+          );
+          if (descriptor?.set) {
+            descriptor.set.call(input, dataTransfer.files);
+          } else {
+            input.files = dataTransfer.files;
+          }
+
+          this.log(
+            `yuanbao after mount via ${source}: input.files.length = ${input.files?.length ?? 0}`,
+          );
+
+          input.dispatchEvent(
+            new Event("input", { bubbles: true, composed: true }),
+          );
+          input.dispatchEvent(
+            new Event("change", { bubbles: true, composed: true }),
+          );
+
+          mounted = true;
+        } catch (err) {
+          this.log("yuanbao mount failed:", err);
+        }
+      };
+
+      const clickBlocker = (e: Event): void => {
+        const target = e.target;
+        if (target instanceof HTMLInputElement && target.type === "file") {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          this.log("yuanbao intercepted input.click()");
+          doMount(target, "click-interception");
+          timers.push(
+            setTimeout(() => {
+              finish(mounted);
+            }, 600),
+          );
+        }
+      };
+
+      document.addEventListener("click", clickBlocker, true);
+
+      if (typeof originalShowPicker === "function") {
+        try {
+          (
+            HTMLInputElement.prototype as unknown as {
+              showPicker: () => void;
+            }
+          ).showPicker = function (this: HTMLInputElement): void {
+            if (this.type === "file") {
+              UniversalEditor.log("yuanbao intercepted input.showPicker()");
+              doMount(this, "showPicker-interception");
+              timers.push(
+                setTimeout(() => {
+                  finish(mounted);
+                }, 600),
+              );
+              return;
+            }
+            return originalShowPicker.call(this);
+          };
+          showPickerPatched = true;
+        } catch {
+          // 容错
+        }
+      }
+
+      // 找元宝的"添加"按钮：<button data-new-input-control="add-tools-trigger">
+      const addBtn = document.querySelector<HTMLElement>(
+        '[data-new-input-control="add-tools-trigger"]',
+      );
+
+      if (!addBtn) {
+        this.log("yuanbao add button not found");
+        finish(false);
+        return;
+      }
+
+      this.log("yuanbao dispatching click on add button");
+      this.dispatchFullClickSequence(addBtn);
+
+      // 菜单出现后，点击"本地文件"（元宝当前版本的菜单项文案）
+      // 也兼容未来可能的其它上传类文案
+      const UPLOAD_KEYWORDS = [
+        "本地文件",
+        "上传文件",
+        "上传附件",
+        "上传",
+        "Upload file",
+        "Local file",
+        "Upload",
+        "附件",
+      ];
+
+      const clickUploadItem = (): void => {
+        if (mounted || resolved) return;
+
+        // 1. 优先使用准确的 role="menuitem" 选择器
+        const menuItems = Array.from(
+          document.querySelectorAll<HTMLElement>('[role="menuitem"]'),
+        );
+        for (const item of menuItems) {
+          const text = (item.textContent || "").trim();
+          if (!text) continue;
+          if (UPLOAD_KEYWORDS.some((kw) => text.includes(kw))) {
+            this.log("yuanbao clicking upload menu item:", text.slice(0, 40));
+            try {
+              item.dispatchEvent(
+                new MouseEvent("click", {
+                  bubbles: true,
+                  cancelable: true,
+                  view: window,
+                }),
+              );
+            } catch {
+              // 容错
+            }
+            return;
+          }
+        }
+
+        // 2. 兜底：扩大选择器范围，但仍以关键词为准
+        const fallbackCandidates = Array.from(
+          document.querySelectorAll<HTMLElement>(
+            '[role="option"], .t-menu__item, .t-dropdown__item, [class*="menu-item"], [class*="dropdown-item"], [class*="Menu"] li, li',
+          ),
+        );
+        for (const item of fallbackCandidates) {
+          const text = (item.textContent || "").trim();
+          if (!text) continue;
+          if (UPLOAD_KEYWORDS.some((kw) => text.includes(kw))) {
+            this.log(
+              "yuanbao clicking upload menu item (fallback):",
+              text.slice(0, 40),
+            );
+            try {
+              item.dispatchEvent(
+                new MouseEvent("click", {
+                  bubbles: true,
+                  cancelable: true,
+                  view: window,
+                }),
+              );
+            } catch {
+              // 容错
+            }
+            return;
+          }
+        }
+      };
+
+      timers.push(setTimeout(clickUploadItem, 200));
+      timers.push(setTimeout(clickUploadItem, 400));
+      timers.push(setTimeout(clickUploadItem, 700));
+      timers.push(setTimeout(clickUploadItem, 1100));
+      timers.push(setTimeout(clickUploadItem, 1600));
+      timers.push(setTimeout(clickUploadItem, 2200));
+
+      // 超时兜底
+      timers.push(
+        setTimeout(() => {
+          if (!mounted) {
+            this.log("yuanbao timeout: never mounted");
             finish(false);
           }
         }, 5000),
@@ -723,6 +954,13 @@ export class UniversalEditor {
       currentHost.includes("tongyi.aliyun.com")
     ) {
       return this.tryQwenUploadAsync(file, dataTransfer);
+    }
+
+    if (
+      currentHost.includes("yuanbao.tencent.com") ||
+      currentHost.includes("yuanbao.com")
+    ) {
+      return this.tryYuanbaoUploadAsync(file, dataTransfer);
     }
 
     if (this.tryUploadViaFileInput(file, activeEl, dataTransfer)) {
