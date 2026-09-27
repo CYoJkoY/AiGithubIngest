@@ -15,6 +15,19 @@ interface SavedRange {
   end: number;
 }
 
+/**
+ * 所有与「当前这次 ingest 流程」相关的 Toast 共享同一个 replaceKey，
+ * 保证「正在解析」「成功」「失败」「降级」这几类提示互相顶替，不会叠加闪烁。
+ */
+const INGEST_STATUS_TOAST_KEY = 'ingest-status';
+
+/**
+ * 「正在解析」Toast 延迟 800ms 再弹出：
+ * 若请求快速返回，用户只会看到最终结果 Toast；
+ * 若请求较慢，用户也能感知到插件确实在工作。
+ */
+const INGESTING_TOAST_DELAY_MS = 800;
+
 export async function handlePasteEvent(event: ClipboardEvent, guard: IngestGuard): Promise<void> {
   const policy = evaluateSitePolicyForHostnames(
     resolvePolicyHostnames(),
@@ -41,16 +54,30 @@ export async function handlePasteEvent(event: ClipboardEvent, guard: IngestGuard
   }
 
   const repo = parseResult.value;
-  showToast(t('ingesting', cachedLang, { repo: `${repo.owner}/${repo.repo}` }), 'info', 3000);
+
+  const ingestingTimer = window.setTimeout(() => {
+    showToast(
+      t('ingesting', cachedLang, { repo: `${repo.owner}/${repo.repo}` }),
+      'info',
+      3000,
+      INGEST_STATUS_TOAST_KEY,
+    );
+  }, INGESTING_TOAST_DELAY_MS);
 
   try {
-    sendIngestMessage(repo.canonicalUrl, rawText, targetElement, savedRange, guard);
+    sendIngestMessage(repo.canonicalUrl, rawText, targetElement, savedRange, guard, ingestingTimer);
   } catch (err) {
+    window.clearTimeout(ingestingTimer);
     guard.reset();
     UniversalEditor.insertAtCursor(rawText, targetElement, savedRange);
     const errMsg = err instanceof Error ? err.message : 'Error';
     logger.warn('sendMessage failed', err);
-    showToast(`${t('networkError', cachedLang)} (${errMsg})`, 'error');
+    showToast(
+      `${t('networkError', cachedLang)} (${errMsg})`,
+      'error',
+      3000,
+      INGEST_STATUS_TOAST_KEY,
+    );
   }
 }
 
@@ -70,10 +97,13 @@ function sendIngestMessage(
   targetElement: HTMLElement | null,
   savedRange: SavedRange | undefined,
   guard: IngestGuard,
+  ingestingTimer: number,
 ): void {
   chrome.runtime.sendMessage(
     { type: 'INGEST_REPO', payload: { url } },
     (response: ExtensionResponse) => {
+      // 无论成功失败，先取消延迟中的「正在解析」Toast，避免它晚于结果出现
+      window.clearTimeout(ingestingTimer);
       void handleIngestResponse(response, rawText, targetElement, savedRange, guard);
     },
   );
@@ -90,7 +120,12 @@ async function handleIngestResponse(
     if (chrome.runtime.lastError || !response || !response.success) {
       const errorMsg = resolveErrorMessage(response);
       UniversalEditor.insertAtCursor(rawText, targetElement, savedRange);
-      showToast(t('ingestFailed', cachedLang, { err: errorMsg }), 'error', 4500);
+      showToast(
+        t('ingestFailed', cachedLang, { err: errorMsg }),
+        'error',
+        4500,
+        INGEST_STATUS_TOAST_KEY,
+      );
       return;
     }
 
@@ -107,6 +142,7 @@ async function handleIngestResponse(
         t('attachedSuccess', cachedLang, { file: fileName, count: summary.files.length }),
         'success',
         4000,
+        INGEST_STATUS_TOAST_KEY,
       );
       return;
     }
@@ -120,11 +156,16 @@ async function handleIngestResponse(
       `${t('fallbackHint', cachedLang)}\n`,
     ].join('\n');
     UniversalEditor.insertAtCursor(safeFallbackText, targetElement, savedRange);
-    showToast(t('fallbackMounted', cachedLang), 'info', 4000);
+    showToast(t('fallbackMounted', cachedLang), 'info', 4000, INGEST_STATUS_TOAST_KEY);
   } catch (err) {
     const domainErr = DomainError.from(err);
     logger.error('handleIngestResponse failed', domainErr);
-    showToast(t('ingestFailed', cachedLang, { err: domainErr.message }), 'error', 4500);
+    showToast(
+      t('ingestFailed', cachedLang, { err: domainErr.message }),
+      'error',
+      4500,
+      INGEST_STATUS_TOAST_KEY,
+    );
   } finally {
     guard.reset();
   }

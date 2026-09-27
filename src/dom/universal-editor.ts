@@ -8,13 +8,21 @@ import { genericDndAdapter } from './adapters/generic-dnd';
 import { logger } from '../core/logger';
 import { ADAPTER_TIMEOUT_MS } from '../core/constants';
 
+/**
+ * 适配器链（命中即返回，后面的不再执行）：
+ *   1. 平台专属适配器（豆包 / 通义 / 元宝）
+ *   2. 原生 <input type="file"> 挂载
+ *   3. 合成 drag & drop
+ *   4. 合成 paste（兜底：多数现代 AI 站点并不真正消费 ClipboardEvent 中的 File，
+ *      放在最后可避免它抢先触发一层多余的「粘贴中」UI 状态）
+ */
 const adapters: readonly SiteAdapter[] = [
   doubaoAdapter,
   qwenAdapter,
   yuanbaoAdapter,
   genericFileInputAdapter,
-  genericPasteAdapter,
   genericDndAdapter,
+  genericPasteAdapter,
 ];
 
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {

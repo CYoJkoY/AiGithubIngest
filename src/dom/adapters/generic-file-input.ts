@@ -94,6 +94,42 @@ function cleanUpFileInput(fileInput: HTMLInputElement, logger: Logger): void {
   }
 }
 
+/**
+ * 条件清理：只在「宿主确实没有消费这个 input」时清空它。
+ *
+ * 之前的实现是无条件 setTimeout 到 CLEANUP_DELAY_MS 后清空 files + value，
+ * 这对异步读取 input.files 的宿主框架（React concurrent、Angular zone 等）不友好：
+ * 附件预览可能已经渲染出来，4 秒后再被清空，观感就是「附件闪一下又没了」。
+ *
+ * 现在改为：4 秒后检查页面上是否出现了任何附件预览节点。
+ *   - 有预览：宿主已消费，保留现场不动。
+ *   - 无预览：认为未被消费，主动清理以恢复 input 可重复使用性。
+ */
+function scheduleConditionalCleanup(input: HTMLInputElement, logger: Logger): void {
+  setTimeout(() => {
+    try {
+      if (!input.isConnected) return; // input 已被宿主移除
+      if (!input.files || input.files.length === 0) return; // 宿主已自行清空
+
+      const hasPreview = document.querySelector(
+        [
+          'uploader-file-preview',
+          '[class*="attachment" i]',
+          '[class*="file-chip" i]',
+          '[class*="upload-chip" i]',
+          '[class*="file-preview" i]',
+          '[class*="uploaded" i]',
+        ].join(','),
+      );
+      if (hasPreview) return;
+
+      cleanUpFileInput(input, logger);
+    } catch (err) {
+      logger.debug('scheduleConditionalCleanup failed', err);
+    }
+  }, CLEANUP_DELAY_MS);
+}
+
 export const genericFileInputAdapter: SiteAdapter = {
   id: 'generic-file-input',
   matches: () => true,
@@ -120,7 +156,7 @@ export const genericFileInputAdapter: SiteAdapter = {
       for (const input of inputs) {
         if (!isValidFileInput(input, file)) continue;
         if (mountFilesToInput(input, dataTransfer, logger)) {
-          setTimeout(() => cleanUpFileInput(input, logger), CLEANUP_DELAY_MS);
+          scheduleConditionalCleanup(input, logger);
           return { success: true, method: 'file-input' };
         }
       }
@@ -131,7 +167,7 @@ export const genericFileInputAdapter: SiteAdapter = {
     for (const input of globalInputs) {
       if (!isValidFileInput(input, file)) continue;
       if (mountFilesToInput(input, dataTransfer, logger)) {
-        setTimeout(() => cleanUpFileInput(input, logger), CLEANUP_DELAY_MS);
+        scheduleConditionalCleanup(input, logger);
         return { success: true, method: 'file-input-global' };
       }
     }
