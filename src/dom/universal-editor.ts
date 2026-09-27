@@ -105,7 +105,7 @@ export class UniversalEditor {
   }
 
   /**
-   * 清理并解绑物理 input 节点上的文件常驻状态，防止文件持续悬挂导致后续操作重复提交
+   * 清理并解绑物理 input 节点上的文件常驻状态
    */
   private static cleanUpFileInput(fileInput: HTMLInputElement): void {
     try {
@@ -235,23 +235,29 @@ export class UniversalEditor {
   }
 
   /**
-   * 策略 2: 剪贴板事件仿真（豆包关键修复版 + 诊断日志）
+   * 策略 2: 剪贴板事件仿真（豆包最终修复版 v2）
    *
-   * 背景与实测：
-   *   - 豆包输入框是 tiptap / ProseMirror contenteditable，页面没有任何
-   *     input[type="file"]。
-   *   - 一次合成的 paste 事件会被 React 合成事件系统分发给组件树中多个
-   *     onPaste 处理器，每个处理器都会读取 event.clipboardData.files 并各自
-   *     触发一次文件上传，表现为"上传两个相同文件"。
-   *   - 一旦在 target 上 stopPropagation / stopImmediatePropagation，React
-   *     合成事件层直接收不到 paste 事件，表现为"0 个文件上传"。
-   *     所以绝不能阻断冒泡。
+   * 从诊断日志得出的结论：
+   *   - 之前"劫持 pasteEvent.clipboardData 为代理对象"的做法在豆包完全无效：
+   *     豆包通过 React SyntheticEvent / ProseMirror / 自己的 sync 引擎读
+   *     clipboardData 时，拿到的不是我们的代理对象，而是 null，导致
+   *     `Cannot destructure property 'files' of 'e.clipboardData' as it is null`，
+   *     最终 0 个上传。
    *
-   * 修复策略（三重保险 + 日志）：
-   *   1. 覆盖实例属性：Object.defineProperty 覆盖 pasteEvent.clipboardData。
-   *   2. 一次性交付代理：files / items 共享 delivered 标志，只放行第一次读取。
-   *   3. 底层清空：dispatchEvent 后同步 + microtask + macrotask 三阶段清空
-   *      dataTransfer.items，阻断异步二次读取。
+   * 新策略：
+   *   1. 让 pasteEvent.clipboardData 返回**真实的 dataTransfer 实例**（不做任何
+   *      代理包装），这样豆包拿到的是一个原生 DataTransfer，不会 instanceof
+   *      失败，也不会变成 null。
+   *
+   *   2. 把"一次性交付"的逻辑下沉到 dataTransfer 实例自身的 files / items
+   *      getter 上。无论 React / ProseMirror / 豆包 sync 引擎走哪条包装路径，
+   *      只要最终访问的是同一个 dataTransfer，getter 都会生效。
+   *
+   *   3. files 与 items 各自独立计数：files 第一次读返回真实，之后返回空；
+   *      items 同理。这样两个 handler 无论读哪个字段，都只会有一次命中。
+   *
+   *   4. dispatch 结束后立刻 delete 实例上的 own property，恢复原型链上的
+   *      原始 getter，避免污染后续用户正常粘贴。
    */
   private static tryPasteEvent(
     activeEl: HTMLElement | null,
@@ -274,10 +280,13 @@ export class UniversalEditor {
       id: target.id,
     });
 
+    let filesOwnPropInstalled = false;
+    let itemsOwnPropInstalled = false;
+
     try {
       target.focus();
 
-      // 快照真实数据与空数据
+      // 快照真实数据和空数据
       const realFiles = dataTransfer.files;
       const realItems = dataTransfer.items;
       const emptyDataTransfer = new DataTransfer();
@@ -291,118 +300,79 @@ export class UniversalEditor {
         realItems.length,
       );
 
-      // 诊断计数器
       let filesReadCount = 0;
       let itemsReadCount = 0;
+      let filesDelivered = false;
+      let itemsDelivered = false;
 
-      // files 与 items 共享一个"已交付"标志
-      let delivered = false;
-      const consume = <T>(
-        real: T,
-        empty: T,
-        label: string,
-        count: number,
-      ): T => {
-        if (delivered) {
-          console.log(`[AiIngest] consume(${label}) #${count} -> EMPTY`);
-          return empty;
-        }
-        delivered = true;
-        console.log(`[AiIngest] consume(${label}) #${count} -> REAL`);
-        return real;
-      };
-
-      const proxyDescriptorMap = {
-        files: {
-          configurable: true,
-          get: () => {
-            filesReadCount += 1;
-            const stack = new Error().stack;
+      // 在 dataTransfer 实例上直接定义一次性 getter。
+      // 这会遮蔽 DataTransfer.prototype.files / .items 的原始 getter，
+      // 无论通过何种包装路径访问 dataTransfer.files，都会走这里。
+      Object.defineProperty(dataTransfer, "files", {
+        configurable: true,
+        get() {
+          filesReadCount += 1;
+          console.log(
+            `[AiIngest] dataTransfer.files read #${filesReadCount}`,
+            new Error().stack,
+          );
+          if (!filesDelivered) {
+            filesDelivered = true;
             console.log(
-              `[AiIngest] clipboardData.files read #${filesReadCount}`,
-              stack,
+              `[AiIngest] dataTransfer.files #${filesReadCount} -> REAL`,
             );
-            return consume(realFiles, emptyFiles, "files", filesReadCount);
-          },
+            return realFiles;
+          }
+          console.log(
+            `[AiIngest] dataTransfer.files #${filesReadCount} -> EMPTY`,
+          );
+          return emptyFiles;
         },
-        items: {
-          configurable: true,
-          get: () => {
-            itemsReadCount += 1;
-            const stack = new Error().stack;
+      });
+      filesOwnPropInstalled = true;
+
+      Object.defineProperty(dataTransfer, "items", {
+        configurable: true,
+        get() {
+          itemsReadCount += 1;
+          console.log(
+            `[AiIngest] dataTransfer.items read #${itemsReadCount}`,
+            new Error().stack,
+          );
+          if (!itemsDelivered) {
+            itemsDelivered = true;
             console.log(
-              `[AiIngest] clipboardData.items read #${itemsReadCount}`,
-              stack,
+              `[AiIngest] dataTransfer.items #${itemsReadCount} -> REAL`,
             );
-            return consume(realItems, emptyItems, "items", itemsReadCount);
-          },
+            return realItems;
+          }
+          console.log(
+            `[AiIngest] dataTransfer.items #${itemsReadCount} -> EMPTY`,
+          );
+          return emptyItems;
         },
-        types: {
-          configurable: true,
-          get: () => dataTransfer.types,
-        },
-        dropEffect: {
-          configurable: true,
-          get: () => dataTransfer.dropEffect,
-        },
-        effectAllowed: {
-          configurable: true,
-          get: () => dataTransfer.effectAllowed,
-        },
-        getData: {
-          configurable: true,
-          value: (format: string) => dataTransfer.getData(format),
-        },
-        setData: {
-          configurable: true,
-          value: (format: string, data: string) =>
-            dataTransfer.setData(format, data),
-        },
-        clearData: {
-          configurable: true,
-          value: (format?: string) => dataTransfer.clearData(format),
-        },
-        setDragImage: {
-          configurable: true,
-          value: () => undefined,
-        },
-      } as PropertyDescriptorMap;
+      });
+      itemsOwnPropInstalled = true;
 
-      const clipboardProxy = Object.create(
-        DataTransfer.prototype,
-        proxyDescriptorMap,
-      );
-
-      // 不使用构造函数选项，避免被忽略
+      // 使用标准构造，不传 clipboardData 选项
       const pasteEvent = new ClipboardEvent("paste", {
         bubbles: true,
         cancelable: true,
         composed: true,
       });
 
-      try {
-        Object.defineProperty(pasteEvent, "clipboardData", {
-          configurable: true,
-          get() {
-            console.log(
-              "[AiIngest] pasteEvent.clipboardData getter accessed, returning proxy",
-            );
-            return clipboardProxy;
-          },
-        });
-        console.log("[AiIngest] clipboardData proxy installed on event");
-      } catch (e) {
-        console.log("[AiIngest] defineProperty clipboardData failed:", e);
-        try {
-          Object.defineProperty(pasteEvent, "clipboardData", {
-            configurable: true,
-            value: dataTransfer,
-          });
-          console.log("[AiIngest] fallback to raw dataTransfer value");
-        } catch (e2) {
-          console.log("[AiIngest] fallback also failed:", e2);
-        }
-      }
+      // 让 event.clipboardData 直接返回真实的 dataTransfer，
+      // 这样 React SyntheticEvent / ProseMirror / 豆包 sync 引擎拿到的
+      // 都是一致的、可用的 DataTransfer 实例。
+      Object.defineProperty(pasteEvent, "clipboardData", {
+        configurable: true,
+        get() {
+          console.log(
+            "[AiIngest] pasteEvent.clipboardData accessed -> real dataTransfer",
+          );
+          return dataTransfer;
+        },
+      });
 
       console.log("[AiIngest] === dispatching paste event ===");
       target.dispatchEvent(pasteEvent);
@@ -412,40 +382,29 @@ export class UniversalEditor {
         filesReadCount,
         "itemsRead =",
         itemsReadCount,
-        "delivered =",
-        delivered,
+        "filesDelivered =",
+        filesDelivered,
+        "itemsDelivered =",
+        itemsDelivered,
       );
-
-      // dispatchEvent 同步返回后立即清空底层 items
-      try {
-        dataTransfer.items.clear();
-        console.log("[AiIngest] cleared dataTransfer.items (sync)");
-      } catch (e) {
-        console.log("[AiIngest] sync clear failed:", e);
-      }
-
-      queueMicrotask(() => {
-        try {
-          dataTransfer.items.clear();
-          console.log("[AiIngest] cleared dataTransfer.items (microtask)");
-        } catch (e) {
-          console.log("[AiIngest] microtask clear failed:", e);
-        }
-      });
-
-      setTimeout(() => {
-        try {
-          dataTransfer.items.clear();
-          console.log("[AiIngest] cleared dataTransfer.items (macrotask)");
-        } catch (e) {
-          console.log("[AiIngest] macrotask clear failed:", e);
-        }
-      }, 0);
 
       return true;
     } catch (e) {
       console.log("[AiIngest] tryPasteEvent threw:", e);
       return false;
+    } finally {
+      // 恢复原始 getter，避免污染后续正常粘贴
+      try {
+        if (filesOwnPropInstalled) {
+          delete (dataTransfer as unknown as Record<string, unknown>).files;
+        }
+        if (itemsOwnPropInstalled) {
+          delete (dataTransfer as unknown as Record<string, unknown>).items;
+        }
+        console.log("[AiIngest] restored dataTransfer prototype getters");
+      } catch (e) {
+        console.log("[AiIngest] restore failed:", e);
+      }
     }
   }
 
