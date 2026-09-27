@@ -97,6 +97,7 @@ export class UniversalEditor {
     for (const selector of uploadBtnSelectors) {
       const btn = document.querySelector<HTMLElement>(selector);
       if (btn && btn.offsetWidth > 0 && btn.offsetHeight > 0) {
+        console.log("[AiIngest] tryWakeUploadInput matched:", selector);
         btn.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
         break;
       }
@@ -131,8 +132,9 @@ export class UniversalEditor {
       if (tracker) {
         tracker.setValue("");
       }
-    } catch {
-      // 容错处理
+      console.log("[AiIngest] cleanUpFileInput done");
+    } catch (e) {
+      console.log("[AiIngest] cleanUpFileInput failed:", e);
     }
   }
 
@@ -144,6 +146,7 @@ export class UniversalEditor {
     activeEl: HTMLElement | null,
     dataTransfer: DataTransfer,
   ): boolean {
+    console.log("[AiIngest] tryUploadViaFileInput enter");
     this.tryWakeUploadInput();
 
     const searchScopes = [
@@ -166,8 +169,26 @@ export class UniversalEditor {
         scope.querySelectorAll<HTMLInputElement>('input[type="file"]'),
       );
 
+      if (fileInputs.length > 0) {
+        console.log(
+          "[AiIngest] scope has file inputs:",
+          scope.tagName,
+          scope.className,
+          "count =",
+          fileInputs.length,
+        );
+      }
+
       for (const fileInput of fileInputs) {
-        if (!this.isValidFileInput(fileInput, file)) continue;
+        const valid = this.isValidFileInput(fileInput, file);
+        console.log("[AiIngest] candidate input:", {
+          accept: fileInput.accept,
+          multiple: fileInput.multiple,
+          disabled: fileInput.disabled,
+          hidden: fileInput.offsetParent === null,
+          valid,
+        });
+        if (!valid) continue;
 
         try {
           const descriptor = Object.getOwnPropertyDescriptor(
@@ -190,6 +211,7 @@ export class UniversalEditor {
             tracker.setValue("");
           }
 
+          console.log("[AiIngest] dispatching change + input on input");
           fileInput.dispatchEvent(
             new Event("change", { bubbles: true, composed: true }),
           );
@@ -197,23 +219,23 @@ export class UniversalEditor {
             new Event("input", { bubbles: true, composed: true }),
           );
 
-          // 留出 300ms 异步读取窗口，随后清空物理 DOM 节点，防止发送后文件常驻挂载
           setTimeout(() => {
             UniversalEditor.cleanUpFileInput(fileInput);
           }, 300);
 
           return true;
-        } catch {
-          // 切换下一候选节点
+        } catch (e) {
+          console.log("[AiIngest] tryUploadViaFileInput candidate failed:", e);
         }
       }
     }
 
+    console.log("[AiIngest] tryUploadViaFileInput return false");
     return false;
   }
 
   /**
-   * 策略 2: 剪贴板事件仿真（豆包最终修复版）
+   * 策略 2: 剪贴板事件仿真（豆包关键修复版 + 诊断日志）
    *
    * 背景与实测：
    *   - 豆包输入框是 tiptap / ProseMirror contenteditable，页面没有任何
@@ -225,25 +247,11 @@ export class UniversalEditor {
    *     合成事件层直接收不到 paste 事件，表现为"0 个文件上传"。
    *     所以绝不能阻断冒泡。
    *
-   * 修复策略（三重保险）：
-   *
-   *   1. 覆盖实例属性：不使用 ClipboardEvent 构造函数的 clipboardData 选项
-   *      （该选项在部分 Chrome 版本 / MV3 content script 环境下会被忽略，
-   *      导致 pasteEvent.clipboardData 为 null），改为在实例上直接
-   *      Object.defineProperty 覆盖，保证 getter 一定被使用。
-   *
-   *   2. 一次性交付代理：把 clipboardData 替换为 Object.create(DataTransfer.prototype, ...)
-   *      的代理对象。files / items 共享同一个 delivered 标志：第一次读取返回真实
-   *      FileList / DataTransferItemList，后续读取返回空列表。这解决了"同步多次读取"
-   *      的场景（React 分发给多个同步 onPaste handler）。
-   *
-   *   3. 底层清空：dispatchEvent 同步返回后，立即调用 dataTransfer.items.clear()，
-   *      并在微任务与宏任务阶段再各清空一次。这解决了"异步多次读取"的场景
-   *      （某些 handler 会在 dispatchEvent 之后通过 setTimeout / Promise 再读一次）。
-   *      已经同步读到 File 引用的 handler 不受影响，因为它们的引用是快照。
-   *
-   *   最终效果：第一个 handler 读到真实文件 → 正常上传 1 次；
-   *   其余 handler 无论同步还是异步，均读到空列表 → 静默跳过。
+   * 修复策略（三重保险 + 日志）：
+   *   1. 覆盖实例属性：Object.defineProperty 覆盖 pasteEvent.clipboardData。
+   *   2. 一次性交付代理：files / items 共享 delivered 标志，只放行第一次读取。
+   *   3. 底层清空：dispatchEvent 后同步 + microtask + macrotask 三阶段清空
+   *      dataTransfer.items，阻断异步二次读取。
    */
   private static tryPasteEvent(
     activeEl: HTMLElement | null,
@@ -255,7 +263,16 @@ export class UniversalEditor {
         'textarea, [contenteditable="true"], [role="textbox"]',
       ) as HTMLElement | null);
 
-    if (!target) return false;
+    if (!target) {
+      console.log("[AiIngest] tryPasteEvent: no target found");
+      return false;
+    }
+
+    console.log("[AiIngest] tryPasteEvent enter, target =", {
+      tag: target.tagName,
+      className: target.className,
+      id: target.id,
+    });
 
     try {
       target.focus();
@@ -267,25 +284,58 @@ export class UniversalEditor {
       const emptyFiles = emptyDataTransfer.files;
       const emptyItems = emptyDataTransfer.items;
 
-      // files 与 items 共享一个"已交付"标志：无论哪个先被读取，
-      // 只有第一个读取者能拿到真实数据。
+      console.log(
+        "[AiIngest] snapshot: realFiles.length =",
+        realFiles.length,
+        "realItems.length =",
+        realItems.length,
+      );
+
+      // 诊断计数器
+      let filesReadCount = 0;
+      let itemsReadCount = 0;
+
+      // files 与 items 共享一个"已交付"标志
       let delivered = false;
-      const consume = <T>(real: T, empty: T): T => {
-        if (delivered) return empty;
+      const consume = <T>(
+        real: T,
+        empty: T,
+        label: string,
+        count: number,
+      ): T => {
+        if (delivered) {
+          console.log(`[AiIngest] consume(${label}) #${count} -> EMPTY`);
+          return empty;
+        }
         delivered = true;
+        console.log(`[AiIngest] consume(${label}) #${count} -> REAL`);
         return real;
       };
 
-      // 用 PropertyDescriptorMap 断言避免 TS 对字面量联合类型（如 dropEffect）
-      // 的 setter 参数做窄化校验；同时不提供 setter，避免写入冲突。
       const proxyDescriptorMap = {
         files: {
           configurable: true,
-          get: () => consume(realFiles, emptyFiles),
+          get: () => {
+            filesReadCount += 1;
+            const stack = new Error().stack;
+            console.log(
+              `[AiIngest] clipboardData.files read #${filesReadCount}`,
+              stack,
+            );
+            return consume(realFiles, emptyFiles, "files", filesReadCount);
+          },
         },
         items: {
           configurable: true,
-          get: () => consume(realItems, emptyItems),
+          get: () => {
+            itemsReadCount += 1;
+            const stack = new Error().stack;
+            console.log(
+              `[AiIngest] clipboardData.items read #${itemsReadCount}`,
+              stack,
+            );
+            return consume(realItems, emptyItems, "items", itemsReadCount);
+          },
         },
         types: {
           configurable: true,
@@ -318,73 +368,83 @@ export class UniversalEditor {
         },
       } as PropertyDescriptorMap;
 
-      // 用 Object.create 保留 DataTransfer 原型链，
-      // 使代理对象 instanceof DataTransfer 仍然成立。
       const clipboardProxy = Object.create(
         DataTransfer.prototype,
         proxyDescriptorMap,
       );
 
-      // 关键：不使用构造函数的 clipboardData 选项，避免在某些环境下被忽略，
-      // 导致 pasteEvent.clipboardData 为 null。
+      // 不使用构造函数选项，避免被忽略
       const pasteEvent = new ClipboardEvent("paste", {
         bubbles: true,
         cancelable: true,
         composed: true,
       });
 
-      // 直接在实例上覆盖 clipboardData 属性
       try {
         Object.defineProperty(pasteEvent, "clipboardData", {
           configurable: true,
           get() {
+            console.log(
+              "[AiIngest] pasteEvent.clipboardData getter accessed, returning proxy",
+            );
             return clipboardProxy;
           },
         });
-      } catch {
-        // 极端环境下若禁止重定义，退回构造函数选项
+        console.log("[AiIngest] clipboardData proxy installed on event");
+      } catch (e) {
+        console.log("[AiIngest] defineProperty clipboardData failed:", e);
         try {
           Object.defineProperty(pasteEvent, "clipboardData", {
             configurable: true,
             value: dataTransfer,
           });
-        } catch {
-          // 彻底失败则保持为 null（此时豆包会读空）
+          console.log("[AiIngest] fallback to raw dataTransfer value");
+        } catch (e2) {
+          console.log("[AiIngest] fallback also failed:", e2);
         }
       }
 
-      // 关键：不做任何冒泡阻断，让 React 合成事件系统正常分发。
+      console.log("[AiIngest] === dispatching paste event ===");
       target.dispatchEvent(pasteEvent);
+      console.log(
+        "[AiIngest] === dispatch done ===",
+        "filesRead =",
+        filesReadCount,
+        "itemsRead =",
+        itemsReadCount,
+        "delivered =",
+        delivered,
+      );
 
-      // dispatchEvent 同步返回后，所有同步 handler 已执行完毕。
-      // 立即清空底层 dataTransfer 的 items，阻止任何异步 handler 再次读取。
-      // 已经同步读到 File 引用的 handler 不受影响（它们的引用是快照）。
+      // dispatchEvent 同步返回后立即清空底层 items
       try {
         dataTransfer.items.clear();
-      } catch {
-        /* no-op */
+        console.log("[AiIngest] cleared dataTransfer.items (sync)");
+      } catch (e) {
+        console.log("[AiIngest] sync clear failed:", e);
       }
 
-      // 微任务阶段再清一次，兜底 Promise.then 中的读取
       queueMicrotask(() => {
         try {
           dataTransfer.items.clear();
-        } catch {
-          /* no-op */
+          console.log("[AiIngest] cleared dataTransfer.items (microtask)");
+        } catch (e) {
+          console.log("[AiIngest] microtask clear failed:", e);
         }
       });
 
-      // 宏任务阶段再清一次，兜底 setTimeout(0) 中的读取
       setTimeout(() => {
         try {
           dataTransfer.items.clear();
-        } catch {
-          /* no-op */
+          console.log("[AiIngest] cleared dataTransfer.items (macrotask)");
+        } catch (e) {
+          console.log("[AiIngest] macrotask clear failed:", e);
         }
       }, 0);
 
       return true;
-    } catch {
+    } catch (e) {
+      console.log("[AiIngest] tryPasteEvent threw:", e);
       return false;
     }
   }
@@ -404,7 +464,10 @@ export class UniversalEditor {
       document.querySelector('[class*="dropzone"]') ||
       document.querySelector("main");
 
-    if (!candidateTarget) return false;
+    if (!candidateTarget) {
+      console.log("[AiIngest] tryDragAndDrop: no candidate target");
+      return false;
+    }
 
     try {
       const eventInit: DragEventInit = {
@@ -414,12 +477,14 @@ export class UniversalEditor {
         dataTransfer,
       };
 
+      console.log("[AiIngest] tryDragAndDrop dispatching on", candidateTarget);
       candidateTarget.dispatchEvent(new DragEvent("dragenter", eventInit));
       candidateTarget.dispatchEvent(new DragEvent("dragover", eventInit));
       candidateTarget.dispatchEvent(new DragEvent("drop", eventInit));
 
       return true;
-    } catch {
+    } catch (e) {
+      console.log("[AiIngest] tryDragAndDrop threw:", e);
       return false;
     }
   }
@@ -431,9 +496,16 @@ export class UniversalEditor {
     file: File,
     targetElement?: EventTarget | null,
   ): boolean {
+    console.log("[AiIngest] attachVirtualFile called:", {
+      name: file.name,
+      size: file.size,
+      type: file.type,
+    });
+
     const now = Date.now();
     const uploadKey = `${file.name}-${file.size}`;
     if (now - this.lastUploadTime < 1500 && this.lastUploadKey === uploadKey) {
+      console.log("[AiIngest] attachVirtualFile: deduped (same file < 1500ms)");
       return true;
     }
     this.lastUploadTime = now;
@@ -445,41 +517,51 @@ export class UniversalEditor {
         : document.activeElement
     ) as HTMLElement | null;
 
+    console.log("[AiIngest] activeEl =", {
+      tag: activeEl?.tagName,
+      className: activeEl?.className,
+      id: activeEl?.id,
+    });
+
     const dataTransfer = new DataTransfer();
     dataTransfer.items.add(file);
+    console.log(
+      "[AiIngest] dataTransfer.items.length after add =",
+      dataTransfer.items.length,
+    );
 
     const currentHost = window.location.hostname.toLowerCase();
+    console.log("[AiIngest] currentHost =", currentHost);
 
-    // 豆包：输入框为 ProseMirror contenteditable，页面无任何 input[type="file"]。
-    // 直接走修复后的 paste 策略（不阻断冒泡，改用一次性 files 交付 +
-    // dispatch 后清空底层 DataTransfer，防止 React 合成事件层被多个 onPaste
-    // 处理器重复消费）。
+    // 豆包分支
     if (currentHost.includes("doubao.com")) {
+      console.log("[AiIngest] doubao branch: tryPasteEvent first");
       if (this.tryPasteEvent(activeEl, dataTransfer)) {
+        console.log("[AiIngest] doubao branch: tryPasteEvent returned true");
         return true;
       }
-      // 兜底：万一未来豆包版本引入了 file input
+      console.log("[AiIngest] doubao branch: tryPasteEvent failed, fallback");
       if (this.tryUploadViaFileInput(file, activeEl, dataTransfer)) {
         return true;
       }
       return false;
     }
 
-    // 其他站点：优先策略 1: 扫描并触发 input[type="file"]
+    // 其他站点
     if (this.tryUploadViaFileInput(file, activeEl, dataTransfer)) {
+      console.log("[AiIngest] non-doubao: tryUploadViaFileInput succeeded");
       return true;
     }
-
-    // 优先策略 2: 模拟粘贴 ClipboardEvent
     if (this.tryPasteEvent(activeEl, dataTransfer)) {
+      console.log("[AiIngest] non-doubao: tryPasteEvent succeeded");
       return true;
     }
-
-    // 优先策略 3: 模拟拖拽 Drag & Drop
     if (this.tryDragAndDrop(activeEl, dataTransfer)) {
+      console.log("[AiIngest] non-doubao: tryDragAndDrop succeeded");
       return true;
     }
 
+    console.log("[AiIngest] attachVirtualFile: all strategies failed");
     return false;
   }
 
