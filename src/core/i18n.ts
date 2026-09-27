@@ -33,14 +33,19 @@ export const translations = {
     openGithubRepo: '打开 GitHub 仓库',
 
     // Site upload limits
-    siteFileLimitTitle: '各站点单文件上限 (MB)',
-    siteFileLimitHint:
-      '配置各平台单文件大小上限。超过后会自动将仓库摘要拆分为多个分片文件上传，避免宿主静默丢弃附件。',
-    siteFileLimitReset: '重置',
-    siteLimitOtherLabel: '其它（默认）',
-    attachingPart: '正在上传第 {current}/{total} 部分...',
-    attachedMultiPart: '已成功上传 {count} 个分片文件',
-    partialAttachFailed: '第 {current}/{total} 部分上传失败，请重试或手动粘贴',
+    siteFileLimitTitle: '各站点单文件上限',
+    siteFileLimitHint: '为每个 AI 站点单独配置上传文件大小上限。未配置的站点使用下方默认上限。',
+    siteFileLimitCurrentSite: '当前站点',
+    siteFileLimitConfigured: '已配置的站点',
+    siteFileLimitAddTitle: '添加自定义站点',
+    siteFileLimitEmpty: '尚未配置任何站点上限',
+    siteFileLimitDomainPlaceholder: '域名，如 example.com',
+    siteFileLimitAddBtn: '添加',
+    siteFileLimitSaveBtn: '保存',
+    siteFileLimitRemoveBtn: '移除',
+    siteFileLimitFallback: '未列出站点的默认上限',
+    siteFileLimitInvalidValue: '请输入有效数值',
+    siteFileLimitInvalidDomain: '请输入有效域名',
 
     // Content & Toast
     taskInProgress: '已有提取任务进行中，已恢复普通文本粘贴',
@@ -53,6 +58,9 @@ export const translations = {
     fallbackDigestHeader: '[已解析 GitHub 仓库: {repo}]',
     fallbackFileCount: '包含文件数: {count} | 预估 Token: {tokens}',
     fallbackHint: '提示: 建议在输入框附带具体需求分析。',
+    attachingPart: '正在上传第 {current}/{total} 部分...',
+    attachedMultiPart: '已成功上传 {count} 个分片文件',
+    partialAttachFailed: '第 {current}/{total} 部分上传失败，请重试或手动粘贴',
 
     // Core steps
     stepResolvingBranch: '正在解析分支信息...',
@@ -98,15 +106,20 @@ export const translations = {
     openGithubRepo: 'Open GitHub Repository',
 
     // Site upload limits
-    siteFileLimitTitle: 'Site Upload Limits (MB)',
+    siteFileLimitTitle: 'Site Upload Limits',
     siteFileLimitHint:
-      'Configure per-platform single-file limits. When exceeded, the digest is automatically split into multiple smaller files for multi-part upload.',
-    siteFileLimitReset: 'Reset',
-    siteLimitOtherLabel: 'Other (default)',
-    attachingPart: 'Attaching part {current}/{total}...',
-    attachedMultiPart: 'Successfully attached as {count} part(s)',
-    partialAttachFailed:
-      'Attachment interrupted at part {current}/{total}. Please retry or paste manually.',
+      'Configure per-site upload size limits. Unlisted sites use the default limit below.',
+    siteFileLimitCurrentSite: 'Current site',
+    siteFileLimitConfigured: 'Configured sites',
+    siteFileLimitAddTitle: 'Add custom site',
+    siteFileLimitEmpty: 'No site limits configured yet',
+    siteFileLimitDomainPlaceholder: 'Domain, e.g. example.com',
+    siteFileLimitAddBtn: 'Add',
+    siteFileLimitSaveBtn: 'Save',
+    siteFileLimitRemoveBtn: 'Remove',
+    siteFileLimitFallback: 'Default limit for unlisted sites',
+    siteFileLimitInvalidValue: 'Please enter a valid value',
+    siteFileLimitInvalidDomain: 'Please enter a valid domain',
 
     // Content & Toast
     taskInProgress: 'An extraction task is already in progress, pasted as raw text.',
@@ -120,6 +133,10 @@ export const translations = {
     fallbackDigestHeader: '[Parsed GitHub Repository: {repo}]',
     fallbackFileCount: 'Files analyzed: {count} | Estimated tokens: {tokens}',
     fallbackHint: 'Tip: You can now append your specific prompt or analysis instructions.',
+    attachingPart: 'Attaching part {current}/{total}...',
+    attachedMultiPart: 'Successfully attached as {count} part(s)',
+    partialAttachFailed:
+      'Attachment interrupted at part {current}/{total}. Please retry or paste manually.',
 
     // Core steps
     stepResolvingBranch: 'Resolving branch information...',

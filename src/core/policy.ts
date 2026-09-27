@@ -1,5 +1,5 @@
 import { SitePolicyStatus } from '../types';
-import { DEFAULT_FILE_SIZE_LIMIT, DEFAULT_SITE_FILE_SIZE_LIMITS } from './constants';
+import { DEFAULT_FILE_SIZE_LIMIT } from './constants';
 
 export const BUILTIN_AI_DOMAINS: readonly string[] = [
   // International
@@ -93,10 +93,12 @@ export const evaluateSitePolicyForHostnames = (
  * Resolve the effective single-file size limit (bytes) for a hostname.
  *
  * Priority:
- *   1. User-configured per-host overrides
- *   2. Built-in defaults from {@link DEFAULT_SITE_FILE_SIZE_LIMITS}
- *   3. User-configured default
- *   4. Hard-coded fallback
+ *   1. User-configured per-host override (longest matching domain wins)
+ *   2. User-configured default
+ *   3. Hard-coded fallback
+ *
+ * There are no built-in per-site defaults — every site must be configured
+ * explicitly by the user through the popup.
  */
 export function resolveSiteLimit(
   hostname: string,
@@ -106,15 +108,15 @@ export function resolveSiteLimit(
   const clean = normalizeHostname(hostname);
 
   if (customLimits) {
+    let bestMatch: { domain: string; limit: number } | null = null;
     for (const [domain, limit] of Object.entries(customLimits)) {
-      if (typeof limit === 'number' && limit > 0 && matchDomain(clean, domain)) {
-        return limit;
+      if (typeof limit !== 'number' || limit <= 0) continue;
+      if (!matchDomain(clean, domain)) continue;
+      if (!bestMatch || domain.length > bestMatch.domain.length) {
+        bestMatch = { domain, limit };
       }
     }
-  }
-
-  for (const [domain, limit] of Object.entries(DEFAULT_SITE_FILE_SIZE_LIMITS)) {
-    if (matchDomain(clean, domain)) return limit;
+    if (bestMatch) return bestMatch.limit;
   }
 
   if (typeof defaultLimit === 'number' && defaultLimit > 0) return defaultLimit;

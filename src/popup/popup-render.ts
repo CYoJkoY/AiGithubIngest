@@ -62,6 +62,6 @@ export async function render(): Promise<void> {
   }
 
   renderBlacklistTags(blacklist, currentLang, render);
-  renderSiteLimits(storage, currentLang, render);
+  await renderSiteLimits(storage, currentLang, render);
   await renderSitePolicy(storage, currentLang, render);
 }

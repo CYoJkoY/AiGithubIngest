@@ -1,141 +1,404 @@
 import { t } from '../core/i18n';
 import { StorageSchema, SupportedLang } from '../types';
-import { DEFAULT_FILE_SIZE_LIMIT, DEFAULT_SITE_FILE_SIZE_LIMITS } from '../core/constants';
+import {
+  DEFAULT_FILE_SIZE_LIMIT,
+  MAX_FILE_SIZE_LIMIT,
+  MIN_FILE_SIZE_LIMIT,
+} from '../core/constants';
+import { normalizeHostname } from '../core/policy';
+import { logger } from '../core/logger';
 
+const KB = 1024;
 const MB = 1024 * 1024;
-const FALLBACK_KEY = '__default__';
 
-interface SiteLimitRow {
-  readonly host: string;
-  readonly label: string;
+type Unit = 'KB' | 'MB';
+
+interface RowContext {
+  readonly userLimits: Record<string, number>;
+  readonly currentLang: SupportedLang;
+  readonly onUpdate: () => Promise<void>;
 }
 
-const SITE_LIMIT_ROWS: readonly SiteLimitRow[] = [
-  { host: 'chatgpt.com', label: 'ChatGPT' },
-  { host: 'claude.ai', label: 'Claude' },
-  { host: 'gemini.google.com', label: 'Gemini' },
-  { host: 'chat.deepseek.com', label: 'DeepSeek' },
-  { host: 'doubao.com', label: 'Doubao' },
-  { host: 'qwen.ai', label: 'Qwen / Tongyi' },
-  { host: 'yuanbao.tencent.com', label: 'Yuanbao' },
-];
+/* ------------------------------------------------------------------ */
+/* Byte / display helpers                                              */
+/* ------------------------------------------------------------------ */
 
-interface RowState {
-  readonly host: string;
-  readonly label: string;
-  readonly currentBytes: number;
-  readonly builtinBytes: number;
+function clampBytes(bytes: number): number {
+  return Math.max(MIN_FILE_SIZE_LIMIT, Math.min(MAX_FILE_SIZE_LIMIT, bytes));
 }
 
-export function renderSiteLimits(
+/** Auto-pick a sensible display unit for a stored byte value. */
+function pickUnit(bytes: number): Unit {
+  return bytes >= MB ? 'MB' : 'KB';
+}
+
+function formatValue(bytes: number, unit: Unit): string {
+  if (unit === 'MB') {
+    const mb = bytes / MB;
+    if (Number.isInteger(mb)) return String(mb);
+    return mb.toFixed(2).replace(/\.?0+$/, '');
+  }
+  return String(Math.max(1, Math.round(bytes / KB)));
+}
+
+function toBytes(value: number, unit: Unit): number {
+  return Math.round(value * (unit === 'MB' ? MB : KB));
+}
+
+/* ------------------------------------------------------------------ */
+/* Async helpers                                                       */
+/* ------------------------------------------------------------------ */
+
+async function resolveCurrentHostname(): Promise<string | null> {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.url) return null;
+    try {
+      return normalizeHostname(new URL(tab.url).hostname);
+    } catch {
+      return null;
+    }
+  } catch (err) {
+    logger.debug('resolveCurrentHostname failed', err);
+    return null;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* DOM primitives                                                      */
+/* ------------------------------------------------------------------ */
+
+function makeSectionTitle(text: string): HTMLElement {
+  const el = document.createElement('div');
+  el.className = 'site-limit-section';
+  el.textContent = text;
+  return el;
+}
+
+function makeEmptyTip(text: string): HTMLElement {
+  const el = document.createElement('div');
+  el.className = 'empty-tip';
+  el.textContent = text;
+  return el;
+}
+
+function makeUnitSelect(initial: Unit): HTMLSelectElement {
+  const select = document.createElement('select');
+  select.className = 'select-box site-limit-unit';
+  select.setAttribute('aria-label', 'Unit');
+  for (const u of ['KB', 'MB'] as const) {
+    const opt = document.createElement('option');
+    opt.value = u;
+    opt.textContent = u;
+    select.appendChild(opt);
+  }
+  select.value = initial;
+  return select;
+}
+
+function makeNumberInput(bytes: number, unit: Unit): HTMLInputElement {
+  const input = document.createElement('input');
+  input.type = 'number';
+  input.min = unit === 'MB' ? '0.01' : '1';
+  input.step = unit === 'MB' ? '0.5' : '1';
+  input.className = 'input-text site-limit-input';
+  input.value = formatValue(bytes, unit);
+  input.autocomplete = 'off';
+  input.spellcheck = false;
+  return input;
+}
+
+/**
+ * When the unit select changes, convert the currently displayed number into
+ * bytes using the previously active unit, then re-format it in the new unit.
+ */
+function attachUnitConversion(
+  input: HTMLInputElement,
+  select: HTMLSelectElement,
+  initialUnit: Unit,
+): void {
+  let activeUnit = initialUnit;
+  select.addEventListener('change', () => {
+    const newUnit = select.value as Unit;
+    const parsed = Number.parseFloat(input.value);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      const bytes = toBytes(parsed, activeUnit);
+      input.value = formatValue(bytes, newUnit);
+    }
+    activeUnit = newUnit;
+    input.min = newUnit === 'MB' ? '0.01' : '1';
+    input.step = newUnit === 'MB' ? '0.5' : '1';
+  });
+}
+
+function makeIconButton(
+  glyph: string,
+  title: string,
+  onClick: () => void,
+  variant: 'save' | 'remove',
+): HTMLButtonElement {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = `btn-icon site-limit-icon-btn site-limit-icon-btn--${variant}`;
+  btn.textContent = glyph;
+  btn.title = title;
+  btn.setAttribute('aria-label', title);
+  btn.addEventListener('click', onClick);
+  return btn;
+}
+
+/* ------------------------------------------------------------------ */
+/* Persistence                                                         */
+/* ------------------------------------------------------------------ */
+
+async function saveSiteLimit(
+  host: string,
+  rawValue: string,
+  unit: Unit,
+  ctx: RowContext,
+): Promise<void> {
+  const parsed = Number.parseFloat(rawValue);
+  if (!Number.isFinite(parsed) || parsed <= 0) return;
+  const bytes = clampBytes(toBytes(parsed, unit));
+  const next = { ...ctx.userLimits, [host]: bytes };
+  await chrome.storage.sync.set({ siteFileSizeLimits: next });
+  await ctx.onUpdate();
+}
+
+async function removeSiteLimit(host: string, ctx: RowContext): Promise<void> {
+  const next = { ...ctx.userLimits };
+  delete next[host];
+  await chrome.storage.sync.set({ siteFileSizeLimits: next });
+  await ctx.onUpdate();
+}
+
+async function saveFallbackLimit(rawValue: string, unit: Unit, ctx: RowContext): Promise<void> {
+  const parsed = Number.parseFloat(rawValue);
+  if (!Number.isFinite(parsed) || parsed <= 0) return;
+  const bytes = clampBytes(toBytes(parsed, unit));
+  await chrome.storage.sync.set({ defaultFileSizeLimit: bytes });
+  await ctx.onUpdate();
+}
+
+async function addSiteLimit(
+  domainInput: HTMLInputElement,
+  sizeInput: HTMLInputElement,
+  unitSelect: HTMLSelectElement,
+  ctx: RowContext,
+): Promise<void> {
+  const rawDomain = domainInput.value.trim();
+  if (!rawDomain) return;
+
+  let host: string;
+  try {
+    host = rawDomain.includes('://')
+      ? normalizeHostname(new URL(rawDomain).hostname)
+      : normalizeHostname(rawDomain);
+  } catch {
+    host = normalizeHostname(rawDomain);
+  }
+  if (!host || host.length < 3) return;
+
+  const parsed = Number.parseFloat(sizeInput.value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return;
+
+  const bytes = clampBytes(toBytes(parsed, unitSelect.value as Unit));
+  const next = { ...ctx.userLimits, [host]: bytes };
+  await chrome.storage.sync.set({ siteFileSizeLimits: next });
+  await ctx.onUpdate();
+}
+
+/* ------------------------------------------------------------------ */
+/* Row builders                                                        */
+/* ------------------------------------------------------------------ */
+
+function buildConfiguredRow(
+  host: string,
+  bytes: number,
+  ctx: RowContext,
+  highlight: boolean,
+): HTMLElement {
+  const row = document.createElement('div');
+  row.className = highlight ? 'site-limit-row site-limit-row--current' : 'site-limit-row';
+
+  const label = document.createElement('span');
+  label.className = 'site-limit-label';
+  label.textContent = host;
+  label.title = host;
+  row.appendChild(label);
+
+  const unit = pickUnit(bytes);
+  const input = makeNumberInput(bytes, unit);
+  row.appendChild(input);
+
+  const select = makeUnitSelect(unit);
+  attachUnitConversion(input, select, unit);
+  row.appendChild(select);
+
+  const saveBtn = makeIconButton(
+    '✓',
+    t('siteFileLimitSaveBtn', ctx.currentLang),
+    () => {
+      void saveSiteLimit(host, input.value, select.value as Unit, ctx);
+    },
+    'save',
+  );
+  row.appendChild(saveBtn);
+
+  const removeBtn = makeIconButton(
+    '×',
+    t('siteFileLimitRemoveBtn', ctx.currentLang),
+    () => {
+      void removeSiteLimit(host, ctx);
+    },
+    'remove',
+  );
+  row.appendChild(removeBtn);
+
+  return row;
+}
+
+function buildUnsetCurrentRow(host: string, ctx: RowContext): HTMLElement {
+  const row = document.createElement('div');
+  row.className = 'site-limit-row site-limit-row--current site-limit-row--unset';
+
+  const label = document.createElement('span');
+  label.className = 'site-limit-label';
+  label.textContent = host;
+  label.title = host;
+  row.appendChild(label);
+
+  const bytes = DEFAULT_FILE_SIZE_LIMIT;
+  const unit = pickUnit(bytes);
+  const input = makeNumberInput(bytes, unit);
+  row.appendChild(input);
+
+  const select = makeUnitSelect(unit);
+  attachUnitConversion(input, select, unit);
+  row.appendChild(select);
+
+  const saveBtn = makeIconButton(
+    '✓',
+    t('siteFileLimitSaveBtn', ctx.currentLang),
+    () => {
+      void saveSiteLimit(host, input.value, select.value as Unit, ctx);
+    },
+    'save',
+  );
+  row.appendChild(saveBtn);
+
+  return row;
+}
+
+function buildFallbackRow(bytes: number, ctx: RowContext): HTMLElement {
+  const row = document.createElement('div');
+  row.className = 'site-limit-row site-limit-row--fallback';
+
+  const bytesValue = bytes > 0 ? bytes : DEFAULT_FILE_SIZE_LIMIT;
+  const unit = pickUnit(bytesValue);
+  const input = makeNumberInput(bytesValue, unit);
+  row.appendChild(input);
+
+  const select = makeUnitSelect(unit);
+  attachUnitConversion(input, select, unit);
+  row.appendChild(select);
+
+  const saveBtn = makeIconButton(
+    '✓',
+    t('siteFileLimitSaveBtn', ctx.currentLang),
+    () => {
+      void saveFallbackLimit(input.value, select.value as Unit, ctx);
+    },
+    'save',
+  );
+  row.appendChild(saveBtn);
+
+  return row;
+}
+
+function buildAddRow(currentHost: string | null, ctx: RowContext): HTMLElement {
+  const row = document.createElement('div');
+  row.className = 'site-limit-row site-limit-row--add';
+
+  const domainInput = document.createElement('input');
+  domainInput.type = 'text';
+  domainInput.className = 'input-text site-limit-domain';
+  domainInput.placeholder = t('siteFileLimitDomainPlaceholder', ctx.currentLang);
+  domainInput.autocomplete = 'off';
+  domainInput.spellcheck = false;
+  if (currentHost && !(currentHost in ctx.userLimits)) {
+    domainInput.value = currentHost;
+  }
+  row.appendChild(domainInput);
+
+  const bytes = DEFAULT_FILE_SIZE_LIMIT;
+  const unit = pickUnit(bytes);
+  const sizeInput = makeNumberInput(bytes, unit);
+  row.appendChild(sizeInput);
+
+  const select = makeUnitSelect(unit);
+  attachUnitConversion(sizeInput, select, unit);
+  row.appendChild(select);
+
+  const addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.className = 'btn btn-secondary btn-inline site-limit-add-btn';
+  addBtn.textContent = t('siteFileLimitAddBtn', ctx.currentLang);
+  addBtn.addEventListener('click', () => {
+    void addSiteLimit(domainInput, sizeInput, select, ctx);
+  });
+  row.appendChild(addBtn);
+
+  return row;
+}
+
+/* ------------------------------------------------------------------ */
+/* Entry point                                                         */
+/* ------------------------------------------------------------------ */
+
+export async function renderSiteLimits(
   storage: StorageSchema,
   currentLang: SupportedLang,
   onUpdate: () => Promise<void>,
-): void {
+): Promise<void> {
   const container = document.getElementById('site-limits-list');
   if (!container) return;
   container.innerHTML = '';
 
   const userLimits = { ...(storage.siteFileSizeLimits ?? {}) };
   const defaultBytes = storage.defaultFileSizeLimit ?? DEFAULT_FILE_SIZE_LIMIT;
+  const currentHost = await resolveCurrentHostname();
+  const ctx: RowContext = { userLimits, currentLang, onUpdate };
 
-  const rows: RowState[] = SITE_LIMIT_ROWS.map((r) => ({
-    host: r.host,
-    label: r.label,
-    currentBytes: userLimits[r.host] ?? DEFAULT_SITE_FILE_SIZE_LIMITS[r.host] ?? defaultBytes,
-    builtinBytes: DEFAULT_SITE_FILE_SIZE_LIMITS[r.host] ?? defaultBytes,
-  }));
-
-  rows.push({
-    host: FALLBACK_KEY,
-    label: t('siteLimitOtherLabel', currentLang),
-    currentBytes: defaultBytes,
-    builtinBytes: DEFAULT_FILE_SIZE_LIMIT,
-  });
-
-  for (const row of rows) {
-    container.appendChild(buildRow(row, userLimits, currentLang, onUpdate));
+  // 1. Current site ---------------------------------------------------
+  if (currentHost) {
+    container.appendChild(makeSectionTitle(t('siteFileLimitCurrentSite', currentLang)));
+    const configuredBytes = userLimits[currentHost];
+    container.appendChild(
+      configuredBytes
+        ? buildConfiguredRow(currentHost, configuredBytes, ctx, true)
+        : buildUnsetCurrentRow(currentHost, ctx),
+    );
   }
-}
 
-function buildRow(
-  state: RowState,
-  userLimits: Record<string, number>,
-  currentLang: SupportedLang,
-  onUpdate: () => Promise<void>,
-): HTMLElement {
-  const row = document.createElement('div');
-  row.className = 'site-limit-row';
-
-  const labelEl = document.createElement('span');
-  labelEl.className = 'site-limit-label';
-  labelEl.textContent = state.label;
-  labelEl.title = state.label;
-  row.appendChild(labelEl);
-
-  const input = document.createElement('input');
-  input.type = 'number';
-  input.min = '1';
-  input.step = '1';
-  input.className = 'input-text site-limit-input';
-  input.value = String(Math.max(1, Math.round(state.currentBytes / MB)));
-  row.appendChild(input);
-
-  const unit = document.createElement('span');
-  unit.className = 'site-limit-unit';
-  unit.textContent = 'MB';
-  row.appendChild(unit);
-
-  const resetBtn = document.createElement('button');
-  resetBtn.type = 'button';
-  resetBtn.className = 'btn btn-secondary btn-inline site-limit-reset';
-  resetBtn.textContent = t('siteFileLimitReset', currentLang);
-  row.appendChild(resetBtn);
-
-  input.addEventListener('change', () => {
-    void persistLimit(state, input, userLimits, onUpdate);
-  });
-
-  resetBtn.addEventListener('click', () => {
-    void resetLimit(state, userLimits, onUpdate);
-  });
-
-  return row;
-}
-
-async function persistLimit(
-  state: RowState,
-  input: HTMLInputElement,
-  userLimits: Record<string, number>,
-  onUpdate: () => Promise<void>,
-): Promise<void> {
-  const parsed = Number.parseFloat(input.value);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    input.value = String(Math.max(1, Math.round(state.currentBytes / MB)));
-    return;
-  }
-  const bytes = Math.round(parsed * MB);
-
-  if (state.host === FALLBACK_KEY) {
-    await chrome.storage.sync.set({ defaultFileSizeLimit: bytes });
+  // 2. Other configured sites ----------------------------------------
+  const otherHosts = Object.keys(userLimits)
+    .filter((h) => h !== currentHost)
+    .sort();
+  container.appendChild(makeSectionTitle(t('siteFileLimitConfigured', currentLang)));
+  if (otherHosts.length === 0) {
+    container.appendChild(makeEmptyTip(t('siteFileLimitEmpty', currentLang)));
   } else {
-    const next = { ...userLimits, [state.host]: bytes };
-    await chrome.storage.sync.set({ siteFileSizeLimits: next });
+    for (const host of otherHosts) {
+      container.appendChild(buildConfiguredRow(host, userLimits[host], ctx, false));
+    }
   }
-  await onUpdate();
-}
 
-async function resetLimit(
-  state: RowState,
-  userLimits: Record<string, number>,
-  onUpdate: () => Promise<void>,
-): Promise<void> {
-  if (state.host === FALLBACK_KEY) {
-    await chrome.storage.sync.set({ defaultFileSizeLimit: DEFAULT_FILE_SIZE_LIMIT });
-  } else {
-    const next = { ...userLimits };
-    delete next[state.host];
-    await chrome.storage.sync.set({ siteFileSizeLimits: next });
-  }
-  await onUpdate();
+  // 3. Add custom site ------------------------------------------------
+  container.appendChild(makeSectionTitle(t('siteFileLimitAddTitle', currentLang)));
+  container.appendChild(buildAddRow(currentHost, ctx));
+
+  // 4. Fallback for unlisted sites ------------------------------------
+  container.appendChild(makeSectionTitle(t('siteFileLimitFallback', currentLang)));
+  container.appendChild(buildFallbackRow(defaultBytes, ctx));
 }
