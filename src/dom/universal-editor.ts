@@ -3,36 +3,6 @@ export class UniversalEditor {
   private static lastUploadKey = "";
 
   /**
-   * 重置并解绑指定 input[type="file"]，清除物理挂载的文件缓存与跟踪状态
-   */
-  private static cleanUpFileInput(fileInput: HTMLInputElement): void {
-    try {
-      const descriptor = Object.getOwnPropertyDescriptor(
-        HTMLInputElement.prototype,
-        "files",
-      );
-      const emptyDT = new DataTransfer();
-      if (descriptor?.set) {
-        descriptor.set.call(fileInput, emptyDT.files);
-      } else {
-        fileInput.files = emptyDT.files;
-      }
-      fileInput.value = "";
-
-      const tracker = (
-        fileInput as unknown as {
-          _valueTracker?: { setValue: (val: string) => void };
-        }
-      )._valueTracker;
-      if (tracker) {
-        tracker.setValue("");
-      }
-    } catch {
-      // 忽略受保护 DOM 节点的异常
-    }
-  }
-
-  /**
    * 校验 file input 是否具备接收文本/文档附件的能力
    * 采用宽松防御策略：只要不是明确仅限图片/音视频的输入框，均允许挂载 Markdown
    */
@@ -99,7 +69,6 @@ export class UniversalEditor {
 
   /**
    * 查找页面中可能存在的附件上传按钮并尝试唤起隐藏的 input
-   * 兼顾中英文界面的 aria-label 与 title 属性
    */
   private static tryWakeUploadInput(): void {
     const uploadBtnSelectors = [
@@ -135,8 +104,41 @@ export class UniversalEditor {
   }
 
   /**
+   * 核心重置清理器：彻底释放物理 input 节点上的挂载，防止文件残留与重复提交
+   */
+  private static cleanUpFileInput(fileInput: HTMLInputElement): void {
+    try {
+      const emptyDT = new DataTransfer();
+      const descriptor = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "files",
+      );
+
+      if (descriptor?.set) {
+        descriptor.set.call(fileInput, emptyDT.files);
+      } else {
+        fileInput.files = emptyDT.files;
+      }
+
+      fileInput.value = "";
+
+      const tracker = (
+        fileInput as unknown as {
+          _valueTracker?: { setValue: (val: string) => void };
+        }
+      )._valueTracker;
+
+      if (tracker) {
+        tracker.setValue("");
+      }
+    } catch {
+      // 容错处理
+    }
+  }
+
+  /**
    * 策略 1: 扫描并触发原生 input[type="file"] 挂载
-   * 并在框架消费后自动解绑物理 DOM，切断长期驻留引发的二次上传或残留问题
+   * 触发后立即安排微延迟解绑，杜绝 DOM 驻留
    */
   private static tryUploadViaFileInput(
     file: File,
@@ -169,7 +171,6 @@ export class UniversalEditor {
         if (!this.isValidFileInput(fileInput, file)) continue;
 
         try {
-          // 通过原型链 Setter 绕过 React 受控组件拦截
           const descriptor = Object.getOwnPropertyDescriptor(
             HTMLInputElement.prototype,
             "files",
@@ -181,7 +182,6 @@ export class UniversalEditor {
             fileInput.files = dataTransfer.files;
           }
 
-          // 同步重置 React 内部 valueTracker
           const tracker = (
             fileInput as unknown as {
               _valueTracker?: { setValue: (val: string) => void };
@@ -191,23 +191,22 @@ export class UniversalEditor {
             tracker.setValue("");
           }
 
-          // 派发标准输入与变更事件，供宿主框架捕获同步
-          fileInput.dispatchEvent(
-            new Event("input", { bubbles: true, composed: true }),
-          );
+          // 派发标准事件促使宿主框架（如 React/Vue）捕获并读取文件
           fileInput.dispatchEvent(
             new Event("change", { bubbles: true, composed: true }),
           );
+          fileInput.dispatchEvent(
+            new Event("input", { bubbles: true, composed: true }),
+          );
 
-          // 核心修复：宿主框架在当前同步/微任务中读取文件后，80ms 后清除物理 DOM 引用
-          // 彻底阻断表单提交、失焦校验或发送按钮重新扫描时的二次重复上传，并消除残留
+          // 关键修复：给宿主框架 80ms 同步读取窗口，随后彻底清空物理 DOM，防止残留
           setTimeout(() => {
-            this.cleanUpFileInput(fileInput);
+            UniversalEditor.cleanUpFileInput(fileInput);
           }, 80);
 
           return true;
         } catch {
-          // 遇到受限 DOM 节点静默切换下一候选
+          // 切换下一候选节点
         }
       }
     }
@@ -216,20 +215,16 @@ export class UniversalEditor {
   }
 
   /**
-   * 策略 2: 单靶向精准模拟 ClipboardEvent('paste')
-   * 禁止冒泡穿透至 window 外部全局监听器，并在微任务生命周期关闭时钟门
+   * 策略 2: 剪贴板事件仿真（互斥单次消费代理 + 非冒泡穿透）
    */
   private static tryPasteEvent(
     activeEl: HTMLElement | null,
     dataTransfer: DataTransfer,
   ): boolean {
     const target =
-      (activeEl?.isContentEditable
-        ? (activeEl.closest('[contenteditable="true"]') as HTMLElement) ||
-          activeEl
-        : activeEl) ||
+      activeEl ||
       (document.querySelector(
-        '[contenteditable="true"], textarea, [role="textbox"]',
+        'textarea, [contenteditable="true"], [role="textbox"]',
       ) as HTMLElement | null);
 
     if (!target) return false;
@@ -241,8 +236,11 @@ export class UniversalEditor {
       const rawItems = dataTransfer.items;
       const emptyDT = new DataTransfer();
 
-      // 核心修复：将 bubbles 设置为 false，禁止合成事件向外部 Form/Window 冒泡，
-      // 防止宿主在全局注册的后备 paste 监听器二次捕获同一份剪贴板文件
+      let isGateOpen = true;
+      let filesAccessed = false;
+      let itemsAccessed = false;
+
+      // 禁用冒泡，防止事件穿透到外层容器或 window 全局监听器导致二次上传
       const pasteEvent = new ClipboardEvent("paste", {
         bubbles: false,
         cancelable: true,
@@ -250,66 +248,89 @@ export class UniversalEditor {
         clipboardData: dataTransfer,
       });
 
-      let isGateOpen = true;
-      const internalClipboardData =
-        (pasteEvent as unknown as { clipboardData?: DataTransfer })
-          .clipboardData || dataTransfer;
+      // 互斥单次消费代理：
+      // 1. 若宿主先读取 files，则后续对 items 的读取立即屏蔽返回空
+      // 2. 若宿主先读取 items，则后续对 files 的读取立即屏蔽返回空
+      // 3. 彻底根除同一事件中同时消费 items 和 files 造成的双重上传
+      const clipboardProxy = new Proxy(dataTransfer, {
+        get(tgt, prop, receiver) {
+          if (!isGateOpen) {
+            if (prop === "files") return emptyDT.files;
+            if (prop === "items") return emptyDT.items;
+            if (prop === "types") return [];
+            if (prop === "getData") return () => "";
+          }
 
-      // 第一道防线：直接代理 event.clipboardData 自身
-      try {
-        const clipboardProxy = new Proxy(internalClipboardData, {
-          get(tgt, prop, receiver) {
-            if (!isGateOpen) {
-              if (prop === "files") return emptyDT.files;
-              if (prop === "items") return emptyDT.items;
-              if (prop === "getData") return () => "";
+          if (prop === "files") {
+            if (itemsAccessed) {
+              return emptyDT.files;
             }
-            const val = Reflect.get(tgt, prop, receiver);
-            return typeof val === "function" ? val.bind(tgt) : val;
-          },
-        });
+            filesAccessed = true;
+            return rawFiles;
+          }
 
+          if (prop === "items") {
+            if (filesAccessed) {
+              return emptyDT.items;
+            }
+            itemsAccessed = true;
+
+            let fileExtracted = false;
+            return new Proxy(rawItems, {
+              get(itemsTgt, itemProp, itemReceiver) {
+                const itemVal = Reflect.get(itemsTgt, itemProp, itemReceiver);
+                if (typeof itemProp === "string" && !isNaN(Number(itemProp))) {
+                  const originalItem = rawItems[Number(itemProp)];
+                  if (originalItem && originalItem.kind === "file") {
+                    return new Proxy(originalItem, {
+                      get(fileItemTgt, fileItemProp) {
+                        if (fileItemProp === "getAsFile") {
+                          return () => {
+                            if (fileExtracted) return null;
+                            fileExtracted = true;
+                            return originalItem.getAsFile();
+                          };
+                        }
+                        const val = Reflect.get(fileItemTgt, fileItemProp);
+                        return typeof val === "function"
+                          ? val.bind(fileItemTgt)
+                          : val;
+                      },
+                    });
+                  }
+                }
+                return typeof itemVal === "function"
+                  ? itemVal.bind(itemsTgt)
+                  : itemVal;
+              },
+            });
+          }
+
+          const val = Reflect.get(tgt, prop, receiver);
+          return typeof val === "function" ? val.bind(tgt) : val;
+        },
+      });
+
+      try {
         Object.defineProperty(pasteEvent, "clipboardData", {
           get: () => clipboardProxy,
           configurable: true,
         });
       } catch {
-        // 环境受限时静默跳过
+        // 忽略受限环境
       }
 
-      // 第二道防线：防止部分框架在初次访问后持久缓存引用
-      try {
-        Object.defineProperty(internalClipboardData, "files", {
-          get: () => {
-            if (!isGateOpen) return emptyDT.files;
-            return rawFiles;
-          },
-          configurable: true,
-        });
-
-        Object.defineProperty(internalClipboardData, "items", {
-          get: () => {
-            if (!isGateOpen) return emptyDT.items;
-            return rawItems;
-          },
-          configurable: true,
-        });
-      } catch {
-        // 忽略非配置属性异常
-      }
-
-      // 同步派发目标事件
       target.dispatchEvent(pasteEvent);
 
-      // 派发后迅速在 10ms 内关死阀门并清空数据容器，防止异步宏任务重新回读
-      setTimeout(() => {
+      // 微任务周期内迅速关门，阻止任何异步宏任务（如 50ms setTimeout）二次读取
+      queueMicrotask(() => {
         isGateOpen = false;
         try {
           dataTransfer.items.clear();
         } catch {
           // 忽略
         }
-      }, 10);
+      });
 
       return true;
     } catch {
@@ -318,7 +339,7 @@ export class UniversalEditor {
   }
 
   /**
-   * 策略 3: 全局与局部穿透式 Drag & Drop 状态机仿真
+   * 策略 3: 拖拽仿真
    */
   private static tryDragAndDrop(
     activeEl: HTMLElement | null,
@@ -341,7 +362,7 @@ export class UniversalEditor {
 
     try {
       const eventInit: DragEventInit = {
-        bubbles: true,
+        bubbles: false,
         cancelable: true,
         composed: true,
         dataTransfer,
@@ -357,13 +378,13 @@ export class UniversalEditor {
         target.dispatchEvent(drop);
       }
 
-      setTimeout(() => {
+      queueMicrotask(() => {
         try {
           dataTransfer.items.clear();
         } catch {
           // 忽略
         }
-      }, 50);
+      });
 
       return true;
     } catch {
@@ -372,7 +393,7 @@ export class UniversalEditor {
   }
 
   /**
-   * 互斥式文件挂载入口：提供 1500ms 指纹时间锁与精确熔断机制
+   * 互斥式文件挂载入口
    */
   public static attachVirtualFile(
     file: File,
@@ -397,14 +418,14 @@ export class UniversalEditor {
 
     const currentHost = window.location.hostname.toLowerCase();
 
-    // 针对豆包等富文本聊天平台，优先使用精准定向且防冒泡的 Paste 策略
+    // 豆包平台优先使用带有单次互斥时钟门的 Paste 策略
     if (currentHost.includes("doubao.com")) {
       if (this.tryPasteEvent(activeEl, dataTransfer)) {
         return true;
       }
     }
 
-    // 优先策略 1: 扫描并触发 input[type="file"]（内置自动解绑与 Unmount 机制）
+    // 优先策略 1: 扫描并触发 input[type="file"]（自带 80ms 自动解绑机制）
     if (this.tryUploadViaFileInput(file, activeEl, dataTransfer)) {
       return true;
     }
