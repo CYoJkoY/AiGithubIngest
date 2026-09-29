@@ -54,6 +54,16 @@ export async function renderSitePolicy(
   });
 }
 
+function updateBadgeContent(badgeEl: HTMLElement, text: string, variantClass: string): void {
+  badgeEl.className = `badge ${variantClass}`;
+  const textEl = badgeEl.querySelector('.badge-text');
+  if (textEl) {
+    textEl.textContent = text;
+  } else {
+    badgeEl.textContent = text;
+  }
+}
+
 function showCantGetDomain(
   domainEl: HTMLElement,
   toggleBtn: HTMLButtonElement,
@@ -89,10 +99,9 @@ function applyPolicyUi(args: PolicyUiArgs): void {
   } = args;
 
   if (policy === 'DISABLED_BLACKLIST') {
-    badgeEl.textContent = t('blacklisted', currentLang);
-    badgeEl.className = 'badge badge--blacklist';
+    updateBadgeContent(badgeEl, t('blacklisted', currentLang), 'badge--blacklist');
     toggleBtn.textContent = t('removeFromBlacklistBtn', currentLang);
-    toggleBtn.className = 'btn btn-primary';
+    toggleBtn.className = 'btn btn-primary btn-action';
     toggleBtn.onclick = async () => {
       await StorageService.removeBlacklist(cleanHost);
       await onUpdate();
@@ -103,10 +112,9 @@ function applyPolicyUi(args: PolicyUiArgs): void {
   }
 
   if (policy === 'ENABLED_BUILTIN') {
-    badgeEl.textContent = t('builtin', currentLang);
-    badgeEl.className = 'badge badge--builtin';
+    updateBadgeContent(badgeEl, t('builtin', currentLang), 'badge--builtin');
     toggleBtn.textContent = t('disableBuiltinBtn', currentLang);
-    toggleBtn.className = 'btn btn-secondary';
+    toggleBtn.className = 'btn btn-secondary btn-action';
     toggleBtn.onclick = async () => {
       await StorageService.addBlacklist(cleanHost);
       await onUpdate();
@@ -117,10 +125,9 @@ function applyPolicyUi(args: PolicyUiArgs): void {
   }
 
   if (policy === 'ENABLED_WHITELIST') {
-    badgeEl.textContent = t('whitelisted', currentLang);
-    badgeEl.className = 'badge badge--whitelist';
+    updateBadgeContent(badgeEl, t('whitelisted', currentLang), 'badge--whitelist');
     toggleBtn.textContent = t('removeWhitelist', currentLang);
-    toggleBtn.className = 'btn btn-secondary';
+    toggleBtn.className = 'btn btn-secondary btn-action';
     toggleBtn.onclick = async () => {
       await StorageService.removeWhitelist(cleanHost);
       await onUpdate();
@@ -128,6 +135,7 @@ function applyPolicyUi(args: PolicyUiArgs): void {
     };
     blacklistCurrentBtn.classList.remove('hidden');
     blacklistCurrentBtn.textContent = t('addToBlacklistBtn', currentLang);
+    blacklistCurrentBtn.className = 'btn btn-danger btn-action';
     blacklistCurrentBtn.onclick = async () => {
       await StorageService.addBlacklist(cleanHost);
       await onUpdate();
@@ -136,10 +144,9 @@ function applyPolicyUi(args: PolicyUiArgs): void {
     return;
   }
 
-  badgeEl.textContent = t('disabled', currentLang);
-  badgeEl.className = 'badge badge--disabled';
+  updateBadgeContent(badgeEl, t('disabled', currentLang), 'badge--disabled');
   toggleBtn.textContent = t('addWhitelist', currentLang);
-  toggleBtn.className = 'btn btn-primary';
+  toggleBtn.className = 'btn btn-primary btn-action';
   toggleBtn.onclick = async () => {
     await StorageService.addWhitelist(cleanHost);
     await onUpdate();
@@ -147,6 +154,7 @@ function applyPolicyUi(args: PolicyUiArgs): void {
   };
   blacklistCurrentBtn.classList.remove('hidden');
   blacklistCurrentBtn.textContent = t('addToBlacklistBtn', currentLang);
+  blacklistCurrentBtn.className = 'btn btn-danger btn-action';
   blacklistCurrentBtn.onclick = async () => {
     await StorageService.addBlacklist(cleanHost);
     await onUpdate();

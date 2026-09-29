@@ -2,48 +2,56 @@ import { SupportedLang } from '../types';
 
 export const translations = {
   'zh-CN': {
-    // Popup
+    // Popup Header & General
     popupTitle: 'AI Ingest 策略管理',
     checking: '检查中...',
+    cantGetDomain: '无法获取当前站点',
+    language: '界面语言',
+    openGithubRepo: '查看 GitHub 仓库',
+
+    // Site Policy Badges
     builtin: '内置支持',
-    builtinDisabled: '已停用 (内置)',
-    blacklisted: '已加入黑名单',
-    disableBuiltinBtn: '在此内置站点停用插件',
-    enableBuiltinBtn: '恢复在此站点启用',
-    whitelisted: '已加白名单',
-    removeWhitelist: '从白名单中移除',
+    builtinDisabled: '已停用',
+    blacklisted: '已拉黑',
+    whitelisted: '已加白',
     disabled: '未启用',
-    addWhitelist: '将本站加入白名单并启用',
+
+    // Site Policy Actions (精简文案，根除折行风险)
+    disableBuiltinBtn: '停用内置支持',
+    enableBuiltinBtn: '恢复内置支持',
+    removeWhitelist: '移出白名单',
+    addWhitelist: '加入白名单',
     addToBlacklistBtn: '加入黑名单',
     removeFromBlacklistBtn: '移出黑名单',
-    cantGetDomain: '无法获取当前站点',
-    blacklistSectionTitle: '黑名单快速管理',
-    blacklistInputPlaceholder: '输入要屏蔽的域名，如 doubao.com',
+
+    // Blacklist Quick Management
+    blacklistSectionTitle: '黑名单管理',
+    blacklistInputPlaceholder: '输入待屏蔽域名，如 doubao.com',
     addBlacklistBtn: '拉黑',
     noBlacklistDomains: '暂无黑名单网站',
     invalidDomainTip: '请输入有效域名格式',
-    tokenSectionTitle: 'GitHub Token (支持私有仓库)',
-    tokenPlaceholder: 'ghp_xxxxxxxx (需勾选 repo 权限)',
+
+    // Token Section (还原 '保存' 确保单元测试断言完全吻合)
+    tokenSectionTitle: 'GitHub PAT 凭据',
+    tokenPlaceholder: 'ghp_xxxxxxxx (需 repo 权限)',
     tokenSave: '保存',
     tokenSaved: '已保存！',
     tokenClear: '清除',
     tokenCleared: '已清除',
-    tokenHint: '配置 Personal Access Token 可解析您的私有仓库并提升 API 限额至 5000次/h。',
-    language: '语言 / Language',
-    openGithubRepo: '打开 GitHub 仓库',
+    tokenHint: '配置个人令牌可解析私有仓库，并将 API 速率限额提升至 5000次/h。',
 
     // Site upload limits
-    siteFileLimitTitle: '各站点单文件上限',
-    siteFileLimitHint: '为每个 AI 站点单独配置上传文件大小上限。未配置的站点使用下方默认上限。',
-    siteFileLimitCurrentSite: '当前站点',
-    siteFileLimitConfigured: '已配置的站点',
-    siteFileLimitAddTitle: '添加自定义站点',
-    siteFileLimitEmpty: '尚未配置任何站点上限',
+    siteFileLimitTitle: '分片阈值配置 (MB)',
+    siteFileLimitHint: '设置单文件上限。超出大小时，代码摘要将自动分割为多份 Markdown 文件挂载。',
+    siteFileLimitCurrentSite: '当前站点上限',
+    siteFileLimitConfigured: '已配置的自定义站点',
+    siteFileLimitAddTitle: '添加站点规则',
+    siteFileLimitEmpty: '暂无自定义规则',
     siteFileLimitDomainPlaceholder: '域名，如 example.com',
-    siteFileLimitAddBtn: '添加',
+    siteFileLimitAddBtn: '添加规则',
     siteFileLimitSaveBtn: '保存',
     siteFileLimitRemoveBtn: '移除',
-    siteFileLimitFallback: '未列出站点的默认上限',
+    siteFileLimitFallback: '全局默认分片上限',
     siteFileLimitInvalidValue: '请输入有效数值',
     siteFileLimitInvalidDomain: '请输入有效域名',
 
@@ -54,7 +62,7 @@ export const translations = {
     attachedSuccess: '已成功作为文件附件挂载 {file} ({count} 个文件)',
     fallbackMounted: '已挂载结构概览至输入框，已启用防卡死保护',
     networkError: '通信异常，已恢复原链接',
-    privateRepoNotice: '目标仓库不存在或为私有仓库（需在扩展图标中配置具备 repo 权限的 PAT）',
+    privateRepoNotice: '目标仓库不存在或为私有仓库（需在扩展图标中配置具备 repo权限的 PAT）',
     fallbackDigestHeader: '[已解析 GitHub 仓库: {repo}]',
     fallbackFileCount: '包含文件数: {count} | 预估 Token: {tokens}',
     fallbackHint: '提示: 建议在输入框附带具体需求分析。',
@@ -74,50 +82,58 @@ export const translations = {
     authFailedWithStatus: 'GitHub API 鉴权失败 (HTTP {status})，请检查 Token 有效性及 repo 权限。',
   },
   en: {
-    // Popup
-    popupTitle: 'AI Ingest Policy & Settings',
+    // Popup Header & General
+    popupTitle: 'AI Ingest Policy',
     checking: 'Checking...',
+    cantGetDomain: 'Cannot resolve site',
+    language: 'Language',
+    openGithubRepo: 'Open GitHub Repo',
+
+    // Site Policy Badges
     builtin: 'Built-in',
-    builtinDisabled: 'Disabled (Built-in)',
-    blacklisted: 'Blacklisted',
-    disableBuiltinBtn: 'Disable on this built-in site',
-    enableBuiltinBtn: 'Re-enable on this site',
+    builtinDisabled: 'Disabled',
+    blacklisted: 'Blocked',
     whitelisted: 'Whitelisted',
-    removeWhitelist: 'Remove from whitelist',
-    disabled: 'Disabled',
-    addWhitelist: 'Enable & add to whitelist',
-    addToBlacklistBtn: 'Add to Blacklist',
-    removeFromBlacklistBtn: 'Remove from Blacklist',
-    cantGetDomain: 'Cannot resolve current site',
+    disabled: 'Inactive',
+
+    // Site Policy Actions
+    disableBuiltinBtn: 'Disable Built-in',
+    enableBuiltinBtn: 'Enable Built-in',
+    removeWhitelist: 'Remove Whitelist',
+    addWhitelist: 'Add to Whitelist',
+    addToBlacklistBtn: 'Blacklist',
+    removeFromBlacklistBtn: 'Unblacklist',
+
+    // Blacklist Quick Management
     blacklistSectionTitle: 'Blacklist Management',
     blacklistInputPlaceholder: 'Domain to block, e.g. doubao.com',
     addBlacklistBtn: 'Block',
     noBlacklistDomains: 'No blacklisted domains',
     invalidDomainTip: 'Please enter a valid domain',
-    tokenSectionTitle: 'GitHub Token (For Private Repos)',
-    tokenPlaceholder: "ghp_xxxxxxxx (Requires 'repo' scope)",
+
+    // Token Section
+    tokenSectionTitle: 'GitHub PAT Auth',
+    tokenPlaceholder: "ghp_xxxxxxxx ('repo' scope)",
     tokenSave: 'Save',
     tokenSaved: 'Saved!',
     tokenClear: 'Clear',
     tokenCleared: 'Cleared',
     tokenHint:
-      'Personal Access Token allows accessing your private repositories and raises rate limits to 5,000 req/h.',
-    language: 'Language',
-    openGithubRepo: 'Open GitHub Repository',
+      'Personal Access Token allows accessing private repos and raises rate limits to 5,000 req/h.',
 
     // Site upload limits
-    siteFileLimitTitle: 'Site Upload Limits',
+    siteFileLimitTitle: 'File Size Thresholds (MB)',
     siteFileLimitHint:
-      'Configure per-site upload size limits. Unlisted sites use the default limit below.',
-    siteFileLimitCurrentSite: 'Current site',
-    siteFileLimitConfigured: 'Configured sites',
-    siteFileLimitAddTitle: 'Add custom site',
-    siteFileLimitEmpty: 'No site limits configured yet',
+      'Set per-site file size limits. Oversized digests are split into multi-part files.',
+    siteFileLimitCurrentSite: 'Current Site Threshold',
+    siteFileLimitConfigured: 'Configured Rules',
+    siteFileLimitAddTitle: 'Add Site Rule',
+    siteFileLimitEmpty: 'No custom rules yet',
     siteFileLimitDomainPlaceholder: 'Domain, e.g. example.com',
-    siteFileLimitAddBtn: 'Add',
+    siteFileLimitAddBtn: 'Add Rule',
     siteFileLimitSaveBtn: 'Save',
     siteFileLimitRemoveBtn: 'Remove',
-    siteFileLimitFallback: 'Default limit for unlisted sites',
+    siteFileLimitFallback: 'Global Default Limit',
     siteFileLimitInvalidValue: 'Please enter a valid value',
     siteFileLimitInvalidDomain: 'Please enter a valid domain',
 

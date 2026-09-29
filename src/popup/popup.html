@@ -1,105 +1,119 @@
 <!doctype html>
-<html>
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
     <div class="container">
-      <!-- Language + GitHub link -->
-      <div class="lang-row">
-        <label for="lang-select" id="lbl-language" class="setting-label">Language</label>
-        <div class="lang-actions">
-          <select id="lang-select" class="select-box">
-            <option value="zh-CN">简体中文</option>
-            <option value="en">English</option>
+      <!-- 顶栏：品牌标识与控制区域 -->
+      <header class="app-topbar">
+        <div class="brand-group">
+          <img src="assets/icon.svg" class="app-logo" alt="Logo" width="22" height="22" />
+          <span class="app-name">AiGithubIngest</span>
+        </div>
+        <div class="topbar-actions">
+          <select id="lang-select" class="select-box select-lang" aria-label="Language">
+            <option value="zh-CN">中</option>
+            <option value="en">EN</option>
           </select>
           <a
             id="github-link"
-            class="github-link"
+            class="topbar-icon-link"
             href="https://github.com/CYoJkoY/AiGithubIngest"
             target="_blank"
             rel="noopener noreferrer"
-            aria-label="Open GitHub Repository"
-            title="Open GitHub Repository"
+            aria-label="GitHub Repository"
           >
-            <img src="assets/icon-github.svg" alt="" width="16" height="16" />
+            <img src="assets/icon-github.svg" alt="" width="15" height="15" />
           </a>
         </div>
-      </div>
+      </header>
 
-      <!-- Site policy -->
-      <div class="card">
-        <div class="header">
-          <div class="brand-row">
-            <img src="assets/icon-32.png" class="brand-icon" alt="icon" />
-            <span class="title" id="lbl-title">AI Ingest 策略管理</span>
-          </div>
-          <span id="site-badge" class="badge">Checking...</span>
+      <!-- 核心站点状态与策略卡片 -->
+      <section class="card card-policy">
+        <div class="card-header">
+          <span class="section-title" id="lbl-title">当前站点策略</span>
+          <span id="site-badge" class="badge badge--neutral">
+            <span class="badge-dot"></span>
+            <span class="badge-text">Checking...</span>
+          </span>
         </div>
-        <div class="current-site" id="current-domain">--</div>
+        <div class="site-display-box">
+          <span class="site-icon">🌐</span>
+          <span class="current-site-domain" id="current-domain">--</span>
+        </div>
         <div class="action-btn-group">
-          <button id="toggle-btn" class="btn" disabled>...</button>
-          <button id="blacklist-current-btn" class="btn btn-danger hidden">加入黑名单</button>
+          <button id="toggle-btn" class="btn btn-primary btn-action" disabled>...</button>
+          <button id="blacklist-current-btn" class="btn btn-danger btn-action hidden">
+            加入黑名单
+          </button>
         </div>
-      </div>
+      </section>
 
-      <!-- Blacklist -->
-      <div class="card">
-        <div class="header">
-          <span class="title" id="lbl-blacklist-title">黑名单快速管理</span>
+      <!-- 黑名单快捷控制卡片 -->
+      <section class="card">
+        <div class="card-header">
+          <span class="section-title" id="lbl-blacklist-title">黑名单管理</span>
         </div>
-        <div class="blacklist-input-row">
+        <div class="input-action-row">
           <input
             id="blacklist-input"
             type="text"
             class="input-text"
-            placeholder="输入要屏蔽的域名，如 doubao.com"
+            placeholder="输入域名，如 doubao.com"
             autocomplete="off"
             spellcheck="false"
           />
-          <button id="add-blacklist-btn" class="btn btn-secondary btn-inline">拉黑</button>
+          <button id="add-blacklist-btn" class="btn btn-secondary btn-compact">拉黑</button>
         </div>
         <div id="blacklist-tags" class="blacklist-tags"></div>
-      </div>
+      </section>
 
-      <!-- GitHub Token -->
-      <div class="card">
-        <div class="header">
-          <span class="title" id="lbl-token-title">GitHub Token (私有仓库)</span>
+      <!-- GitHub 凭据配置卡片 -->
+      <section class="card">
+        <div class="card-header">
+          <span class="section-title" id="lbl-token-title">GitHub PAT 凭据</span>
         </div>
-        <div class="token-input-wrapper">
+        <div class="input-action-row token-row">
           <input
             id="token-input"
             type="password"
-            class="input-text"
+            class="input-text token-input"
             placeholder="ghp_xxx (repo scope)"
             autocomplete="off"
             spellcheck="false"
           />
-          <button id="toggle-token-visibility" class="btn-icon" title="Toggle Visibility">👁</button>
+          <button
+            id="toggle-token-visibility"
+            class="btn-icon"
+            title="Toggle Visibility"
+            aria-label="Toggle Visibility"
+          >
+            👁
+          </button>
         </div>
         <p class="hint-text" id="lbl-token-hint">
-          配置 Personal Access Token 可解析您的私有仓库并提升 API 限额至 5000次/h。
+          配置 Personal Access Token 可解析私有仓库并提升 API 速率至 5,000次/h。
         </p>
-        <div class="token-actions">
+        <div class="btn-grid-dual">
           <button id="save-token-btn" class="btn btn-primary">保存</button>
           <button id="clear-token-btn" class="btn btn-secondary">清除</button>
         </div>
-        <div id="token-status" class="token-status"></div>
-      </div>
+        <div id="token-status" class="token-status" aria-live="polite"></div>
+      </section>
 
-      <!-- Site Upload Limits -->
-      <div class="card">
-        <div class="header">
-          <span class="title" id="lbl-site-limits-title">Site Upload Limits (MB)</span>
+      <!-- 站点文件大小阈值设置 -->
+      <section class="card">
+        <div class="card-header">
+          <span class="section-title" id="lbl-site-limits-title">分片阈值配置 (MB)</span>
         </div>
         <p class="hint-text" id="lbl-site-limits-hint">
-          Configure per-platform single-file size limits. When exceeded, the digest is split into
-          multiple smaller files.
+          为 AI 站点单独配置上限，超限时将拆分为多份附件文件并自动顺序挂载。
         </p>
         <div id="site-limits-list" class="site-limits-list"></div>
-      </div>
+      </section>
     </div>
     <script type="module" src="popup.js"></script>
   </body>
