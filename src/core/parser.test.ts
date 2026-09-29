@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { extractGitHubRepo } from './parser';
 
-describe('extractGitHubRepo', () => {
+describe('extractGitHubRepo — URL parsing', () => {
   it('rejects empty, null, or whitespace input', () => {
     expect(extractGitHubRepo('').ok).toBe(false);
     expect(extractGitHubRepo(null).ok).toBe(false);
@@ -19,7 +19,9 @@ describe('extractGitHubRepo', () => {
   });
 
   it('strips enclosing markdown symbols', () => {
-    const r = extractGitHubRepo('<https://github.com/facebook/react>');
+    const r = extractGitHubRepo(
+      '[https://github.com/facebook/react](https://github.com/facebook/react)',
+    );
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.value.canonicalUrl).toBe('https://github.com/facebook/react');
   });
@@ -59,6 +61,14 @@ describe('extractGitHubRepo', () => {
     }
   });
 
+  it('strips .git suffix', () => {
+    const r = extractGitHubRepo('https://github.com/facebook/react.git');
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value.repo).toBe('react');
+  });
+});
+
+describe('extractGitHubRepo — rejection rules', () => {
   it('rejects issues or non-code URLs', () => {
     expect(extractGitHubRepo('https://github.com/facebook/react/issues/1').ok).toBe(false);
     expect(extractGitHubRepo('https://github.com/facebook/react/pulls').ok).toBe(false);
@@ -86,16 +96,27 @@ describe('extractGitHubRepo', () => {
   it('rejects non-github host', () => {
     expect(extractGitHubRepo('https://gitlab.com/foo/bar').ok).toBe(false);
   });
+});
 
-  it('strips .git suffix', () => {
-    const r = extractGitHubRepo('https://github.com/facebook/react.git');
-    expect(r.ok).toBe(true);
-    if (r.ok) expect(r.value.repo).toBe('react');
+describe('extractGitHubRepo — i18n error messages', () => {
+  it('returns Chinese error by default (zh-CN)', () => {
+    const r = extractGitHubRepo('');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error.message).toBe('输入内容为空');
   });
 
   it('returns English error when lang=en', () => {
     const r = extractGitHubRepo('', 'en');
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error.message).toBe('Input is empty');
+  });
+
+  it('returns localized non-github-host message', () => {
+    const zh = extractGitHubRepo('https://gitlab.com/a/b', 'zh-CN');
+    const en = extractGitHubRepo('https://gitlab.com/a/b', 'en');
+    expect(zh.ok).toBe(false);
+    expect(en.ok).toBe(false);
+    if (!zh.ok) expect(zh.error.message).toBe('非 GitHub 域名链接');
+    if (!en.ok) expect(en.error.message).toBe('Link is not from a GitHub domain');
   });
 });

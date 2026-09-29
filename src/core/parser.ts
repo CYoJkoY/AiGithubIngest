@@ -1,6 +1,6 @@
 import { RepoTarget, ParseError, SupportedLang } from '../types';
 import { Result, ok, err } from './result';
-import { t, I18nKey } from './i18n';
+import { t } from './i18n';
 
 /**
  * GitHub 顶层全局保留路由（非具体用户/组织名）
@@ -90,12 +90,26 @@ function safeDecodeUriComponent(val: string): string {
 }
 
 /**
- * 剥离用户粘贴时可能携带的 Markdown 包裹字符（如 `<>`、`()`、`[]`、引号等）。
- * 若剥离后为空，则回退到原始 trim 结果。
- */
+剥离用户粘贴时可能携带的 Markdown 包裹字符（如 `[text](url)`、`<url>`、引号等）。
+若剥离后为空，则回退到原始 trim 结果。
+*/
 function stripWrappingChars(raw: string): string {
   const trimmed = raw.trim();
-  const stripped = trimmed.replace(/^[<([{"'|]+/, '').replace(/[>)\]}"'|]+$/, '');
+
+  // 1. 提取 Markdown 链接: [text](url) 或 ![alt](url)
+  const mdLinkMatch = trimmed.match(/!?\[[^\]]*\]\(([^)]+)\)/);
+  if (mdLinkMatch) {
+    return mdLinkMatch[1].trim();
+  }
+
+  // 2. 提取尖括号自动链接: <url>
+  const autolinkMatch = trimmed.match(/^<([^>]+)>$/);
+  if (autolinkMatch) {
+    return autolinkMatch[1].trim();
+  }
+
+  // 3. 剥离常规包裹符号（引号、括号等）
+  const stripped = trimmed.replace(/^[<([{"'|]+/, '').replace(/[>)]}"'|]+$/, '');
   return stripped || trimmed;
 }
 
