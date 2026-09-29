@@ -1,10 +1,10 @@
 /* ====================================================================
    AiGithubIngest — Extension Popup System
-   Google Material Design 3 (M3) Architecture
+   Google Material Design 3 (M3) Architecture (Light & Dark Adaptive)
    ==================================================================== */
 
 :root {
-  /* Google M3 Baseline Palette */
+  /* Google M3 Baseline Light Palette */
   --md-sys-color-primary: #1a73e8;
   --md-sys-color-primary-hover: #1557d0;
   --md-sys-color-primary-active: #174ea6;
@@ -20,6 +20,11 @@
   --md-sys-color-on-surface-variant: #5f6368;
   --md-sys-color-outline: #dadce0;
   --md-sys-color-outline-variant: #e8eaed;
+
+  /* Switch Tokens */
+  --md-sys-color-switch-track: #e8eaed;
+  --md-sys-color-switch-thumb: #ffffff;
+  --md-sys-color-switch-thumb-shadow: 0 1px 3px rgba(60, 64, 67, 0.3);
 
   /* Google M3 Semantic Feedback Colors */
   --md-sys-color-success: #1e8e3e;
@@ -40,7 +45,7 @@
   --md-sys-color-neutral-bg: #f1f3f4;
   --md-sys-color-neutral-border: #dadce0;
 
-  /* Google Typography & Shape Tokens */
+  /* Typography & Shape Tokens */
   --font-family-google:
     'Google Sans', 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
     sans-serif;
@@ -52,11 +57,95 @@
   --radius-lg: 16px;
   --radius-pill: 9999px;
 
-  /* Google Elevation & Motion Tokens */
+  /* Elevation & Motion Tokens */
   --shadow-elevation-1: 0 1px 2px 0 rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
   --shadow-elevation-2: 0 1px 2px 0 rgba(60, 64, 67, 0.3), 0 2px 6px 2px rgba(60, 64, 67, 0.15);
   --motion-easing-standard: cubic-bezier(0.2, 0, 0, 1);
-  --motion-duration-short: 150ms;
+  --motion-duration-short: 180ms;
+}
+
+/* System Dark Mode Detection (Fallback) */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --md-sys-color-primary: #8ab4f8;
+    --md-sys-color-primary-hover: #aecbfa;
+    --md-sys-color-primary-active: #d2e3fc;
+    --md-sys-color-on-primary: #202124;
+    --md-sys-color-primary-container: #174ea6;
+    --md-sys-color-on-primary-container: #d2e3fc;
+
+    --md-sys-color-surface: #202124;
+    --md-sys-color-surface-container: #292a2d;
+    --md-sys-color-surface-container-high: #35363a;
+    --md-sys-color-surface-container-highest: #3c4043;
+    --md-sys-color-on-surface: #e8eaed;
+    --md-sys-color-on-surface-variant: #9aa0a6;
+    --md-sys-color-outline: #5f6368;
+    --md-sys-color-outline-variant: #3c4043;
+
+    --md-sys-color-switch-track: #3c4043;
+    --md-sys-color-switch-thumb: #e8eaed;
+    --md-sys-color-switch-thumb-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+
+    --md-sys-color-success: #81c995;
+    --md-sys-color-success-bg: rgba(129, 201, 149, 0.16);
+    --md-sys-color-success-border: rgba(129, 201, 149, 0.3);
+
+    --md-sys-color-info: #8ab4f8;
+    --md-sys-color-info-bg: rgba(138, 180, 248, 0.16);
+    --md-sys-color-info-border: rgba(138, 180, 248, 0.3);
+
+    --md-sys-color-error: #f28b82;
+    --md-sys-color-error-hover: #f6aea9;
+    --md-sys-color-error-bg: rgba(242, 139, 130, 0.16);
+    --md-sys-color-error-border: rgba(242, 139, 130, 0.3);
+    --md-sys-color-on-error: #202124;
+
+    --md-sys-color-neutral: #9aa0a6;
+    --md-sys-color-neutral-bg: rgba(154, 160, 166, 0.16);
+    --md-sys-color-neutral-border: rgba(154, 160, 166, 0.3);
+  }
+}
+
+/* Explicit Dark Mode Overrides */
+:root[data-theme='dark'] {
+  --md-sys-color-primary: #8ab4f8;
+  --md-sys-color-primary-hover: #aecbfa;
+  --md-sys-color-primary-active: #d2e3fc;
+  --md-sys-color-on-primary: #202124;
+  --md-sys-color-primary-container: #174ea6;
+  --md-sys-color-on-primary-container: #d2e3fc;
+
+  --md-sys-color-surface: #202124;
+  --md-sys-color-surface-container: #292a2d;
+  --md-sys-color-surface-container-high: #35363a;
+  --md-sys-color-surface-container-highest: #3c4043;
+  --md-sys-color-on-surface: #e8eaed;
+  --md-sys-color-on-surface-variant: #9aa0a6;
+  --md-sys-color-outline: #5f6368;
+  --md-sys-color-outline-variant: #3c4043;
+
+  --md-sys-color-switch-track: #3c4043;
+  --md-sys-color-switch-thumb: #e8eaed;
+  --md-sys-color-switch-thumb-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+
+  --md-sys-color-success: #81c995;
+  --md-sys-color-success-bg: rgba(129, 201, 149, 0.16);
+  --md-sys-color-success-border: rgba(129, 201, 149, 0.3);
+
+  --md-sys-color-info: #8ab4f8;
+  --md-sys-color-info-bg: rgba(138, 180, 248, 0.16);
+  --md-sys-color-info-border: rgba(138, 180, 248, 0.3);
+
+  --md-sys-color-error: #f28b82;
+  --md-sys-color-error-hover: #f6aea9;
+  --md-sys-color-error-bg: rgba(242, 139, 130, 0.16);
+  --md-sys-color-error-border: rgba(242, 139, 130, 0.3);
+  --md-sys-color-on-error: #202124;
+
+  --md-sys-color-neutral: #9aa0a6;
+  --md-sys-color-neutral-bg: rgba(154, 160, 166, 0.16);
+  --md-sys-color-neutral-border: rgba(154, 160, 166, 0.3);
 }
 
 *,
@@ -67,17 +156,39 @@
   padding: 0;
 }
 
+/* 核心布局：仅外围滚动，杜绝内部滚动条 */
+html {
+  box-sizing: border-box;
+}
+
 body {
   width: 360px;
-  min-height: 480px;
+  max-height: 580px;
   margin: 0;
   padding: 14px 16px 18px;
+  overflow-x: hidden;
+  overflow-y: auto;
   background-color: var(--md-sys-color-surface-container);
   color: var(--md-sys-color-on-surface);
   font-family: var(--font-family-google);
   font-size: 12px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+}
+
+/* 优雅的 Google Chrome 细外层滚动条 */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: var(--md-sys-color-outline-variant);
+  border-radius: var(--radius-pill);
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--md-sys-color-outline);
 }
 
 .container {
@@ -119,31 +230,87 @@ body {
   gap: 8px;
 }
 
-.select-box {
-  background: var(--md-sys-color-surface);
-  border: 1px solid var(--md-sys-color-outline);
-  color: var(--md-sys-color-on-surface-variant);
-  border-radius: var(--radius-sm);
-  font-size: 11px;
-  font-weight: 500;
-  padding: 4px 8px;
-  cursor: pointer;
-  outline: none;
-  transition: all var(--motion-duration-short) var(--motion-easing-standard);
+/* ---------- 左右滑块开关组件 (Google M3 Segmented Switch) ------------ */
+
+.switch-control {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  user-select: none;
 }
 
-.select-box:hover,
-.select-box:focus-visible {
-  border-color: var(--md-sys-color-primary);
+.switch-checkbox {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.switch-slider {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 52px;
+  height: 24px;
+  background-color: var(--md-sys-color-switch-track);
+  border-radius: var(--radius-pill);
+  padding: 2px;
+  cursor: pointer;
+  box-sizing: border-box;
+  transition: background-color var(--motion-duration-short) var(--motion-easing-standard);
+}
+
+.switch-label,
+.switch-icon {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface-variant);
+  transition: color var(--motion-duration-short) var(--motion-easing-standard);
+}
+
+.switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 24px;
+  height: 20px;
+  background-color: var(--md-sys-color-switch-thumb);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--md-sys-color-switch-thumb-shadow);
+  transition: transform var(--motion-duration-short) var(--motion-easing-standard);
+  z-index: 1;
+}
+
+.switch-checkbox:checked + .switch-slider .switch-thumb {
+  transform: translateX(24px);
+}
+
+.switch-checkbox:not(:checked) + .switch-slider .left {
   color: var(--md-sys-color-primary);
+}
+
+.switch-checkbox:checked + .switch-slider .right {
+  color: var(--md-sys-color-primary);
+}
+
+.switch-checkbox:focus-visible + .switch-slider {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
 }
 
 .topbar-icon-link {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   border-radius: var(--radius-pill);
   background: transparent;
   border: 1px solid transparent;
@@ -164,7 +331,7 @@ body {
   opacity: 1;
 }
 
-/* ---------- Cards (M3 Surface Container Low) ----------------------- */
+/* ---------- Cards (M3 Surface Container) --------------------------- */
 
 .card {
   background: var(--md-sys-color-surface);
@@ -313,7 +480,6 @@ body {
   pointer-events: none;
 }
 
-/* Material Filled Button */
 .btn-primary {
   background: var(--md-sys-color-primary);
   color: var(--md-sys-color-on-primary);
@@ -329,7 +495,6 @@ body {
   background: var(--md-sys-color-primary-active);
 }
 
-/* Material Tonal / Outlined Button */
 .btn-secondary {
   background: var(--md-sys-color-surface);
   border: 1px solid var(--md-sys-color-outline);
@@ -342,7 +507,6 @@ body {
   color: var(--md-sys-color-on-primary-container);
 }
 
-/* Material Danger Button */
 .btn-danger {
   background: var(--md-sys-color-error-bg);
   border: 1px solid var(--md-sys-color-error-border);
@@ -438,15 +602,13 @@ body {
   margin-top: 6px;
 }
 
-/* ---------- Blacklist Tags (M3 Input Chips) ------------------------- */
+/* ---------- Blacklist Tags (无内部滑块，完全自适应平铺) ---------- */
 
 .blacklist-tags {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 8px;
-  max-height: 80px;
-  overflow-y: auto;
 }
 
 .blacklist-tag {
@@ -482,15 +644,13 @@ body {
   padding: 2px 0;
 }
 
-/* ---------- Site Upload Limits (M3 List & Inputs) ------------------- */
+/* ---------- Site Upload Limits (无内部滑块，完全自适应平铺) ------- */
 
 .site-limits-list {
   display: flex;
   flex-direction: column;
   gap: 6px;
   margin-top: 6px;
-  max-height: 240px;
-  overflow-y: auto;
 }
 
 .site-limit-section {
@@ -561,6 +721,12 @@ body {
   flex: 0 0 auto;
   padding: 3px 4px;
   font-size: 10.5px;
+  background: var(--md-sys-color-surface);
+  border: 1px solid var(--md-sys-color-outline);
+  color: var(--md-sys-color-on-surface-variant);
+  border-radius: var(--radius-xs);
+  outline: none;
+  cursor: pointer;
 }
 
 .site-limit-domain {

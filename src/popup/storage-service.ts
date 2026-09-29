@@ -1,4 +1,4 @@
-import { StorageSchema, SupportedLang } from '../types';
+import { StorageSchema, SupportedLang, ThemeMode } from '../types';
 import { normalizeHostname } from '../core/policy';
 
 export class StorageService {
@@ -10,6 +10,7 @@ export class StorageService {
           'userBlacklist',
           'githubToken',
           'lang',
+          'theme',
           'siteFileSizeLimits',
           'defaultFileSizeLimit',
         ],
@@ -20,6 +21,10 @@ export class StorageService {
 
   public static async setLanguage(lang: SupportedLang): Promise<void> {
     await chrome.storage.sync.set({ lang });
+  }
+
+  public static async setTheme(theme: ThemeMode): Promise<void> {
+    await chrome.storage.sync.set({ theme });
   }
 
   public static async saveGitHubToken(githubToken: string): Promise<void> {

@@ -1,5 +1,5 @@
 import { t, I18nKey } from '../core/i18n';
-import { StorageSchema, SupportedLang } from '../types';
+import { StorageSchema, SupportedLang, ThemeMode } from '../types';
 import { renderBlacklistTags } from './blacklist-view';
 import { renderSitePolicy } from './site-policy-view';
 import { renderSiteLimits } from './site-limits-view';
@@ -35,12 +35,24 @@ function updateStaticTexts(lang: SupportedLang): void {
   }
 }
 
-function updateTopBar(lang: SupportedLang): void {
-  const langSelect = document.getElementById('lang-select') as HTMLSelectElement | null;
-  if (langSelect) {
-    langSelect.value = lang;
+function updateTopBar(storage: StorageSchema, lang: SupportedLang): void {
+  // 1. 同步语言滑块
+  const langToggle = document.getElementById('lang-toggle') as HTMLInputElement | null;
+  if (langToggle) {
+    langToggle.checked = lang === 'en';
   }
 
+  // 2. 同步日间/夜间模式滑块
+  const themeToggle = document.getElementById('theme-toggle') as HTMLInputElement | null;
+  const isSystemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const resolvedTheme: ThemeMode = storage.theme ?? (isSystemDark ? 'dark' : 'light');
+
+  document.documentElement.dataset.theme = resolvedTheme;
+  if (themeToggle) {
+    themeToggle.checked = resolvedTheme === 'dark';
+  }
+
+  // 3. 同步 GitHub 链接
   const githubLink = document.getElementById('github-link') as HTMLAnchorElement | null;
   if (githubLink) {
     const label = t('openGithubRepo', lang);
@@ -72,7 +84,7 @@ export async function render(): Promise<void> {
   const currentLang: SupportedLang = storage.lang || 'zh-CN';
   const blacklist = storage.userBlacklist ?? [];
 
-  updateTopBar(currentLang);
+  updateTopBar(storage, currentLang);
   updateStaticTexts(currentLang);
   updateInputs(storage, currentLang);
 

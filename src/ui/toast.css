@@ -1,11 +1,12 @@
 /* ====================================================================
    AiGithubIngest — Toast System
-   Google Material Snackbar Architecture
+   Google Material Design 3 Snackbar (Top Center Dropdown)
    ==================================================================== */
 
 .ai-github-ingest-toast-container {
   position: fixed;
-  bottom: 24px;
+  top: 24px;
+  bottom: auto;
   left: 50%;
   transform: translateX(-50%);
   z-index: 2147483647;
@@ -23,8 +24,8 @@
   padding: 12px 18px;
   border-radius: 8px;
   font-family:
-    'Roboto',
     'Google Sans',
+    'Roboto',
     -apple-system,
     BlinkMacSystemFont,
     'Segoe UI',
@@ -33,16 +34,15 @@
   font-weight: 400;
   line-height: 1.4;
   color: #ffffff;
-  background-color: #323232;
+  background-color: #202124;
   box-shadow:
-    0 3px 5px -1px rgba(0, 0, 0, 0.2),
-    0 6px 10px 0 rgba(0, 0, 0, 0.14),
-    0 1px 18px 0 rgba(0, 0, 0, 0.12);
+    0 1px 3px 0 rgba(60, 64, 67, 0.3),
+    0 4px 8px 3px rgba(60, 64, 67, 0.15);
   transition:
-    opacity 0.2s cubic-bezier(0, 0, 0.2, 1),
-    transform 0.2s cubic-bezier(0, 0, 0.2, 1);
+    opacity 0.25s cubic-bezier(0, 0, 0.2, 1),
+    transform 0.25s cubic-bezier(0, 0, 0.2, 1);
   opacity: 0;
-  transform: translateY(12px) scale(0.96);
+  transform: translateY(-24px) scale(0.96);
 }
 
 .ai-github-ingest-toast.show {
@@ -52,7 +52,7 @@
 
 /* Material Snackbar Types */
 .ai-github-ingest-toast.info {
-  background-color: #323232;
+  background-color: #202124;
   border-left: 4px solid #1a73e8;
 }
 

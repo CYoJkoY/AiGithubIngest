@@ -76,12 +76,14 @@ export type ExtensionResponse =
     };
 
 export type SupportedLang = 'zh-CN' | 'en';
+export type ThemeMode = 'light' | 'dark';
 
 export interface StorageSchema {
   readonly userWhitelist?: readonly string[];
   readonly userBlacklist?: readonly string[];
   readonly githubToken?: string;
   readonly lang?: SupportedLang;
+  readonly theme?: ThemeMode;
   /** Per-hostname single-file limit (bytes). Keys are lowercase hostnames. */
   readonly siteFileSizeLimits?: Readonly<Record<string, number>>;
   /** Fallback single-file limit (bytes) for hostnames not present in {@link siteFileSizeLimits}. */
