@@ -1,5 +1,6 @@
-import { RepoTarget, ParseError } from '../types';
+import { RepoTarget, ParseError, SupportedLang } from '../types';
 import { Result, ok, err } from './result';
+import { t, I18nKey } from './i18n';
 
 /**
  * GitHub 顶层全局保留路由（非具体用户/组织名）
@@ -121,24 +122,16 @@ function extractSegments(pathname: string): string[] {
 function validateOwnerAndRepo(
   rawOwner: string,
   rawRepo: string,
+  lang: SupportedLang,
 ): Result<{ owner: string; repo: string }, ParseError> {
   const owner = safeDecodeUriComponent(rawOwner);
   const repo = safeDecodeUriComponent(rawRepo).replace(/\.git$/, '');
-
   if (GITHUB_RESERVED_ROOTS.has(owner.toLowerCase()) || !OWNER_OR_REPO_PATTERN.test(owner)) {
-    return err({
-      code: 'NOT_GITHUB_URL',
-      message: '非合法的 GitHub 仓库所属组织或用户',
-    });
+    return err({ code: 'NOT_GITHUB_URL', message: t('parseInvalidOwner', lang) });
   }
-
   if (!repo || !OWNER_OR_REPO_PATTERN.test(repo)) {
-    return err({
-      code: 'NOT_GITHUB_URL',
-      message: '非合法的 GitHub 仓库名称',
-    });
+    return err({ code: 'NOT_GITHUB_URL', message: t('parseInvalidRepo', lang) });
   }
-
   return ok({ owner, repo });
 }
 
@@ -193,38 +186,33 @@ function buildCanonicalUrl(
  */
 export const extractGitHubRepo = (
   rawText: string | null | undefined,
+  lang: SupportedLang = 'zh-CN',
 ): Result<RepoTarget, ParseError> => {
   if (!rawText || typeof rawText !== 'string' || rawText.trim() === '') {
-    return err({ code: 'EMPTY_INPUT', message: '输入内容为空' });
+    return err({ code: 'EMPTY_INPUT', message: t('parseEmptyInput', lang) });
   }
-
   const candidate = normalizeCandidate(rawText);
-
   let parsedUrl: URL;
   try {
     parsedUrl = new URL(candidate);
   } catch {
-    return err({ code: 'NOT_GITHUB_URL', message: '未匹配到有效的 GitHub 链接格式' });
+    return err({ code: 'NOT_GITHUB_URL', message: t('parseNotGithubUrl', lang) });
   }
-
   const hostname = parsedUrl.hostname.toLowerCase().replace(/^www\./, '');
   if (hostname !== 'github.com') {
-    return err({ code: 'NOT_GITHUB_URL', message: '非 GitHub 域名链接' });
+    return err({ code: 'NOT_GITHUB_URL', message: t('parseNonGithubHost', lang) });
   }
-
   const segments = extractSegments(parsedUrl.pathname);
   if (segments.length < 2) {
     return err({
       code: 'NOT_GITHUB_URL',
-      message: '缺少有效的 GitHub 仓库路径 (格式应为 owner/repo)',
+      message: t('parseMissingRepoPath', lang),
     });
   }
-
-  const validated = validateOwnerAndRepo(segments[0], segments[1]);
+  const validated = validateOwnerAndRepo(segments[0], segments[1], lang);
   if (!validated.ok) return err(validated.error);
   const { owner, repo } = validated.value;
 
-  // 仓库根目录：https://github.com/owner/repo
   if (segments.length === 2) {
     return ok({
       owner,
@@ -235,27 +223,23 @@ export const extractGitHubRepo = (
       canonicalUrl: `https://github.com/${owner}/${repo}`,
     });
   }
-
   const action = segments[2].toLowerCase();
-
   if (NON_CODE_ACTIONS.has(action)) {
     return err({
       code: 'NOT_GITHUB_URL',
-      message: `已忽略非代码树链接 (/${action})`,
+      message: t('parseIgnoredAction', lang, { action }),
     });
   }
-
   if (action !== 'tree' && action !== 'blob') {
     return err({
       code: 'NOT_GITHUB_URL',
-      message: '未匹配到受支持的 GitHub 代码目录 (tree) 或文件 (blob) 路径',
+      message: t('parseUnsupportedAction', lang),
     });
   }
-
   if (segments.length === 3) {
     return err({
       code: 'NOT_GITHUB_URL',
-      message: '缺少具体的分支或代码引用路径',
+      message: t('parseMissingRef', lang),
     });
   }
 

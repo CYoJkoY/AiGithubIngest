@@ -127,7 +127,7 @@ export async function ingestRepository(
 ): Promise<IngestSummary> {
   const lang: SupportedLang = options.lang ?? 'zh-CN';
 
-  const parseResult = extractGitHubRepo(rawUrl);
+  const parseResult = extractGitHubRepo(rawUrl, lang);
   if (!parseResult.ok) {
     throw new DomainError('NOT_GITHUB_URL', parseResult.error.message);
   }

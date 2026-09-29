@@ -1,0 +1,10 @@
+{
+  "extName": {
+    "message": "AI GitHub Ingest Engine",
+    "description": "Extension name"
+  },
+  "extDescription": {
+    "message": "Paste a GitHub link on any AI site to locally parse and inject structured code context — no third-party servers required.",
+    "description": "Extension description"
+  }
+}

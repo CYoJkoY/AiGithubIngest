@@ -92,4 +92,10 @@ describe('extractGitHubRepo', () => {
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.value.repo).toBe('react');
   });
+
+  it('returns English error when lang=en', () => {
+    const r = extractGitHubRepo('', 'en');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error.message).toBe('Input is empty');
+  });
 });

@@ -1,5 +1,6 @@
 import { ingestRepository } from './core/ingest';
-import type { IngestSummary } from './types';
+import { t } from './core/i18n';
+import type { IngestSummary, SupportedLang } from './types';
 
 interface UiRefs {
   readonly form: HTMLFormElement;
@@ -16,6 +17,22 @@ interface UiRefs {
   readonly outputArea: HTMLTextAreaElement;
   readonly copyBtn: HTMLButtonElement;
 }
+
+function resolveStandaloneLang(): SupportedLang {
+  try {
+    // 独立 Web UI 无 chrome.storage，通过 URL 参数或 localStorage 获取
+    const params = new URLSearchParams(window.location.search);
+    const urlLang = params.get('lang');
+    if (urlLang === 'en' || urlLang === 'zh-CN') return urlLang;
+    const stored = localStorage.getItem('aigi-lang');
+    if (stored === 'en' || stored === 'zh-CN') return stored;
+  } catch {
+    /* fallback */
+  }
+  return navigator.language.startsWith('zh') ? 'zh-CN' : 'en';
+}
+
+const LANG = resolveStandaloneLang();
 
 function collectUiRefs(): UiRefs {
   const submitBtn = document.getElementById('submit-btn') as HTMLButtonElement;
@@ -38,9 +55,10 @@ function collectUiRefs(): UiRefs {
 
 function setLoading(ui: UiRefs, loading: boolean, text = ''): void {
   ui.submitBtn.disabled = loading;
-  ui.submitBtnText.textContent = loading ? '提取中...' : '开始提取';
+  ui.submitBtnText.textContent = loading
+    ? t('standaloneExtracting', LANG)
+    : t('standaloneStartExtract', LANG);
   ui.statusPanel.classList.remove('hidden');
-
   if (loading) {
     ui.progressIndicator.classList.remove('hidden');
     ui.progressText.textContent = text;
@@ -60,32 +78,35 @@ function showError(ui: UiRefs, msg: string): void {
 
 function renderSummary(ui: UiRefs, summary: IngestSummary): void {
   ui.outputArea.value = summary.formattedOutput;
-  ui.resultStats.innerHTML = `已提取 <strong>${summary.files.length}</strong> 个文件 | 默认分支: <code>${summary.resolvedBranch}</code>`;
+  ui.resultStats.innerHTML = t('standaloneResultStats', LANG, {
+    count: String(summary.files.length),
+    branch: summary.resolvedBranch,
+  });
   ui.resultSection.classList.remove('hidden');
   ui.statusPanel.classList.add('hidden');
 }
 
 function formatErrorMessage(err: unknown): string {
-  if (err instanceof Error) return `提取失败: ${err.message}`;
-  return '提取失败：遇到未知错误';
+  if (err instanceof Error) {
+    return t('standaloneExtractFailed', LANG, { msg: err.message });
+  }
+  return t('standaloneUnknownError', LANG);
 }
 
 async function runIngest(ui: UiRefs): Promise<void> {
   const rawUrl = ui.repoUrlInput.value.trim();
   const token = ui.tokenInput.value.trim();
-
   if (!rawUrl) {
-    showError(ui, '请先输入 GitHub 仓库地址。');
+    showError(ui, t('standaloneUrlRequired', LANG));
     ui.repoUrlInput.focus();
     return;
   }
-
-  setLoading(ui, true, '初始化提取任务...');
+  setLoading(ui, true, t('standaloneInitializing', LANG));
   ui.resultSection.classList.add('hidden');
-
   try {
     const summary = await ingestRepository(rawUrl, {
       token: token || undefined,
+      lang: LANG,
       onProgress: (status: string) => {
         ui.progressText.textContent = status;
       },
@@ -103,14 +124,14 @@ async function runCopy(ui: UiRefs): Promise<void> {
   try {
     await navigator.clipboard.writeText(ui.outputArea.value);
     const originalText = ui.copyBtn.textContent;
-    ui.copyBtn.textContent = '已复制到剪贴板！';
+    ui.copyBtn.textContent = t('standaloneCopied', LANG);
     setTimeout(() => {
       ui.copyBtn.textContent = originalText;
     }, 2000);
   } catch {
     ui.outputArea.select();
     document.execCommand('copy');
-    ui.copyBtn.textContent = '已复制！';
+    ui.copyBtn.textContent = t('standaloneCopiedFallback', LANG);
   }
 }
 

@@ -80,6 +80,33 @@ export const translations = {
     downloadFailedWithStatus: '下载代码压缩包失败: HTTP {status}',
     anonymousRateLimit: '获取仓库失败：匿名访问受限或私有仓库无权限，请在扩展中配置 GitHub PAT',
     authFailedWithStatus: 'GitHub API 鉴权失败 (HTTP {status})，请检查 Token 有效性及 repo 权限。',
+
+    // Parser errors
+    parseEmptyInput: '输入内容为空',
+    parseNotGithubUrl: '未匹配到有效的 GitHub 链接格式',
+    parseNonGithubHost: '非 GitHub 域名链接',
+    parseMissingRepoPath: '缺少有效的 GitHub 仓库路径 (格式应为 owner/repo)',
+    parseInvalidOwner: '非合法的 GitHub 仓库所属组织或用户',
+    parseInvalidRepo: '非合法的 GitHub 仓库名称',
+    parseIgnoredAction: '已忽略非代码树链接 (/{action})',
+    parseUnsupportedAction: '未匹配到受支持的 GitHub 代码目录 (tree) 或文件 (blob) 路径',
+    parseMissingRef: '缺少具体的分支或代码引用路径',
+
+    // Standalone Web UI
+    standaloneExtracting: '提取中...',
+    standaloneStartExtract: '开始提取',
+    standaloneCopied: '已复制到剪贴板！',
+    standaloneCopiedFallback: '已复制！',
+    standaloneExtractFailed: '提取失败: {msg}',
+    standaloneUnknownError: '提取失败：遇到未知错误',
+    standaloneUrlRequired: '请先输入 GitHub 仓库地址。',
+    standaloneInitializing: '初始化提取任务...',
+    standaloneResultStats:
+      '已提取 <strong>{count}</strong> 个文件 | 默认分支: <code>{branch}</code>',
+
+    // Popup title attrs
+    popupLangSwitchTitle: '切换界面语言 / Toggle Language',
+    popupThemeSwitchTitle: '切换浅色/深色模式 / Toggle Light & Dark Mode',
   },
   en: {
     // Popup Header & General
@@ -166,6 +193,34 @@ export const translations = {
       'Failed to fetch repository: Rate limit exceeded or unauthorized private repository. Please configure a GitHub Token.',
     authFailedWithStatus:
       'GitHub API authentication failed (HTTP {status}). Please check your PAT permissions.',
+
+    // Parser errors
+    parseEmptyInput: 'Input is empty',
+    parseNotGithubUrl: 'No valid GitHub link format detected',
+    parseNonGithubHost: 'Link is not from a GitHub domain',
+    parseMissingRepoPath: 'Missing valid repository path (expected format: owner/repo)',
+    parseInvalidOwner: 'Invalid GitHub repository owner or organization',
+    parseInvalidRepo: 'Invalid GitHub repository name',
+    parseIgnoredAction: 'Ignored non-code-tree link (/{action})',
+    parseUnsupportedAction:
+      'Supported GitHub code directory (tree) or file (blob) path not matched',
+    parseMissingRef: 'Missing specific branch or code reference path',
+
+    // Standalone Web UI
+    standaloneExtracting: 'Extracting...',
+    standaloneStartExtract: 'Start Extraction',
+    standaloneCopied: 'Copied to clipboard!',
+    standaloneCopiedFallback: 'Copied!',
+    standaloneExtractFailed: 'Extraction failed: {msg}',
+    standaloneUnknownError: 'Extraction failed: Unknown error',
+    standaloneUrlRequired: 'Please enter a GitHub repository URL first.',
+    standaloneInitializing: 'Initializing extraction task...',
+    standaloneResultStats:
+      'Extracted <strong>{count}</strong> files | Default branch: <code>{branch}</code>',
+
+    // Popup title attrs
+    popupLangSwitchTitle: 'Toggle Language / 切换界面语言',
+    popupThemeSwitchTitle: 'Toggle Light & Dark Mode / 切换浅色/深色模式',
   },
 } as const;
 

@@ -59,6 +59,16 @@ function updateTopBar(storage: StorageSchema, lang: SupportedLang): void {
     githubLink.setAttribute('aria-label', label);
     githubLink.setAttribute('title', label);
   }
+
+  // 4. 设置 switch 的 title
+  const langWrapper = document.getElementById('lang-switch-wrapper');
+  if (langWrapper) {
+    langWrapper.title = t('popupLangSwitchTitle', lang);
+  }
+  const themeWrapper = document.getElementById('theme-switch-wrapper');
+  if (themeWrapper) {
+    themeWrapper.title = t('popupThemeSwitchTitle', lang);
+  }
 }
 
 function updateInputs(storage: StorageSchema, lang: SupportedLang): void {

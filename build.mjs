@@ -94,6 +94,17 @@ try {
     }
   }
 
+  const localesDir = resolve("_locales");
+  if (existsSync(localesDir)) {
+    const localeFolders = readdirSync(localesDir);
+    for (const locale of localeFolders) {
+      staticAssets.push({
+        from: `_locales/${locale}/messages.json`,
+        to: `dist/_locales/${locale}/messages.json`,
+      });
+    }
+  }
+
   for (const assetEntry of staticAssets) {
     const sourcePath = resolve(assetEntry.from);
     const targetPath = resolve(assetEntry.to);

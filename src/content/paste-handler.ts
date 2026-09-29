@@ -43,7 +43,7 @@ export async function handlePasteEvent(event: ClipboardEvent, guard: IngestGuard
   if (policy === 'DISABLED' || policy === 'DISABLED_BLACKLIST') return;
 
   const rawText = event.clipboardData?.getData('text/plain')?.trim() ?? '';
-  const parseResult = extractGitHubRepo(rawText);
+  const parseResult = extractGitHubRepo(rawText, cachedLang);
   if (!parseResult.ok) return;
 
   event.preventDefault();
