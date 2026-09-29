@@ -1,57 +1,62 @@
 /* ====================================================================
    AiGithubIngest — Extension Popup System
-   AzSkills Precision Dark Design System
+   Google Material Design 3 (M3) Architecture
    ==================================================================== */
 
 :root {
-  /* Palette & Surfaces */
-  --color-bg: #090d16;
-  --color-surface: #111827;
-  --color-surface-elevated: #172133;
-  --color-surface-hover: #1e293b;
-  --color-border: rgba(255, 255, 255, 0.08);
-  --color-border-hover: rgba(56, 189, 248, 0.3);
-  --color-border-focus: #38bdf8;
+  /* Google M3 Baseline Palette */
+  --md-sys-color-primary: #1a73e8;
+  --md-sys-color-primary-hover: #1557d0;
+  --md-sys-color-primary-active: #174ea6;
+  --md-sys-color-on-primary: #ffffff;
+  --md-sys-color-primary-container: #e8f0fe;
+  --md-sys-color-on-primary-container: #1967d2;
 
-  /* Typography Colors */
-  --color-text-primary: #f8fafc;
-  --color-text-secondary: #94a3b8;
-  --color-text-tertiary: #64748b;
-  --color-text-faint: #475569;
+  --md-sys-color-surface: #ffffff;
+  --md-sys-color-surface-container: #f8f9fa;
+  --md-sys-color-surface-container-high: #f1f3f4;
+  --md-sys-color-surface-container-highest: #e8eaed;
+  --md-sys-color-on-surface: #202124;
+  --md-sys-color-on-surface-variant: #5f6368;
+  --md-sys-color-outline: #dadce0;
+  --md-sys-color-outline-variant: #e8eaed;
 
-  /* Brand Accents */
-  --color-accent: #38bdf8;
-  --color-accent-hover: #0ea5e9;
-  --color-primary: #2563eb;
-  --color-primary-hover: #1d4ed8;
+  /* Google M3 Semantic Feedback Colors */
+  --md-sys-color-success: #1e8e3e;
+  --md-sys-color-success-bg: #e6f4ea;
+  --md-sys-color-success-border: #ceead6;
 
-  /* Status Tokens */
-  --color-success: #10b981;
-  --color-success-bg: rgba(16, 185, 129, 0.12);
-  --color-success-border: rgba(16, 185, 129, 0.28);
+  --md-sys-color-info: #1a73e8;
+  --md-sys-color-info-bg: #e8f0fe;
+  --md-sys-color-info-border: #d2e3fc;
 
-  --color-info: #38bdf8;
-  --color-info-bg: rgba(56, 189, 248, 0.12);
-  --color-info-border: rgba(56, 189, 248, 0.28);
+  --md-sys-color-error: #d93025;
+  --md-sys-color-error-hover: #c5221f;
+  --md-sys-color-error-bg: #fce8e6;
+  --md-sys-color-error-border: #fad2cf;
+  --md-sys-color-on-error: #ffffff;
 
-  --color-danger: #f43f5e;
-  --color-danger-bg: rgba(244, 63, 94, 0.12);
-  --color-danger-border: rgba(244, 63, 94, 0.3);
-  --color-danger-hover: #e11d48;
+  --md-sys-color-neutral: #5f6368;
+  --md-sys-color-neutral-bg: #f1f3f4;
+  --md-sys-color-neutral-border: #dadce0;
 
-  --color-neutral: #64748b;
-  --color-neutral-bg: rgba(100, 116, 139, 0.15);
-  --color-neutral-border: rgba(100, 116, 139, 0.25);
+  /* Google Typography & Shape Tokens */
+  --font-family-google:
+    'Google Sans', 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    sans-serif;
+  --font-family-mono: 'Roboto Mono', 'SF Mono', Consolas, Menlo, monospace;
 
-  /* Geometry & Rhythm */
   --radius-xs: 4px;
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-pill: 9999px;
 
-  /* Transitions */
-  --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
-  --duration-fast: 160ms;
+  /* Google Elevation & Motion Tokens */
+  --shadow-elevation-1: 0 1px 2px 0 rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
+  --shadow-elevation-2: 0 1px 2px 0 rgba(60, 64, 67, 0.3), 0 2px 6px 2px rgba(60, 64, 67, 0.15);
+  --motion-easing-standard: cubic-bezier(0.2, 0, 0, 1);
+  --motion-duration-short: 150ms;
 }
 
 *,
@@ -66,12 +71,10 @@ body {
   width: 360px;
   min-height: 480px;
   margin: 0;
-  padding: 12px 14px 16px;
-  background-color: var(--color-bg);
-  color: var(--color-text-primary);
-  font-family:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Hiragino Sans GB',
-    'Microsoft YaHei', sans-serif;
+  padding: 14px 16px 18px;
+  background-color: var(--md-sys-color-surface-container);
+  color: var(--md-sys-color-on-surface);
+  font-family: var(--font-family-google);
   font-size: 12px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
@@ -80,165 +83,163 @@ body {
 .container {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
-/* ---------- Top Bar ------------------------------------------------ */
+/* ---------- Top Bar (Google App Bar Style) -------------------------- */
 
 .app-topbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 2px 2px 6px;
-  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
 }
 
 .brand-group {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
 }
 
 .app-logo {
   display: block;
-  filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.35));
 }
 
 .app-name {
-  font-weight: 700;
-  font-size: 13px;
+  font-weight: 500;
+  font-size: 14px;
   letter-spacing: -0.01em;
-  color: var(--color-text-primary);
+  color: var(--md-sys-color-on-surface);
 }
 
 .topbar-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 
 .select-box {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  color: var(--color-text-secondary);
+  background: var(--md-sys-color-surface);
+  border: 1px solid var(--md-sys-color-outline);
+  color: var(--md-sys-color-on-surface-variant);
   border-radius: var(--radius-sm);
   font-size: 11px;
-  padding: 3px 6px;
+  font-weight: 500;
+  padding: 4px 8px;
   cursor: pointer;
   outline: none;
-  transition: all var(--duration-fast) var(--ease-spring);
+  transition: all var(--motion-duration-short) var(--motion-easing-standard);
 }
 
 .select-box:hover,
 .select-box:focus-visible {
-  border-color: var(--color-accent);
-  color: var(--color-text-primary);
+  border-color: var(--md-sys-color-primary);
+  color: var(--md-sys-color-primary);
 }
 
 .topbar-icon-link {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: var(--radius-sm);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  transition: all var(--duration-fast) var(--ease-spring);
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  border: 1px solid transparent;
+  transition: all var(--motion-duration-short) var(--motion-easing-standard);
   text-decoration: none;
 }
 
 .topbar-icon-link img {
   opacity: 0.75;
-  transition: opacity var(--duration-fast);
+  transition: opacity var(--motion-duration-short);
 }
 
 .topbar-icon-link:hover {
-  background: var(--color-surface-hover);
-  border-color: var(--color-border-hover);
+  background: var(--md-sys-color-surface-container-highest);
 }
 
 .topbar-icon-link:hover img {
   opacity: 1;
 }
 
-/* ---------- Cards -------------------------------------------------- */
+/* ---------- Cards (M3 Surface Container Low) ----------------------- */
 
 .card {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  padding: 10px 12px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
-  transition: border-color var(--duration-fast) var(--ease-spring);
+  background: var(--md-sys-color-surface);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  box-shadow: 0 1px 2px rgba(60, 64, 67, 0.05);
+  transition: border-color var(--motion-duration-short) var(--motion-easing-standard);
 }
 
 .card:hover {
-  border-color: rgba(255, 255, 255, 0.12);
+  border-color: var(--md-sys-color-outline);
 }
 
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
   gap: 8px;
 }
 
 .section-title {
   font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
+  font-weight: 500;
   letter-spacing: 0.04em;
-  color: var(--color-text-secondary);
+  color: var(--md-sys-color-on-surface-variant);
 }
 
-/* ---------- Badges (状态指示胶囊) ----------------------------------- */
+/* ---------- Badges (M3 Assist Chips) ------------------------------- */
 
 .badge {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   font-size: 11px;
-  padding: 2px 7px;
-  border-radius: 999px;
-  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-weight: 500;
   white-space: nowrap;
   word-break: keep-all;
   flex-shrink: 0;
 }
 
 .badge-dot {
-  width: 5px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   display: block;
   background-color: currentColor;
 }
 
 .badge--builtin {
-  background: var(--color-success-bg);
-  color: var(--color-success);
-  border: 1px solid var(--color-success-border);
+  background: var(--md-sys-color-success-bg);
+  color: var(--md-sys-color-success);
+  border: 1px solid var(--md-sys-color-success-border);
 }
 
 .badge--whitelist {
-  background: var(--color-info-bg);
-  color: var(--color-info);
-  border: 1px solid var(--color-info-border);
+  background: var(--md-sys-color-info-bg);
+  color: var(--md-sys-color-info);
+  border: 1px solid var(--md-sys-color-info-border);
 }
 
 .badge--blacklist {
-  background: var(--color-danger-bg);
-  color: var(--color-danger);
-  border: 1px solid var(--color-danger-border);
+  background: var(--md-sys-color-error-bg);
+  color: var(--md-sys-color-error);
+  border: 1px solid var(--md-sys-color-error-border);
 }
 
 .badge--disabled,
 .badge--neutral {
-  background: var(--color-neutral-bg);
-  color: var(--color-neutral);
-  border: 1px solid var(--color-neutral-border);
+  background: var(--md-sys-color-neutral-bg);
+  color: var(--md-sys-color-neutral);
+  border: 1px solid var(--md-sys-color-neutral-border);
 }
 
 /* ---------- Site Policy Section ------------------------------------ */
@@ -246,24 +247,24 @@ body {
 .site-display-box {
   display: flex;
   align-items: center;
-  gap: 6px;
-  background: var(--color-bg);
-  border: 1px solid var(--color-border);
+  gap: 8px;
+  background: var(--md-sys-color-surface-container);
+  border: 1px solid var(--md-sys-color-outline-variant);
   border-radius: var(--radius-sm);
-  padding: 6px 9px;
-  margin-bottom: 8px;
+  padding: 7px 10px;
+  margin-bottom: 10px;
 }
 
 .site-icon {
-  font-size: 12px;
-  opacity: 0.8;
+  font-size: 13px;
+  opacity: 0.85;
 }
 
 .current-site-domain {
-  font-family: 'SF Mono', 'Cascadia Code', 'Fira Mono', Consolas, monospace;
-  font-size: 12px;
-  font-weight: 600;
-  color: #f1f5f9;
+  font-family: var(--font-family-mono);
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--md-sys-color-on-surface);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -271,7 +272,7 @@ body {
 
 .action-btn-group {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   width: 100%;
 }
 
@@ -280,77 +281,82 @@ body {
   min-width: 0;
 }
 
-/* ---------- Buttons (强制防换行与微质感) ------------------------------ */
+/* ---------- Buttons (Google Material Button Specs) ------------------ */
 
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 6px 10px;
+  padding: 6px 14px;
   border: 1px solid transparent;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-pill);
   font-size: 11.5px;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
-  font-family: inherit;
-  white-space: nowrap; /* 核心防御：严禁折行 */
+  font-family: var(--font-family-google);
+  white-space: nowrap;
   word-break: keep-all;
   overflow: hidden;
   text-overflow: ellipsis;
-  transition: all var(--duration-fast) var(--ease-spring);
+  transition: all var(--motion-duration-short) var(--motion-easing-standard);
   text-decoration: none;
 }
 
 .btn:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 1px;
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
 }
 
 .btn:disabled {
-  opacity: 0.45;
+  opacity: 0.38;
   cursor: not-allowed;
   pointer-events: none;
 }
 
+/* Material Filled Button */
 .btn-primary {
-  background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
-  border-color: #60a5fa;
-  color: #ffffff;
-  box-shadow: 0 1px 4px rgba(37, 99, 235, 0.35);
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+  box-shadow: var(--shadow-elevation-1);
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: linear-gradient(180deg, #60a5fa 0%, #1d4ed8 100%);
-  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.5);
+  background: var(--md-sys-color-primary-hover);
+  box-shadow: var(--shadow-elevation-2);
 }
 
+.btn-primary:active:not(:disabled) {
+  background: var(--md-sys-color-primary-active);
+}
+
+/* Material Tonal / Outlined Button */
 .btn-secondary {
-  background: var(--color-surface-elevated);
-  border-color: var(--color-border);
-  color: var(--color-text-secondary);
+  background: var(--md-sys-color-surface);
+  border: 1px solid var(--md-sys-color-outline);
+  color: var(--md-sys-color-primary);
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background: var(--color-surface-hover);
-  border-color: rgba(255, 255, 255, 0.16);
-  color: var(--color-text-primary);
+  background: var(--md-sys-color-primary-container);
+  border-color: var(--md-sys-color-outline);
+  color: var(--md-sys-color-on-primary-container);
 }
 
+/* Material Danger Button */
 .btn-danger {
-  background: var(--color-danger-bg);
-  border-color: var(--color-danger-border);
-  color: #fda4af;
+  background: var(--md-sys-color-error-bg);
+  border: 1px solid var(--md-sys-color-error-border);
+  color: var(--md-sys-color-error);
 }
 
 .btn-danger:hover:not(:disabled) {
-  background: var(--color-danger);
-  border-color: var(--color-danger-hover);
-  color: #ffffff;
-  box-shadow: 0 2px 8px rgba(244, 63, 94, 0.4);
+  background: var(--md-sys-color-error);
+  color: var(--md-sys-color-on-error);
+  box-shadow: var(--shadow-elevation-1);
 }
 
 .btn-compact {
-  padding: 5px 10px;
+  padding: 5px 12px;
   font-size: 11px;
   flex-shrink: 0;
 }
@@ -358,35 +364,35 @@ body {
 .btn-grid-dual {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 6px;
+  gap: 8px;
 }
 
-/* ---------- Input & Form Controls ---------------------------------- */
+/* ---------- Material Outlined Input Fields ------------------------- */
 
 .input-action-row {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   align-items: center;
 }
 
 .input-text {
   flex: 1 1 0;
   min-width: 0;
-  background: var(--color-bg);
-  border: 1px solid var(--color-border);
-  color: var(--color-text-primary);
-  padding: 5px 8px;
+  background: var(--md-sys-color-surface);
+  border: 1px solid var(--md-sys-color-outline);
+  color: var(--md-sys-color-on-surface);
+  padding: 6px 10px;
   border-radius: var(--radius-sm);
   font-size: 11.5px;
-  font-family: 'SF Mono', 'Cascadia Code', Consolas, monospace;
+  font-family: var(--font-family-mono);
   outline: none;
-  transition: all var(--duration-fast) var(--ease-spring);
+  transition: all var(--motion-duration-short) var(--motion-easing-standard);
 }
 
 .input-text:focus,
 .input-text:focus-visible {
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 1px var(--color-accent);
+  border-color: var(--md-sys-color-primary);
+  box-shadow: 0 0 0 1px var(--md-sys-color-primary);
 }
 
 .token-row {
@@ -394,33 +400,32 @@ body {
 }
 
 .token-input {
-  padding-right: 28px;
+  padding-right: 30px;
 }
 
 .btn-icon {
-  background: var(--color-surface-elevated);
-  border: 1px solid var(--color-border);
-  color: var(--color-text-secondary);
-  border-radius: var(--radius-sm);
-  padding: 4px 7px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  border-radius: var(--radius-pill);
+  padding: 4px;
   cursor: pointer;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: all var(--duration-fast);
+  transition: all var(--motion-duration-short);
 }
 
 .btn-icon:hover {
-  background: var(--color-surface-hover);
-  color: var(--color-text-primary);
-  border-color: var(--color-border-hover);
+  background: var(--md-sys-color-surface-container-highest);
+  color: var(--md-sys-color-on-surface);
 }
 
 .hint-text {
-  font-size: 10.5px;
-  color: var(--color-text-tertiary);
+  font-size: 11px;
+  color: var(--md-sys-color-on-surface-variant);
   line-height: 1.45;
   margin: 6px 0 8px 0;
 }
@@ -428,18 +433,18 @@ body {
 .token-status {
   font-size: 11px;
   font-weight: 500;
-  color: var(--color-success);
+  color: var(--md-sys-color-success);
   min-height: 16px;
-  margin-top: 5px;
+  margin-top: 6px;
 }
 
-/* ---------- Blacklist Tags ----------------------------------------- */
+/* ---------- Blacklist Tags (M3 Input Chips) ------------------------- */
 
 .blacklist-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
-  margin-top: 7px;
+  gap: 6px;
+  margin-top: 8px;
   max-height: 80px;
   overflow-y: auto;
 }
@@ -448,68 +453,68 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  background: var(--color-bg);
-  border: 1px solid rgba(244, 63, 94, 0.25);
-  border-radius: var(--radius-xs);
-  padding: 1px 6px;
-  font-size: 10.5px;
-  color: #fda4af;
-  font-family: 'SF Mono', Consolas, monospace;
+  background: var(--md-sys-color-surface-container-high);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  font-size: 11px;
+  color: var(--md-sys-color-error);
+  font-family: var(--font-family-mono);
 }
 
 .tag-remove-btn {
   background: transparent;
   border: none;
-  color: var(--color-text-tertiary);
+  color: var(--md-sys-color-on-surface-variant);
   cursor: pointer;
-  font-size: 11px;
+  font-size: 12px;
   padding: 0 1px;
   line-height: 1;
 }
 
 .tag-remove-btn:hover {
-  color: var(--color-danger);
+  color: var(--md-sys-color-error);
 }
 
 .empty-tip {
-  font-size: 10.5px;
-  color: var(--color-text-faint);
+  font-size: 11px;
+  color: var(--md-sys-color-on-surface-variant);
   padding: 2px 0;
 }
 
-/* ---------- Site Upload Limits ------------------------------------- */
+/* ---------- Site Upload Limits (M3 List & Inputs) ------------------- */
 
 .site-limits-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin-top: 4px;
+  gap: 6px;
+  margin-top: 6px;
   max-height: 240px;
   overflow-y: auto;
 }
 
 .site-limit-section {
-  font-size: 9.5px;
+  font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--color-text-faint);
-  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--md-sys-color-on-surface-variant);
+  font-weight: 600;
   margin-top: 6px;
 }
 
 .site-limit-row {
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 3px 4px;
-  border-radius: var(--radius-xs);
-  background: var(--color-surface-elevated);
-  border: 1px solid var(--color-border);
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--md-sys-color-surface-container);
+  border: 1px solid var(--md-sys-color-outline-variant);
 }
 
 .site-limit-row--current {
-  border-color: rgba(56, 189, 248, 0.35);
-  background: rgba(56, 189, 248, 0.06);
+  border-color: var(--md-sys-color-info-border);
+  background: var(--md-sys-color-info-bg);
 }
 
 .site-limit-row--unset {
@@ -517,9 +522,9 @@ body {
 }
 
 .site-limit-row--fallback {
-  border-top: 1px dashed var(--color-border);
-  padding-top: 5px;
-  margin-top: 3px;
+  border-top: 1px dashed var(--md-sys-color-outline);
+  padding-top: 6px;
+  margin-top: 4px;
 }
 
 .site-limit-label {
@@ -529,16 +534,16 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 11px;
-  font-family: 'SF Mono', Consolas, monospace;
-  color: var(--color-text-secondary);
+  font-family: var(--font-family-mono);
+  color: var(--md-sys-color-on-surface);
 }
 
 .site-limit-input {
   width: 52px;
   flex: 0 0 auto;
-  padding: 3px 5px;
+  padding: 4px 6px;
   text-align: right;
-  font-size: 10.5px;
+  font-size: 11px;
 }
 
 .site-limit-input::-webkit-outer-spin-button,
@@ -554,8 +559,8 @@ body {
 
 .site-limit-unit {
   flex: 0 0 auto;
-  padding: 2px 4px;
-  font-size: 10px;
+  padding: 3px 4px;
+  font-size: 10.5px;
 }
 
 .site-limit-domain {
@@ -564,27 +569,25 @@ body {
 }
 
 .site-limit-icon-btn {
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   padding: 0;
 }
 
 .site-limit-icon-btn--save {
-  color: var(--color-success);
+  color: var(--md-sys-color-success);
 }
 
 .site-limit-icon-btn--save:hover {
-  background: var(--color-success-bg);
-  border-color: var(--color-success);
+  background: var(--md-sys-color-success-bg);
 }
 
 .site-limit-icon-btn--remove {
-  color: var(--color-danger);
+  color: var(--md-sys-color-error);
 }
 
 .site-limit-icon-btn--remove:hover {
-  background: var(--color-danger-bg);
-  border-color: var(--color-danger);
+  background: var(--md-sys-color-error-bg);
 }
 
 .hidden {
