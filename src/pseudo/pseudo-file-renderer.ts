@@ -96,24 +96,27 @@ export class PseudoFileRenderer {
     const dock = this.dock;
     if (!dock) return false;
     const target = this.resolveMountTarget(anchor);
-    const parent = target?.parent ?? document.body;
-    if (!parent) return false;
-    parent.insertBefore(dock, target?.reference ?? null);
-    dock.dataset.placement = target?.parent ? 'anchored' : 'floating';
-    return dock.isConnected;
+    if (target && target.parent) {
+      target.parent.insertBefore(dock, target.reference);
+      dock.dataset.placement = 'anchored';
+      return dock.isConnected;
+    }
+    if (document.body) {
+      document.body.appendChild(dock);
+      dock.dataset.placement = 'floating';
+      return dock.isConnected;
+    }
+    return false;
   }
 
   private resolveMountTarget(
     anchor: HTMLElement | null,
   ): { parent: HTMLElement; reference: HTMLElement | null } | null {
-    if (!anchor) {
-      return document.body ? { parent: document.body, reference: null } : null;
-    }
+    if (!anchor) return null;
 
-    // 绝对不能侵入 contenteditable 内部
+    // 严禁侵入 contenteditable 内部
     const editorRoot = anchor.closest<HTMLElement>('[contenteditable="true"]') || anchor;
 
-    // 向上寻找合适的表单或卡片容器
     const form = editorRoot.closest('form');
     if (form && form.contains(editorRoot)) {
       let cur = editorRoot;
@@ -160,7 +163,19 @@ export class PseudoFileRenderer {
     this.summaryEl.className = 'aigi-pseudo-summary';
     infoGroup.append(title, this.summaryEl);
 
-    // 操作工具栏
+    const actions = this.buildDockActions();
+    header.append(infoGroup, actions);
+
+    this.listEl = document.createElement('ul');
+    this.listEl.className = 'aigi-pseudo-list';
+
+    dock.append(header, this.listEl);
+    dock.dataset.empty = 'true';
+    this.updateSummary();
+    return dock;
+  }
+
+  private buildDockActions(): HTMLElement {
     const actions = document.createElement('div');
     actions.className = 'aigi-pseudo-actions';
 
@@ -187,15 +202,7 @@ export class PseudoFileRenderer {
     });
 
     actions.append(insertBtn, sendBtn);
-    header.append(infoGroup, actions);
-
-    this.listEl = document.createElement('ul');
-    this.listEl.className = 'aigi-pseudo-list';
-
-    dock.append(header, this.listEl);
-    dock.dataset.empty = 'true';
-    this.updateSummary();
-    return dock;
+    return actions;
   }
 
   add(file: PseudoFile): void {

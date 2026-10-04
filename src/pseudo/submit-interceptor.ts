@@ -11,19 +11,13 @@ export type FlushSource = 'keyboard' | 'pointer' | 'manual';
 const IME_COMPOSITION_KEYCODE = 229;
 const SEND_NAME_PATTERN = /(send|submit|发送|送出|提交|运行|run\b)/i;
 
-const SEND_CONTROL_SELECTORS: readonly string[] = [
-  'button[data-testid="send-button"]',
-  'button[data-testid="chat_input_send_button"]',
-  'button[data-new-input-control="send-btn"]',
-  'button[aria-label*="Send" i]',
-  'button[aria-label*="发送" i]',
-  'button[title*="Send" i]',
-  'button[title*="发送" i]',
-  'button[class*="send" i]',
-  'button[type="submit"]',
-  '[role="button"][aria-label*="send" i]',
-  '[role="button"][aria-label*="发送" i]',
-];
+const SEND_CONTROL_SELECTOR = [
+  'button',
+  '[role="button"]',
+  'input[type="submit"]',
+  '[data-testid*="send" i]',
+  '[aria-label*="send" i]',
+].join(', ');
 
 export interface SubmitInterceptorOptions {
   readonly lang: SupportedLang;
@@ -37,27 +31,35 @@ function readEditorText(editor: HTMLElement): string {
   return editor.textContent ?? '';
 }
 
+function isSendControl(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  if (target.closest('.aigi-pseudo-dock')) return false;
+  const control = target.closest(SEND_CONTROL_SELECTOR);
+  if (!control) return false;
+  if (control instanceof HTMLButtonElement || control instanceof HTMLInputElement) {
+    if (control.disabled) return false;
+  }
+  if (control.getAttribute('aria-disabled') === 'true') return false;
+  if (control.getAttribute('type') === 'submit') return true;
+  const name = (
+    control.getAttribute('aria-label') ??
+    control.getAttribute('title') ??
+    control.textContent ??
+    ''
+  ).trim();
+  return SEND_NAME_PATTERN.test(name);
+}
+
 function findHostSendButton(anchor: HTMLElement | null): HTMLElement | null {
   const root =
     anchor?.closest('form') ||
     anchor?.closest('[class*="chat" i], [class*="composer" i], [class*="input" i]') ||
     document;
 
-  for (const sel of SEND_CONTROL_SELECTORS) {
-    const el = root.querySelector<HTMLElement>(sel);
-    if (el && el.offsetWidth > 0 && el.offsetHeight > 0) return el;
-  }
-
   const buttons = Array.from(root.querySelectorAll<HTMLElement>('button, [role="button"]'));
   for (const btn of buttons) {
-    if (btn.offsetWidth === 0 && btn.offsetHeight === 0) continue;
-    const label = (
-      btn.getAttribute('aria-label') ||
-      btn.getAttribute('title') ||
-      btn.textContent ||
-      ''
-    ).trim();
-    if (SEND_NAME_PATTERN.test(label)) return btn;
+    if (btn.closest('.aigi-pseudo-dock')) continue;
+    if (isSendControl(btn)) return btn;
   }
   return null;
 }
@@ -117,26 +119,13 @@ export class SubmitInterceptor {
     if (this.manager.count === 0) return;
     if (!this.isSubmissionKey(event)) return;
     if (!this.isWithinEditor(event)) return;
-
-    // 关键：拦截此原生 Enter，避免在旧的未更新 state 下执行空发送
-    event.preventDefault();
-    event.stopPropagation();
-    event.stopImmediatePropagation();
-
-    void this.flushAndSubmit('keyboard');
+    this.flush('keyboard');
   };
 
   private readonly handlePointerDown = (event: Event): void => {
     if (this.manager.count === 0) return;
-    const sendBtn = findHostSendButton(this.editor);
-    if (!sendBtn || !event.target) return;
-    const target = event.target as Node;
-    if (sendBtn !== target && !sendBtn.contains(target)) return;
-
-    // 拦截宿主在空输入状态下的原生点击
-    event.preventDefault();
-    event.stopPropagation();
-    void this.flushAndSubmit('pointer');
+    if (!isSendControl(event.target)) return;
+    this.flush('pointer');
   };
 
   private isSubmissionKey(event: KeyboardEvent): boolean {
@@ -183,33 +172,9 @@ export class SubmitInterceptor {
 
   public async flushAndSubmit(source: FlushSource = 'manual'): Promise<boolean> {
     const editor = this.editor;
-    const files = this.manager.list();
-    if (files.length === 0) return false;
-    if (!editor || !editor.isConnected) {
-      logger.warn('SubmitInterceptor.flushAndSubmit: editor detached, payload retained');
-      return false;
-    }
+    if (!this.flush(source)) return false;
+    if (!editor || !editor.isConnected) return false;
 
-    const current = readEditorText(editor);
-    const expanded = replacePlaceholders(current, (id) => this.manager.get(id));
-    const next = expanded !== current ? expanded : this.appendPayload(current, files);
-
-    const written = EditorWriter.setEntireContent(next, editor);
-    if (!written) {
-      logger.warn('SubmitInterceptor.flushAndSubmit: editor write failed, payload retained');
-      return false;
-    }
-
-    const count = files.length;
-    const addedChars = next.length - current.length;
-
-    this.renderer.clear();
-    this.manager.clear();
-
-    logger.debug('SubmitInterceptor flushed & ready to trigger submit via', source);
-    this.options.onFlushed?.({ count, chars: addedChars });
-
-    // 让渡微任务让 React/Vue 接收 input 并解锁发送按钮
     await sleep(80);
 
     const sendBtn = findHostSendButton(editor);
@@ -220,7 +185,6 @@ export class SubmitInterceptor {
     ) {
       sendBtn.click();
     } else {
-      // 触发真实 Enter
       editor.dispatchEvent(
         new KeyboardEvent('keydown', {
           key: 'Enter',
@@ -232,7 +196,6 @@ export class SubmitInterceptor {
         }),
       );
     }
-
     return true;
   }
 
