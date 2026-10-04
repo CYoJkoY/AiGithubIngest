@@ -1,25 +1,4 @@
-/* ============================================================================
-   AiGithubIngest — Pseudo-file dock (content-script surface)
-   ----------------------------------------------------------------------------
-   Injected into THIRD-PARTY pages, so this file follows different rules from
-   `wabi-press.css`:
-
-   1. NO :root custom properties. Writing `--bg-canvas` & friends onto a host
-      document would clobber that host's design system. The Wabi-Press
-      spectrum is re-declared *inside* `.aigi-pseudo-dock` instead.
-   2. `all: initial` severs inherited host typography; every property the dock
-      needs is then re-declared explicitly below.
-   3. A short list of structural invariants carries `!important` because they
-      must survive a host stylesheet with higher specificity. Nothing visual
-      (color, spacing, radius) is forced.
-
-   Visual language: Wabi-Press · 侘寂刊本 (MIT © 2026 CYoJkoY, AzSkills).
-   Layout isolation: `contain: layout paint` on the dock and on every card, so
-   a card mutation can never reflow the host composer.
-   ============================================================================ */
-
 .aigi-pseudo-dock {
-  /* ---- Wabi-Press spectrum, scoped: washi light (和纸) ---- */
   --aigi-bg-canvas: #f5f3ec;
   --aigi-bg-surface: #faf9f5;
   --aigi-bg-overlay: #ece8dc;
@@ -37,7 +16,6 @@
   --aigi-font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   --aigi-ease-ink: cubic-bezier(0.16, 1, 0.3, 1);
 
-  /* ---- Structural invariants (must survive host CSS) ---- */
   all: initial;
   display: block !important;
   contain: layout paint;
@@ -45,15 +23,15 @@
   position: relative;
   z-index: 2147483000;
 
-  /* ---- Re-declared surface ---- */
-  width: auto;
-  max-width: 100%;
-  margin: 0 0 6px;
-  padding: 6px;
+  width: 100% !important;
+  max-width: 100% !important;
+  flex: 1 1 100% !important;
+  margin: 0 0 8px;
+  padding: 8px;
   background: var(--aigi-bg-canvas);
   border: 1px solid var(--aigi-border-subtle);
   border-radius: var(--aigi-radius);
-  box-shadow: 0 1px 2px rgba(40, 36, 32, 0.04);
+  box-shadow: 0 1px 3px rgba(40, 36, 32, 0.05);
   font-family: var(--aigi-font-sans);
   font-size: 12px;
   line-height: 1.5;
@@ -63,7 +41,6 @@
   unicode-bidi: isolate;
 }
 
-/* 暗色谱 · inkstone night (砚石夜墨) — driven by the extension's own theme */
 .aigi-pseudo-dock[data-aigi-theme='dark'] {
   --aigi-bg-canvas: #131416;
   --aigi-bg-surface: #1b1c20;
@@ -77,49 +54,91 @@
   --aigi-accent-moss: #537b65;
 }
 
-/* Fallback placement when no composer could be resolved as an anchor */
 .aigi-pseudo-dock[data-placement='floating'] {
   position: fixed !important;
   right: 24px;
   bottom: 96px;
-  width: 260px;
+  width: 280px !important;
 }
 
 .aigi-pseudo-dock[data-empty='true'] {
   display: none !important;
 }
 
-/* ---------------------------------------------------------------------------
-   Dock header · 引索
-   --------------------------------------------------------------------------- */
-
 .aigi-pseudo-dock .aigi-pseudo-header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
   font-family: var(--aigi-font-mono);
   font-size: 10px;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--aigi-text-muted);
 }
 
-.aigi-pseudo-dock .aigi-pseudo-title {
-  color: var(--aigi-accent-cinnabar);
+.aigi-pseudo-dock .aigi-pseudo-info-group {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
 }
 
-/* ---------------------------------------------------------------------------
-   Card list — horizontal scroll keeps the dock a fixed-height strip, so a
-   9-part digest cannot push the host composer off-screen.
-   --------------------------------------------------------------------------- */
+.aigi-pseudo-dock .aigi-pseudo-title {
+  color: var(--aigi-accent-cinnabar);
+  font-weight: 600;
+}
+
+/* 操作按钮组 */
+.aigi-pseudo-dock .aigi-pseudo-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.aigi-pseudo-dock .aigi-pseudo-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--aigi-radius);
+  font-family: var(--aigi-font-sans);
+  font-size: 11px;
+  line-height: 1.4;
+  cursor: pointer;
+  user-select: none;
+  transition: background 140ms var(--aigi-ease-ink), border-color 140ms var(--aigi-ease-ink), color 140ms var(--aigi-ease-ink);
+}
+
+.aigi-pseudo-dock .aigi-pseudo-btn--ghost {
+  background: var(--aigi-bg-surface);
+  border: 1px solid var(--aigi-border-subtle);
+  color: var(--aigi-text-secondary);
+}
+
+.aigi-pseudo-dock .aigi-pseudo-btn--ghost:hover {
+  background: var(--aigi-bg-overlay);
+  border-color: var(--aigi-border-strong);
+  color: var(--aigi-text-primary);
+}
+
+.aigi-pseudo-dock .aigi-pseudo-btn--primary {
+  background: var(--aigi-accent-cinnabar);
+  border: 1px solid var(--aigi-accent-cinnabar);
+  color: var(--aigi-bg-canvas);
+  font-weight: 500;
+}
+
+.aigi-pseudo-dock .aigi-pseudo-btn--primary:hover {
+  background: color-mix(in srgb, var(--aigi-accent-cinnabar) 88%, #000);
+  border-color: color-mix(in srgb, var(--aigi-accent-cinnabar) 88%, #000);
+}
 
 .aigi-pseudo-dock .aigi-pseudo-list {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  max-height: 92px;
+  max-height: 96px;
   overflow-y: auto;
   margin: 0;
   padding: 0;
@@ -133,18 +152,15 @@
   flex: 0 1 auto;
   min-width: 0;
   max-width: 100%;
-  padding: 3px 4px 3px 6px;
+  padding: 3px 6px 3px 6px;
   background: var(--aigi-bg-surface);
   border: 1px solid var(--aigi-border-subtle);
   border-radius: var(--aigi-radius);
-  /* Layout isolation: card changes never reflow the host input. */
   contain: layout paint;
   content-visibility: auto;
   cursor: default;
   user-select: none;
-  transition:
-    border-color 140ms var(--aigi-ease-ink),
-    background 140ms var(--aigi-ease-ink);
+  transition: border-color 140ms var(--aigi-ease-ink), background 140ms var(--aigi-ease-ink);
 }
 
 .aigi-pseudo-dock .aigi-pseudo-card:hover {
@@ -155,7 +171,7 @@
 .aigi-pseudo-dock .aigi-pseudo-icon {
   display: inline-flex;
   flex: none;
-  color: var(--aigi-text-muted);
+  color: var(--aigi-accent-cinnabar);
 }
 
 .aigi-pseudo-dock .aigi-pseudo-icon svg {
@@ -168,15 +184,6 @@
   stroke-linejoin: round;
 }
 
-/* Markdown/code payloads get the cinnabar seal tint, everything else stays ash. */
-.aigi-pseudo-dock .aigi-pseudo-card[data-ext='md'] .aigi-pseudo-icon,
-.aigi-pseudo-dock .aigi-pseudo-card[data-ext='markdown'] .aigi-pseudo-icon,
-.aigi-pseudo-dock .aigi-pseudo-card[data-ext='ts'] .aigi-pseudo-icon,
-.aigi-pseudo-dock .aigi-pseudo-card[data-ext='js'] .aigi-pseudo-icon,
-.aigi-pseudo-dock .aigi-pseudo-card[data-ext='json'] .aigi-pseudo-icon {
-  color: var(--aigi-accent-cinnabar);
-}
-
 .aigi-pseudo-dock .aigi-pseudo-body {
   display: flex;
   flex-direction: column;
@@ -184,9 +191,8 @@
   line-height: 1.35;
 }
 
-/* Single-line truncation — a 120-character part name must not stretch a card. */
 .aigi-pseudo-dock .aigi-pseudo-name {
-  max-width: 168px;
+  max-width: 180px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -204,10 +210,6 @@
   white-space: nowrap;
 }
 
-/* ---------------------------------------------------------------------------
-   Remove control — 20px target, hairline frame, ink absorption (no bounce)
-   --------------------------------------------------------------------------- */
-
 .aigi-pseudo-dock .aigi-pseudo-remove {
   display: inline-flex;
   align-items: center;
@@ -222,26 +224,13 @@
   border-radius: var(--aigi-radius);
   color: var(--aigi-text-muted);
   cursor: pointer;
-  transition:
-    color 140ms var(--aigi-ease-ink),
-    border-color 140ms var(--aigi-ease-ink),
-    background 140ms var(--aigi-ease-ink);
+  transition: color 140ms var(--aigi-ease-ink), border-color 140ms var(--aigi-ease-ink), background 140ms var(--aigi-ease-ink);
 }
 
 .aigi-pseudo-dock .aigi-pseudo-remove:hover {
   color: var(--aigi-accent-cinnabar);
   border-color: var(--aigi-border-subtle);
   background: var(--aigi-bg-overlay);
-}
-
-.aigi-pseudo-dock .aigi-pseudo-remove:active {
-  background: var(--aigi-bg-overlay);
-  border-color: var(--aigi-accent-cinnabar);
-}
-
-.aigi-pseudo-dock .aigi-pseudo-remove:focus-visible {
-  outline: 1px solid var(--aigi-border-strong);
-  outline-offset: 1px;
 }
 
 .aigi-pseudo-dock .aigi-pseudo-remove svg {
@@ -252,10 +241,6 @@
   stroke-width: 1.4;
   stroke-linecap: round;
 }
-
-/* ---------------------------------------------------------------------------
-   Reduced motion
-   --------------------------------------------------------------------------- */
 
 @media (prefers-reduced-motion: reduce) {
   .aigi-pseudo-dock *,

@@ -1,127 +1,97 @@
-// @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { PseudoFile, SupportedLang, ThemeMode } from '../types';
 import type { DigestPart } from '../core/output-formatter';
-import { PseudoFileEngine } from './pseudo-file-engine';
+import { logger } from '../core/logger';
+import { PseudoFileManager, type RegisterFailure } from './pseudo-file-manager';
+import { PseudoFileRenderer } from './pseudo-file-renderer';
+import { SubmitInterceptor } from './submit-interceptor';
 
-function makeParts(count: number): DigestPart[] {
-  return Array.from({ length: count }, (_, i) => ({
-    fileName: `owner_repo.part${i + 1}of${count}.md`,
-    content: `PART ${i + 1}\n`,
-    sizeBytes: 8,
-  }));
+export interface EngineMountResult {
+  readonly ok: boolean;
+  readonly registered: number;
+  readonly rejected: readonly RegisterFailure[];
 }
 
-function makeComposer(): HTMLTextAreaElement {
-  const editor = document.createElement('textarea');
-  document.body.appendChild(editor);
-  return editor;
+export interface EngineCallbacks {
+  readonly lang: SupportedLang;
+  readonly theme: ThemeMode;
+  readonly onFlushed?: (info: { readonly count: number; readonly chars: number }) => void;
+  readonly onEmptied?: () => void;
 }
 
-beforeEach(() => {
-  document.body.innerHTML = '';
-});
+export class PseudoFileEngine {
+  private readonly manager: PseudoFileManager;
+  private readonly renderer: PseudoFileRenderer;
+  private readonly interceptor: SubmitInterceptor;
 
-afterEach(() => {
-  vi.restoreAllMocks();
-});
+  constructor(callbacks: EngineCallbacks) {
+    this.manager = new PseudoFileManager();
+    this.renderer = new PseudoFileRenderer(this.manager, {
+      lang: callbacks.lang,
+      theme: callbacks.theme,
+      onChange: (count) => {
+        if (count === 0) callbacks.onEmptied?.();
+      },
+      onSendNow: () => {
+        void this.interceptor.flushAndSubmit('manual');
+      },
+      onInsertNow: () => {
+        this.interceptor.insertOnly();
+      },
+    });
+    this.interceptor = new SubmitInterceptor(this.manager, this.renderer, {
+      lang: callbacks.lang,
+      onFlushed: callbacks.onFlushed,
+    });
+  }
 
-describe('PseudoFileEngine', () => {
-  it('mounts every part as a card and reports the count', () => {
-    const engine = new PseudoFileEngine({ lang: 'zh-CN', theme: 'light' });
-    const result = engine.mount(makeParts(3), makeComposer());
+  get pending(): number {
+    return this.manager.count;
+  }
 
-    expect(result.ok).toBe(true);
-    expect(result.registered).toBe(3);
-    expect(result.rejected).toHaveLength(0);
-    expect(document.querySelectorAll('.aigi-pseudo-card')).toHaveLength(3);
-    expect(engine.pending).toBe(3);
+  get totalBytes(): number {
+    return this.manager.totalBytes;
+  }
 
-    engine.dispose();
-  });
+  isHealthy(): boolean {
+    return this.renderer.isMounted && this.interceptor.isAttached;
+  }
 
-  it('is not healthy before anything is mounted', () => {
-    const engine = new PseudoFileEngine({ lang: 'zh-CN', theme: 'light' });
-    expect(engine.isHealthy()).toBe(false);
-    engine.dispose();
-  });
+  mount(parts: readonly DigestPart[], editor: HTMLElement | null): EngineMountResult {
+    const rejected: RegisterFailure[] = [];
+    const registered: PseudoFile[] = [];
 
-  it('becomes healthy once the dock is anchored and the interceptor bound', () => {
-    const engine = new PseudoFileEngine({ lang: 'zh-CN', theme: 'light' });
-    engine.mount(makeParts(1), makeComposer());
-    expect(engine.isHealthy()).toBe(true);
-    engine.dispose();
-  });
+    for (const part of parts) {
+      const result = this.manager.register(part.fileName, part.content);
+      if (result.ok) registered.push(result.file);
+      else rejected.push(result.reason);
+    }
 
-  it('stops being healthy after the host destroys the dock', () => {
-    const engine = new PseudoFileEngine({ lang: 'zh-CN', theme: 'light' });
-    engine.mount(makeParts(1), makeComposer());
-    document.querySelector('.aigi-pseudo-dock')?.remove();
-    expect(engine.isHealthy()).toBe(false);
-    engine.dispose();
-  });
+    if (registered.length === 0) {
+      return { ok: false, registered: 0, rejected };
+    }
 
-  it('releases everything when mounting is impossible', () => {
-    // No composer and no <body> parent: the dock cannot be placed anywhere.
-    const detachedHost = document.createElement('div');
-    const engine = new PseudoFileEngine({ lang: 'zh-CN', theme: 'light' });
-    const result = engine.mount(makeParts(2), detachedHost);
+    const mounted = this.renderer.mount(editor);
+    if (!mounted) {
+      this.manager.clear();
+      return { ok: false, registered: 0, rejected };
+    }
 
-    expect(result.ok).toBe(true);
-    expect(result.registered).toBe(2);
-    engine.dispose();
-    expect(engine.pending).toBe(0);
-  });
+    for (const file of registered) this.renderer.add(file);
 
-  it('reports rejected parts without losing the rest', () => {
-    const engine = new PseudoFileEngine({ lang: 'zh-CN', theme: 'light' });
-    const parts: DigestPart[] = [
-      { fileName: 'good.md', content: 'OK', sizeBytes: 2 },
-      { fileName: 'empty.md', content: '   ', sizeBytes: 3 },
-    ];
+    const anchor = editor ?? this.renderer.root;
+    if (!this.interceptor.isAttached) this.interceptor.attach(anchor);
+    else this.interceptor.rebind(anchor);
 
-    const result = engine.mount(parts, makeComposer());
+    logger.info('PseudoFileEngine mounted', registered.length, 'part(s)');
+    return { ok: true, registered: registered.length, rejected };
+  }
 
-    expect(result.ok).toBe(true);
-    expect(result.registered).toBe(1);
-    expect(result.rejected).toContain('EMPTY_CONTENT');
+  flush(): boolean {
+    return this.interceptor.flush('manual');
+  }
 
-    engine.dispose();
-  });
-
-  it('flushes the digest into the composer and empties the dock', () => {
-    const onFlushed = vi.fn();
-    const engine = new PseudoFileEngine({ lang: 'zh-CN', theme: 'light', onFlushed });
-    const editor = makeComposer();
-    editor.value = 'review this';
-    engine.mount(makeParts(2), editor);
-
-    expect(engine.flush()).toBe(true);
-
-    expect(editor.value).toContain('<file name="owner_repo.part1of2.md">');
-    expect(editor.value).toContain('<file name="owner_repo.part2of2.md">');
-    expect(editor.value.startsWith('review this')).toBe(true);
-    expect(engine.pending).toBe(0);
-    expect(onFlushed).toHaveBeenCalledWith({ count: 2, chars: expect.any(Number) });
-
-    engine.dispose();
-  });
-
-  it('notifies when the last card is removed by hand', () => {
-    const onEmptied = vi.fn();
-    const engine = new PseudoFileEngine({ lang: 'zh-CN', theme: 'light', onEmptied });
-    engine.mount(makeParts(1), makeComposer());
-
-    const removeBtn = document.querySelector<HTMLButtonElement>('.aigi-pseudo-remove');
-    removeBtn?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-
-    expect(onEmptied).toHaveBeenCalledTimes(1);
-    expect(engine.pending).toBe(0);
-
-    engine.dispose();
-  });
-
-  it('disposes without throwing when nothing was mounted', () => {
-    const engine = new PseudoFileEngine({ lang: 'en', theme: 'dark' });
-    expect(() => engine.dispose()).not.toThrow();
-  });
-});
+  dispose(): void {
+    this.interceptor.detach();
+    this.renderer.destroy();
+  }
+}

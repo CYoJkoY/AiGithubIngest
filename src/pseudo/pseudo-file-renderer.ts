@@ -3,30 +3,18 @@ import { logger } from '../core/logger';
 import { formatBytes, formatTokens } from './payload';
 import type { PseudoFileManager } from './pseudo-file-manager';
 
-/**
- * View layer for the pseudo-file engine.
- *
- * Contract: the host DOM only ever receives metadata. Card text is written
- * with `textContent` — never `innerHTML` — so a repository named
- * `<img onerror=…>` is rendered as literal characters.
- *
- * Every card declares `contain: layout paint`, which stops a card mutation
- * from propagating a reflow to the host input or its layout ancestors.
- */
-
 export const DOCK_CLASS = 'aigi-pseudo-dock';
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 export interface PseudoFileRendererOptions {
   readonly lang: SupportedLang;
   readonly theme: ThemeMode;
-  /** Fired after a card is removed from the DOM and its memory freed. */
   readonly onRemove?: (file: PseudoFile) => void;
-  /** Fired when the set of cards changes (including to empty). */
   readonly onChange?: (count: number) => void;
+  readonly onSendNow?: () => void;
+  readonly onInsertNow?: () => void;
 }
 
-/** Minimal 16×16 linear document glyph. */
 function createDocumentIcon(): SVGSVGElement {
   const svg = document.createElementNS(SVG_NS, 'svg');
   svg.setAttribute('viewBox', '0 0 16 16');
@@ -46,7 +34,6 @@ function createDocumentIcon(): SVGSVGElement {
   return svg;
 }
 
-/** Minimal 16×16 close glyph. */
 function createCloseIcon(): SVGSVGElement {
   const svg = document.createElementNS(SVG_NS, 'svg');
   svg.setAttribute('viewBox', '0 0 16 16');
@@ -85,22 +72,14 @@ export class PseudoFileRenderer {
     return Boolean(this.dock && this.dock.isConnected);
   }
 
-  /**
-   * Insert the dock directly above the host input.
-   *
-   * Anchoring before the editor keeps the card visually attached to the
-   * composer and, crucially, keeps the injected node outside the React/Vue
-   * subtree that manages the input's own value. When no anchor can be found we
-   * fall back to a fixed-position dock pinned above the page bottom.
-   */
   mount(anchor: HTMLElement | null): boolean {
     if (this.dock) return this.isMounted || this.remount(anchor);
 
     const dock = this.buildDock();
-    const parent = anchor?.parentElement ?? null;
+    const target = this.resolveMountTarget(anchor);
 
-    if (parent) {
-      parent.insertBefore(dock, anchor);
+    if (target && target.parent) {
+      target.parent.insertBefore(dock, target.reference);
       dock.dataset.placement = 'anchored';
     } else if (document.body) {
       document.body.appendChild(dock);
@@ -116,11 +95,48 @@ export class PseudoFileRenderer {
   private remount(anchor: HTMLElement | null): boolean {
     const dock = this.dock;
     if (!dock) return false;
-    const parent = anchor?.parentElement ?? document.body;
+    const target = this.resolveMountTarget(anchor);
+    const parent = target?.parent ?? document.body;
     if (!parent) return false;
-    parent.insertBefore(dock, anchor);
-    dock.dataset.placement = anchor?.parentElement ? 'anchored' : 'floating';
+    parent.insertBefore(dock, target?.reference ?? null);
+    dock.dataset.placement = target?.parent ? 'anchored' : 'floating';
     return dock.isConnected;
+  }
+
+  private resolveMountTarget(
+    anchor: HTMLElement | null,
+  ): { parent: HTMLElement; reference: HTMLElement | null } | null {
+    if (!anchor) {
+      return document.body ? { parent: document.body, reference: null } : null;
+    }
+
+    // 绝对不能侵入 contenteditable 内部
+    const editorRoot = anchor.closest<HTMLElement>('[contenteditable="true"]') || anchor;
+
+    // 向上寻找合适的表单或卡片容器
+    const form = editorRoot.closest('form');
+    if (form && form.contains(editorRoot)) {
+      let cur = editorRoot;
+      while (cur.parentElement && cur.parentElement !== form) {
+        cur = cur.parentElement;
+      }
+      return { parent: form, reference: cur };
+    }
+
+    let current = editorRoot;
+    while (current.parentElement && current.parentElement !== document.body) {
+      const parent = current.parentElement;
+      const display = window.getComputedStyle(parent).display;
+      if (display === 'flex' && !window.getComputedStyle(parent).flexDirection.includes('column')) {
+        current = parent;
+        continue;
+      }
+      return { parent, reference: current };
+    }
+
+    return editorRoot.parentElement
+      ? { parent: editorRoot.parentElement, reference: editorRoot }
+      : { parent: document.body, reference: null };
   }
 
   private buildDock(): HTMLElement {
@@ -128,11 +144,13 @@ export class PseudoFileRenderer {
     dock.className = DOCK_CLASS;
     dock.dataset.aigiTheme = this.options.theme;
     dock.setAttribute('contenteditable', 'false');
-    // Keeps the injected surface out of the host's editing/selection model.
     dock.setAttribute('data-aigi-surface', 'pseudo-file');
 
     const header = document.createElement('div');
     header.className = 'aigi-pseudo-header';
+
+    const infoGroup = document.createElement('div');
+    infoGroup.className = 'aigi-pseudo-info-group';
 
     const title = document.createElement('span');
     title.className = 'aigi-pseudo-title';
@@ -140,14 +158,41 @@ export class PseudoFileRenderer {
 
     this.summaryEl = document.createElement('span');
     this.summaryEl.className = 'aigi-pseudo-summary';
+    infoGroup.append(title, this.summaryEl);
 
-    header.append(title, this.summaryEl);
+    // 操作工具栏
+    const actions = document.createElement('div');
+    actions.className = 'aigi-pseudo-actions';
+
+    const insertBtn = document.createElement('button');
+    insertBtn.type = 'button';
+    insertBtn.className = 'aigi-pseudo-btn aigi-pseudo-btn--ghost';
+    insertBtn.textContent = this.options.lang === 'zh-CN' ? '填入' : 'Insert';
+    insertBtn.title = this.options.lang === 'zh-CN' ? '展开填入输入框' : 'Insert into prompt';
+    insertBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.options.onInsertNow?.();
+    });
+
+    const sendBtn = document.createElement('button');
+    sendBtn.type = 'button';
+    sendBtn.className = 'aigi-pseudo-btn aigi-pseudo-btn--primary';
+    sendBtn.textContent = this.options.lang === 'zh-CN' ? '立即发送' : 'Send Now';
+    sendBtn.title = this.options.lang === 'zh-CN' ? '拼装并立即发送消息' : 'Send prompt now';
+    sendBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.options.onSendNow?.();
+    });
+
+    actions.append(insertBtn, sendBtn);
+    header.append(infoGroup, actions);
 
     this.listEl = document.createElement('ul');
     this.listEl.className = 'aigi-pseudo-list';
 
     dock.append(header, this.listEl);
-    // A dock is born empty; `updateSummary` clears the flag as cards arrive.
     dock.dataset.empty = 'true';
     this.updateSummary();
     return dock;
@@ -196,8 +241,6 @@ export class PseudoFileRenderer {
     remove.title = this.options.lang === 'zh-CN' ? '移除此文件' : 'Remove this file';
     remove.appendChild(createCloseIcon());
 
-    // Both handlers stop propagation so removing a card never steals focus
-    // from the host input or triggers the composer's own click behaviour.
     remove.addEventListener('mousedown', (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -212,12 +255,6 @@ export class PseudoFileRenderer {
     return card;
   }
 
-  /**
-   * Remove a card and free its payload in the same tick.
-   *
-   * DOM and memory are mutated together — there is no window in which a card
-   * survives while its backing text is already gone (no ghost references).
-   */
   remove(id: string): boolean {
     const card = this.cards.get(id);
     const file = this.manager.get(id);
@@ -239,7 +276,6 @@ export class PseudoFileRenderer {
     this.updateSummary();
   }
 
-  /** Tear the whole surface down: DOM first, then memory. */
   destroy(): void {
     this.clear();
     try {

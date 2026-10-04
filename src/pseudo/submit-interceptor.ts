@@ -1,55 +1,32 @@
 import type { PseudoFile, SupportedLang } from '../types';
 import { logger } from '../core/logger';
 import { EditorWriter } from '../dom/editor-writer';
+import { sleep } from '../dom/dom-utils';
 import { replacePlaceholders, synthesizePayload } from './payload';
 import type { PseudoFileManager } from './pseudo-file-manager';
 import type { PseudoFileRenderer } from './pseudo-file-renderer';
 
-/**
- * Transport layer for the pseudo-file engine.
- *
- * ## Plan B — capture-phase transient injection
- *
- * The content script runs in an isolated world, so `window.fetch` cannot be
- * patched from here (Plan A is out of reach without a MAIN-world injector and
- * the extra permissions it implies). Instead the payload is spliced into the
- * composer at the exact moment of submission:
- *
- *   1. A capture-phase `keydown` listener fires *before* the host's own
- *      bubble-phase handler, so the host reads an input that already contains
- *      the digest.
- *   2. The full text is appended (or an existing placeholder is expanded),
- *      then native `input`/`change` events are dispatched so React/Vue
- *      controlled components resync their state.
- *   3. Memory and card DOM are released immediately after the write.
- *
- * ## IME safety
- *
- * Chinese/Japanese input confirms candidates with Enter while `isComposing`
- * is true (and several Chromium hosts additionally report `keyCode === 229`).
- * Both signals are treated as "not a submission" — an IME confirmation must
- * never flush a digest.
- */
-
 export type FlushSource = 'keyboard' | 'pointer' | 'manual';
 
-/** Legacy IME composition keycode still emitted by some Chromium hosts. */
 const IME_COMPOSITION_KEYCODE = 229;
-
-/** Accessible-name fragments that identify a send/submit control. */
-const SEND_CONTROL_SELECTOR = [
-  'button',
-  '[role="button"]',
-  'input[type="submit"]',
-  '[data-testid*="send" i]',
-  '[aria-label*="send" i]',
-].join(', ');
-
 const SEND_NAME_PATTERN = /(send|submit|发送|送出|提交|运行|run\b)/i;
+
+const SEND_CONTROL_SELECTORS: readonly string[] = [
+  'button[data-testid="send-button"]',
+  'button[data-testid="chat_input_send_button"]',
+  'button[data-new-input-control="send-btn"]',
+  'button[aria-label*="Send" i]',
+  'button[aria-label*="发送" i]',
+  'button[title*="Send" i]',
+  'button[title*="发送" i]',
+  'button[class*="send" i]',
+  'button[type="submit"]',
+  '[role="button"][aria-label*="send" i]',
+  '[role="button"][aria-label*="发送" i]',
+];
 
 export interface SubmitInterceptorOptions {
   readonly lang: SupportedLang;
-  /** Called after a successful flush; useful for toasts. */
   readonly onFlushed?: (info: { readonly count: number; readonly chars: number }) => void;
 }
 
@@ -60,41 +37,29 @@ function readEditorText(editor: HTMLElement): string {
   return editor.textContent ?? '';
 }
 
-/**
- * Select the whole contenteditable so an `insertText` replaces it.
- *
- * Equivalent to a "select all then retype" for the host editor, which keeps
- * the operation on the native undo stack instead of fighting it.
- */
-function selectAllContents(editor: HTMLElement): void {
-  if (typeof window.getSelection !== 'function') return;
-  try {
-    const selection = window.getSelection();
-    if (!selection) return;
-    const range = document.createRange();
-    range.selectNodeContents(editor);
-    selection.removeAllRanges();
-    selection.addRange(range);
-  } catch (err) {
-    logger.debug('SubmitInterceptor.selectAllContents failed', err);
-  }
-}
+function findHostSendButton(anchor: HTMLElement | null): HTMLElement | null {
+  const root =
+    anchor?.closest('form') ||
+    anchor?.closest('[class*="chat" i], [class*="composer" i], [class*="input" i]') ||
+    document;
 
-function isSendControl(target: EventTarget | null): boolean {
-  if (!(target instanceof Element)) return false;
-  const control = target.closest(SEND_CONTROL_SELECTOR);
-  if (!control) return false;
-  if (control instanceof HTMLButtonElement || control instanceof HTMLInputElement) {
-    if (control.disabled) return false;
+  for (const sel of SEND_CONTROL_SELECTORS) {
+    const el = root.querySelector<HTMLElement>(sel);
+    if (el && el.offsetWidth > 0 && el.offsetHeight > 0) return el;
   }
-  if (control.getAttribute('type') === 'submit') return true;
-  const name = (
-    control.getAttribute('aria-label') ??
-    control.getAttribute('title') ??
-    control.textContent ??
-    ''
-  ).trim();
-  return SEND_NAME_PATTERN.test(name);
+
+  const buttons = Array.from(root.querySelectorAll<HTMLElement>('button, [role="button"]'));
+  for (const btn of buttons) {
+    if (btn.offsetWidth === 0 && btn.offsetHeight === 0) continue;
+    const label = (
+      btn.getAttribute('aria-label') ||
+      btn.getAttribute('title') ||
+      btn.textContent ||
+      ''
+    ).trim();
+    if (SEND_NAME_PATTERN.test(label)) return btn;
+  }
+  return null;
 }
 
 export class SubmitInterceptor {
@@ -122,13 +87,6 @@ export class SubmitInterceptor {
     return this.manager.count;
   }
 
-  /**
-   * Bind the interceptor to a composer.
-   *
-   * Listeners live on `document` in the capture phase rather than on the
-   * editor itself: SPA hosts routinely re-create the textarea, and a
-   * document-level listener survives that swap.
-   */
   attach(editor: HTMLElement | null): boolean {
     if (!editor) return false;
     this.editor = editor;
@@ -149,13 +107,6 @@ export class SubmitInterceptor {
     this.editor = null;
   }
 
-  /**
-   * Point the interceptor at a fresh composer without re-binding listeners.
-   *
-   * SPA hosts rebuild the textarea on navigation while the surrounding DOM —
-   * and therefore the dock — survives. Rebinding keeps the payload reachable
-   * from the new composer instead of flushing into a detached node.
-   */
   rebind(editor: HTMLElement | null): boolean {
     if (!this.attached || !editor) return false;
     this.editor = editor;
@@ -166,13 +117,26 @@ export class SubmitInterceptor {
     if (this.manager.count === 0) return;
     if (!this.isSubmissionKey(event)) return;
     if (!this.isWithinEditor(event)) return;
-    this.flush('keyboard');
+
+    // 关键：拦截此原生 Enter，避免在旧的未更新 state 下执行空发送
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+
+    void this.flushAndSubmit('keyboard');
   };
 
   private readonly handlePointerDown = (event: Event): void => {
     if (this.manager.count === 0) return;
-    if (!isSendControl(event.target)) return;
-    this.flush('pointer');
+    const sendBtn = findHostSendButton(this.editor);
+    if (!sendBtn || !event.target) return;
+    const target = event.target as Node;
+    if (sendBtn !== target && !sendBtn.contains(target)) return;
+
+    // 拦截宿主在空输入状态下的原生点击
+    event.preventDefault();
+    event.stopPropagation();
+    void this.flushAndSubmit('pointer');
   };
 
   private isSubmissionKey(event: KeyboardEvent): boolean {
@@ -190,13 +154,7 @@ export class SubmitInterceptor {
     return document.activeElement === editor;
   }
 
-  /**
-   * Splice every pending file into the composer and release them.
-   *
-   * Idempotent: if the input already holds `__PSEUDO_FILE_<id>__` markers from
-   * an interrupted attempt, they are expanded in place rather than duplicated.
-   */
-  flush(source: FlushSource = 'manual'): boolean {
+  public flush(source: FlushSource = 'manual'): boolean {
     const editor = this.editor;
     const files = this.manager.list();
     if (files.length === 0) return false;
@@ -209,20 +167,82 @@ export class SubmitInterceptor {
     const expanded = replacePlaceholders(current, (id) => this.manager.get(id));
     const next = expanded !== current ? expanded : this.appendPayload(current, files);
 
-    const written = this.writeToEditor(editor, next, current.length);
-
+    const written = EditorWriter.setEntireContent(next, editor);
     if (!written) {
       logger.warn('SubmitInterceptor.flush: editor write failed, payload retained');
       return false;
     }
 
-    // Garbage collection runs the instant the text is in the host's hands.
     this.renderer.clear();
     this.manager.clear();
 
     logger.debug('SubmitInterceptor flushed', files.length, 'file(s) via', source);
     this.options.onFlushed?.({ count: files.length, chars: next.length - current.length });
     return true;
+  }
+
+  public async flushAndSubmit(source: FlushSource = 'manual'): Promise<boolean> {
+    const editor = this.editor;
+    const files = this.manager.list();
+    if (files.length === 0) return false;
+    if (!editor || !editor.isConnected) {
+      logger.warn('SubmitInterceptor.flushAndSubmit: editor detached, payload retained');
+      return false;
+    }
+
+    const current = readEditorText(editor);
+    const expanded = replacePlaceholders(current, (id) => this.manager.get(id));
+    const next = expanded !== current ? expanded : this.appendPayload(current, files);
+
+    const written = EditorWriter.setEntireContent(next, editor);
+    if (!written) {
+      logger.warn('SubmitInterceptor.flushAndSubmit: editor write failed, payload retained');
+      return false;
+    }
+
+    const count = files.length;
+    const addedChars = next.length - current.length;
+
+    this.renderer.clear();
+    this.manager.clear();
+
+    logger.debug('SubmitInterceptor flushed & ready to trigger submit via', source);
+    this.options.onFlushed?.({ count, chars: addedChars });
+
+    // 让渡微任务让 React/Vue 接收 input 并解锁发送按钮
+    await sleep(80);
+
+    const sendBtn = findHostSendButton(editor);
+    if (sendBtn && !sendBtn.hasAttribute('disabled') && sendBtn.getAttribute('aria-disabled') !== 'true') {
+      sendBtn.click();
+    } else {
+      // 触发真实 Enter
+      editor.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'Enter',
+        code: 'Enter',
+        keyCode: 13,
+        which: 13,
+        bubbles: true,
+        cancelable: true,
+      }));
+    }
+
+    return true;
+  }
+
+  public insertOnly(): boolean {
+    const editor = this.editor;
+    const files = this.manager.list();
+    if (files.length === 0 || !editor || !editor.isConnected) return false;
+
+    const current = readEditorText(editor);
+    const next = this.appendPayload(current, files);
+    const ok = EditorWriter.setEntireContent(next, editor);
+    if (ok) {
+      this.renderer.clear();
+      this.manager.clear();
+    }
+    return ok;
   }
 
   private appendPayload(current: string, files: readonly PseudoFile[]): string {
@@ -232,25 +252,5 @@ export class SubmitInterceptor {
         : 'Below is the GitHub repository digest I attached. Please answer based on it:';
     const payload = synthesizePayload(files, { preamble });
     return current.trim().length > 0 ? `${current}\n\n${payload}` : payload;
-  }
-
-  /**
-   * Replace the composer's whole text with `next`.
-   *
-   * A wholesale replace (rather than an append) is what makes the flush
-   * idempotent: placeholder expansion rewrites text that is already mid-box,
-   * and the append path simply replaces the old value with old + payload.
-   */
-  private writeToEditor(editor: HTMLElement, next: string, currentLength: number): boolean {
-    if (editor instanceof HTMLTextAreaElement || editor instanceof HTMLInputElement) {
-      // Range [0, currentLength] == "replace everything", reusing the
-      // native-setter + input/change dispatch that controlled inputs need.
-      return EditorWriter.insertAtCursor(next, editor, { start: 0, end: currentLength });
-    }
-    if (editor.isContentEditable) {
-      selectAllContents(editor);
-      return EditorWriter.insertAtCursor(next, editor);
-    }
-    return false;
   }
 }

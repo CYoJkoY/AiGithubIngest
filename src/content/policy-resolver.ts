@@ -38,12 +38,15 @@ export function resolvePolicyHostnames(): string[] {
 }
 
 export function resolveActiveEditor(targetElement: HTMLElement | null): HTMLElement | null {
-  if (
-    targetElement instanceof HTMLTextAreaElement ||
-    targetElement instanceof HTMLInputElement ||
-    (targetElement && targetElement.isContentEditable)
-  ) {
+  if (targetElement instanceof HTMLTextAreaElement || targetElement instanceof HTMLInputElement) {
     return targetElement;
+  }
+  if (targetElement) {
+    const editableRoot = targetElement.closest<HTMLElement>(
+      'textarea, [contenteditable="true"], [role="textbox"]',
+    );
+    if (editableRoot) return editableRoot;
+    if (targetElement.isContentEditable) return targetElement;
   }
   const candidates = Array.from(
     document.querySelectorAll<HTMLElement>('textarea, [contenteditable="true"], [role="textbox"]'),
@@ -55,14 +58,12 @@ export function resolveEventTarget(event: ClipboardEvent): HTMLElement | null {
   const path = typeof event.composedPath === 'function' ? event.composedPath() : [];
   for (const node of path) {
     if (!(node instanceof HTMLElement)) continue;
-    if (
-      node instanceof HTMLTextAreaElement ||
-      node instanceof HTMLInputElement ||
-      node.isContentEditable ||
-      node.closest('[contenteditable="true"]')
-    ) {
+    if (node instanceof HTMLTextAreaElement || node instanceof HTMLInputElement) {
       return node;
     }
+    const editable = node.closest<HTMLElement>('[contenteditable="true"], [role="textbox"]');
+    if (editable) return editable;
+    if (node.isContentEditable) return node;
   }
   return event.target instanceof HTMLElement ? event.target : null;
 }
