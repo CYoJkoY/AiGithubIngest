@@ -213,18 +213,24 @@ export class SubmitInterceptor {
     await sleep(80);
 
     const sendBtn = findHostSendButton(editor);
-    if (sendBtn && !sendBtn.hasAttribute('disabled') && sendBtn.getAttribute('aria-disabled') !== 'true') {
+    if (
+      sendBtn &&
+      !sendBtn.hasAttribute('disabled') &&
+      sendBtn.getAttribute('aria-disabled') !== 'true'
+    ) {
       sendBtn.click();
     } else {
       // 触发真实 Enter
-      editor.dispatchEvent(new KeyboardEvent('keydown', {
-        key: 'Enter',
-        code: 'Enter',
-        keyCode: 13,
-        which: 13,
-        bubbles: true,
-        cancelable: true,
-      }));
+      editor.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'Enter',
+          code: 'Enter',
+          keyCode: 13,
+          which: 13,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
     }
 
     return true;

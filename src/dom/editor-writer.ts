@@ -6,10 +6,7 @@ export interface SavedRange {
 }
 
 export class EditorWriter {
-  public static setEntireContent(
-    text: string,
-    targetElement?: EventTarget | null,
-  ): boolean {
+  public static setEntireContent(text: string, targetElement?: EventTarget | null): boolean {
     const activeEl = (
       targetElement instanceof HTMLElement ? targetElement : document.activeElement
     ) as HTMLElement | null;
@@ -124,13 +121,15 @@ export class EditorWriter {
       const p = document.createElement('p');
       p.textContent = text;
       container.appendChild(p);
-      container.dispatchEvent(new InputEvent('beforeinput', {
-        bubbles: true,
-        cancelable: true,
-        composed: true,
-        inputType: 'insertText',
-        data: text,
-      }));
+      container.dispatchEvent(
+        new InputEvent('beforeinput', {
+          bubbles: true,
+          cancelable: true,
+          composed: true,
+          inputType: 'insertText',
+          data: text,
+        }),
+      );
       container.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
       container.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
       return true;
