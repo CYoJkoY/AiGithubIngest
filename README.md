@@ -20,6 +20,7 @@ Parse public and private GitHub repositories entirely inside your browser and se
   <a href="#readme-overview">Overview</a> ·
   <a href="#readme-features">Key Features</a> ·
   <a href="#readme-mechanism">Mechanism & Architecture</a> ·
+  <a href="#readme-design-system">Design System</a> ·
   <a href="#readme-supported-sites">Supported Platforms</a> ·
   <a href="#readme-quick-start">Quick Start</a> ·
   <a href="#readme-configuration">Configuration</a> ·
@@ -54,7 +55,9 @@ Streams & decompresses archive via fflate in RAM
          ↓
 Applies smart path filters & generates an ASCII tree
          ↓
-Mounts a single .md file directly as a native prompt attachment
+Splits the digest into size-bounded .md parts
+         ↓
+Delivers it: native .md attachment  *or*  pseudo-file (text splice on send)
 ```
 
 Everything executes inside your local browser runtime—no telemetry, no intermediate proxies, and zero leakage of proprietary code or Personal Access Tokens (PATs).
@@ -70,6 +73,8 @@ Everything executes inside your local browser runtime—no telemetry, no interme
 - **Anti-Freeze Fallback Protection:** When direct file mounting is restricted by a host platform, it gracefully injects a lightweight ASCII directory tree and metadata header directly at the cursor, preventing browser hang caused by multi-megabyte raw text pasting.
 - **Private Repository & PAT Support:** Supports user-configured GitHub Personal Access Tokens (PAT) stored safely in `chrome.storage.sync` to access private repositories and elevate API limits from 60 to 5,000 req/h.
 - **Smart Filter & Heuristic Token Estimator:** Automatically excludes binaries, minified files, lockfiles, virtual environments, build artifacts, and oversized files (>100 KB default), and calculates token counts aligned with modern LLM tokenizers (GPT-4o / o200k_base).
+- **Two Delivery Modes:** Choose how the digest reaches the chat — a **real `.md` file** pushed through the site's native upload pipeline, or a **pseudo-file** whose text stays in memory behind a lightweight card and is spliced into the prompt at send time. The popup states what each mode does and what happens if it fails.
+- **Zero-DOM-Pressure Pseudo-Files:** In pseudo-file mode, multi-megabyte text never enters the host document. Cards declare `contain: layout paint`, carry metadata only, and are garbage collected the instant the message is sent.
 - **Out-of-the-Box AI Site Policy:** Activates automatically on major AI platforms and allows custom domain whitelisting with one click from the popup interface.
 - **Standalone Web UI Included:** Features a standalone web interface (`index.html`) for manual pasting, token entry, and one-click clipboard copying without requiring extension background scripts.
 - **Modular Adapter Architecture:** Each AI platform is handled by an isolated adapter file. Adding a new site requires only adding one adapter and registering it—no modifications to the generic orchestrator.
@@ -93,6 +98,13 @@ AiGithubIngest follows a strictly bounded, low-overhead WebExtension architectur
 │         ├─ policy-resolver.ts → hostname / editor / event resolution    │
 │         ├─ storage-cache.ts   → chrome.storage cache + live updates     │
 │         └─ spa-listener.ts    → history.pushState / popstate hooks      │
+│                                                                         │
+│    └─ src/pseudo/            → pseudo-file engine (text delivery mode)  │
+│         ├─ payload.ts              → placeholder synthesis & formatting │
+│         ├─ pseudo-file-manager.ts  → in-memory payload registry + GC    │
+│         ├─ pseudo-file-renderer.ts → isolated metadata cards            │
+│         ├─ submit-interceptor.ts   → capture-phase splice on send       │
+│         └─ pseudo-file-engine.ts   → lifecycle orchestrator             │
 │                                                                         │
 │    └─ src/dom/                                                          │
 │         ├─ universal-editor.ts → adapter orchestrator (≤ 200 lines)     │
@@ -190,6 +202,44 @@ No changes to `paste-handler.ts`, `content/index.ts`, or any other module are re
 
 ---
 
+<a name="readme-design-system"></a>
+
+## <img src="assets/readme/icons/visual-design.svg" width="24" height="24" alt=""> Design System
+
+Every visual surface in this project speaks one language: **Wabi-Press · 侘寂刊本**,
+the canonical design system published by [AzSkills](https://github.com/CYoJkoY/AzSkills)
+(vendored under MIT — see [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)).
+
+```text
+和纸为底 · 松烟墨为骨 · 朱砂落印 · 发丝定界
+washi ground · pine-soot ink · cinnabar seal · hairline rules
+```
+
+| Principle | Consequence in this codebase |
+| :--- | :--- |
+| One token authority | `src/ui/wabi-press.css` is the only place token values are defined. `popup.css` and `style.css` compose; neither redefines a token. |
+| Hairlines over shadows | Depth comes from 1px borders and background lightness steps. No heavy shadows, no glow, no pure `#000`/`#FFF`. |
+| Ink absorption, not bounce | `--ease-paper` (240–320ms) for surfaces, `--ease-ink` (120–150ms) for micro-interactions. No spring, no scale-on-press. |
+| Editorial typography | Serif display stack for titles, monocle-tight mono for identifiers, `tabular-nums` on every number, 65ch prose measure. |
+| State is never motion-only | Hover and active states change an ink line or a background step, so they survive `prefers-reduced-motion`. |
+
+### Surfaces
+
+| Surface | File | Notes |
+| :--- | :--- | :--- |
+| Extension popup | `src/popup/popup.css` + `popup.html` | ~380px sheet, `SEC. 01–05` numbered sections, status before configuration. |
+| Standalone page | `style.css` + `index.html` | Single measured reading column. |
+| Toast | `src/ui/toast.css` | Injected into third-party pages — the spectrum is re-declared inside the component root. |
+| Pseudo-file dock | `src/pseudo/pseudo-file.css` | Injected — scoped tokens + `all: initial` isolation + `contain: layout paint`. |
+
+> **Why injected surfaces do not use `:root`.** `toast.css` and `pseudo-file.css`
+> run inside arbitrary AI sites. Writing `--bg-canvas` onto a host document's
+> `:root` would clobber that site's own design system, so both files scope the
+> palette to their component root and isolate inherited typography with
+> `all: initial`.
+
+---
+
 <a name="readme-supported-sites"></a>
 
 ## <img src="assets/readme/icons/sites.svg" width="24" height="24" alt=""> Supported Platforms
@@ -254,8 +304,15 @@ Then load the resulting `dist/` directory as an unpacked extension in your brows
 Click the extension icon in your browser toolbar to open the settings popup:
 
 - **Site Policy:** Inspects current tab status. Toggle any domain into the custom whitelist or blacklist.
+- **Delivery Mode (摘要交付方式):** Pick how the repository digest reaches the chat composer.
+  | Mode | Behaviour | On failure |
+  |---|---|---|
+  | **Real `.md` file** (default) | Builds `File` objects and pushes them through the site's native upload pipeline. The AI sees a genuine attachment. | Falls back to an ASCII tree inserted at the cursor. |
+  | **Pseudo-file (text)** | The digest text stays in memory; only a metadata card is rendered above the composer. Pressing <kbd>Enter</kbd> splices the full text into the message. Bypasses upload size limits and per-site attachment restrictions. | Falls back to the real-file upload path automatically. |
 - **GitHub Token:** Enter a Personal Access Token (classic with `repo` scope or fine-grained read token). This allows accessing private repositories and raises API rate limits to 5,000 requests/hour.
+- **Shard Threshold:** Per-site and global single-file size limits (KB/MB). Oversized digests are split into numbered `.partNofM.md` files.
 - **Language:** Switch between English and Simplified Chinese (`zh-CN`).
+- **Spectrum:** Switch between the washi light (和纸) and inkstone dark (砚石) palettes; the choice also applies to surfaces injected into AI sites.
 
 ---
 

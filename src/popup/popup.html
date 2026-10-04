@@ -3,155 +3,264 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <!-- Wabi-Press · 侘寂刊本 is the single token authority; popup.css only composes. -->
+    <link rel="stylesheet" href="wabi-press.css" />
     <link rel="stylesheet" href="popup.css" />
   </head>
-  <body>
-    <div class="container">
-      <!-- 顶栏：品牌标识与左右滑块控制区域 -->
-      <header class="app-topbar">
-        <div class="brand-group">
-          <img src="assets/icon.svg" class="app-logo" alt="Logo" width="22" height="22" />
-          <span class="app-name">AiGithubIngest</span>
+  <body class="wabi-density-compact">
+    <div class="sheet">
+      <!-- ==================================================================
+           报头 · Masthead — identity, locale, and spectrum in one band
+           ================================================================== -->
+      <header class="masthead">
+        <div class="wabi-meta-header">
+          <span class="meta-index">VOL. 01</span>
+          <span class="masthead-org">AIGITHUBINGEST / POLICY</span>
+          <span class="meta-rule" aria-hidden="true"></span>
+          <span class="seal seal-cinnabar" aria-hidden="true">墨</span>
         </div>
-        <div class="topbar-actions">
-          <!-- 界面语言左右滑块切换 (中 <-> EN) -->
-          <div class="switch-control" id="lang-switch-wrapper">
-            <!-- 移除硬编码 title，由 JS 注入 -->
-            <input
-              type="checkbox"
-              id="lang-toggle"
-              class="switch-checkbox"
-              aria-label="Language Switch"
-            />
-            <label for="lang-toggle" class="switch-slider">
-              <span class="switch-label left">中</span>
-              <span class="switch-label right">EN</span>
-              <span class="switch-thumb"></span>
-            </label>
-          </div>
 
-          <!-- 日间/夜间模式左右滑块切换 (☀️ <-> 🌙) -->
-          <div class="switch-control" id="theme-switch-wrapper">
-            <input
-              type="checkbox"
-              id="theme-toggle"
-              class="switch-checkbox"
-              aria-label="Theme Switch"
-            />
-            <label for="theme-toggle" class="switch-slider">
-              <span class="switch-icon left" aria-hidden="true">
-                <svg viewBox="0 0 24 24" focusable="false">
+        <div class="masthead-row">
+          <h1 class="masthead-title">AiGithubIngest</h1>
+
+          <div class="masthead-actions">
+            <!-- 界面语言 · 中 <-> EN -->
+            <div class="wabi-segmented" id="lang-switch-wrapper" role="group" aria-label="Language">
+              <button
+                type="button"
+                class="wabi-segmented-option"
+                id="lang-option-zh"
+                data-lang="zh-CN"
+                aria-pressed="true"
+              >
+                中
+              </button>
+              <button
+                type="button"
+                class="wabi-segmented-option"
+                id="lang-option-en"
+                data-lang="en"
+                aria-pressed="false"
+              >
+                EN
+              </button>
+            </div>
+
+            <!-- 明度谱 · 和纸 <-> 砚石 -->
+            <div class="wabi-segmented" id="theme-switch-wrapper" role="group" aria-label="Theme">
+              <button
+                type="button"
+                class="wabi-segmented-option"
+                id="theme-option-light"
+                data-theme-value="light"
+                aria-pressed="true"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                   <circle cx="12" cy="12" r="3.2" />
-                  <path d="M12 3.5v2.2" />
-                  <path d="M12 18.3v2.2" />
-                  <path d="M3.5 12h2.2" />
-                  <path d="M18.3 12h2.2" />
-                  <path d="M6.3 6.3l1.6 1.6" />
-                  <path d="M16.1 16.1l1.6 1.6" />
-                  <path d="M17.7 6.3l-1.6 1.6" />
-                  <path d="M7.9 16.1l-1.6 1.6" />
+                  <path d="M12 3.5v2.2M12 18.3v2.2M3.5 12h2.2M18.3 12h2.2" />
+                  <path d="M6.3 6.3l1.6 1.6M16.1 16.1l1.6 1.6" />
+                  <path d="M17.7 6.3l-1.6 1.6M7.9 16.1l-1.6 1.6" />
                 </svg>
-              </span>
-              <span class="switch-icon right" aria-hidden="true">
-                <svg viewBox="0 0 24 24" focusable="false">
+                <span class="wabi-sr-only">和纸 · Light</span>
+              </button>
+              <button
+                type="button"
+                class="wabi-segmented-option"
+                id="theme-option-dark"
+                data-theme-value="dark"
+                aria-pressed="false"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                   <path d="M20.2 14.2A8.2 8.2 0 0 1 9.8 3.8a8.2 8.2 0 1 0 10.4 10.4Z" />
                 </svg>
-              </span>
-              <span class="switch-thumb"></span>
-            </label>
-          </div>
+                <span class="wabi-sr-only">砚石 · Dark</span>
+              </button>
+            </div>
 
-          <a
-            id="github-link"
-            class="topbar-icon-link"
-            href="https://github.com/CYoJkoY/AiGithubIngest"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="GitHub Repository"
-          >
-            <img src="assets/icon-github.svg" alt="" width="15" height="15" />
-          </a>
+            <a
+              id="github-link"
+              class="wabi-icon-button"
+              href="https://github.com/CYoJkoY/AiGithubIngest"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="GitHub Repository"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path
+                  d="M9 19.3c-3.6 1.1-3.6-1.8-5-2.2m10 4.2v-3.6a3 3 0 0 0-.9-2.4c2.9-.3 5-1.5 5-5.9a4.6 4.6 0 0 0-1.3-3.2 4.3 4.3 0 0 0-.1-3.2s-1.4-.4-4.5 1.7a11.3 11.3 0 0 0-5.8 0C3.3 2.6 1.9 3 1.9 3a4.3 4.3 0 0 0-.1 3.2A4.6 4.6 0 0 0 .5 9.4c0 4.4 2.1 5.6 5 5.9a3 3 0 0 0-.9 2.3V21"
+                />
+              </svg>
+            </a>
+          </div>
         </div>
       </header>
 
-      <!-- 核心站点状态与策略卡片 -->
-      <section class="card card-policy">
-        <div class="card-header">
-          <span class="section-title" id="lbl-title">当前站点策略</span>
-          <span id="site-badge" class="badge badge--neutral">
-            <span class="badge-dot"></span>
-            <span class="badge-text">Checking...</span>
-          </span>
-        </div>
-        <div class="site-display-box">
-          <span class="site-icon">🌐</span>
-          <span class="current-site-domain" id="current-domain">--</span>
-        </div>
-        <div class="action-btn-group">
-          <button id="toggle-btn" class="btn btn-primary btn-action" disabled>...</button>
-          <button id="blacklist-current-btn" class="btn btn-danger btn-action hidden"></button>
-        </div>
-      </section>
+      <div class="hairline" role="presentation"></div>
 
-      <!-- 黑名单快捷控制卡片 -->
-      <section class="card">
-        <div class="card-header">
-          <span class="section-title" id="lbl-blacklist-title">黑名单管理</span>
-        </div>
-        <div class="input-action-row">
-          <input
-            id="blacklist-input"
-            type="text"
-            class="input-text"
-            placeholder="输入域名，如 doubao.com"
-            autocomplete="off"
-            spellcheck="false"
-          />
-          <button id="add-blacklist-btn" class="btn btn-secondary btn-compact">拉黑</button>
-        </div>
-        <div id="blacklist-tags" class="blacklist-tags"></div>
-      </section>
+      <main class="sheet-body">
+        <!-- ==============================================================
+             SEC. 01 · 当前站点策略 — status first, action second
+             ============================================================== -->
+        <section class="wabi-card" aria-labelledby="lbl-title">
+          <div class="wabi-meta-header">
+            <span class="meta-index">SEC. 01</span>
+            <span id="lbl-title">当前站点策略</span>
+            <span class="meta-rule" aria-hidden="true"></span>
+            <span id="site-badge" class="wabi-chip" data-state="neutral">
+              <span class="badge-text">Checking...</span>
+            </span>
+          </div>
 
-      <!-- GitHub 凭据配置卡片 -->
-      <section class="card">
-        <div class="card-header">
-          <span class="section-title" id="lbl-token-title">GitHub PAT 凭据</span>
-        </div>
-        <div class="input-action-row token-row">
-          <input
-            id="token-input"
-            type="password"
-            class="input-text token-input"
-            placeholder="ghp_xxx (repo scope)"
-            autocomplete="off"
-            spellcheck="false"
-          />
-          <button
-            id="toggle-token-visibility"
-            class="btn-icon"
-            title="Toggle Visibility"
-            aria-label="Toggle Visibility"
-          >
-            👁
-          </button>
-        </div>
-        <p class="hint-text" id="lbl-token-hint"></p>
-        <div class="btn-grid-dual">
-          <button id="save-token-btn" class="btn btn-primary">保存</button>
-          <button id="clear-token-btn" class="btn btn-secondary">清除</button>
-        </div>
-        <div id="token-status" class="token-status" aria-live="polite"></div>
-      </section>
+          <div class="site-display-box">
+            <span class="site-mark" aria-hidden="true">◍</span>
+            <span class="current-site-domain" id="current-domain">--</span>
+          </div>
 
-      <!-- 站点文件大小阈值设置 -->
-      <section class="card">
-        <div class="card-header">
-          <span class="section-title" id="lbl-site-limits-title">分片阈值配置 (MB)</span>
-        </div>
-        <p class="hint-text" id="lbl-site-limits-hint"></p>
-        <div id="site-limits-list" class="site-limits-list"></div>
-      </section>
+          <div class="action-btn-group">
+            <button id="toggle-btn" class="wabi-button wabi-button--primary" disabled>...</button>
+            <button
+              id="blacklist-current-btn"
+              class="wabi-button wabi-button--ghost hidden"
+            ></button>
+          </div>
+        </section>
+
+        <!-- ==============================================================
+             SEC. 02 · 交付方式 — real .md attachment vs. pseudo-file
+             ============================================================== -->
+        <section class="wabi-card" aria-labelledby="lbl-send-mode-title">
+          <div class="wabi-meta-header">
+            <span class="meta-index">SEC. 02</span>
+            <span id="lbl-send-mode-title">摘要交付方式</span>
+            <span class="meta-rule" aria-hidden="true"></span>
+            <span class="seal seal-moss" aria-hidden="true">函</span>
+          </div>
+
+          <div class="send-mode-control">
+            <div
+              class="wabi-segmented wabi-segmented--block"
+              id="send-mode-switch"
+              role="radiogroup"
+              aria-labelledby="lbl-send-mode-title"
+            >
+              <button
+                type="button"
+                class="wabi-segmented-option"
+                id="send-mode-real"
+                data-send-mode="real-file"
+                role="radio"
+                aria-checked="true"
+              ></button>
+              <button
+                type="button"
+                class="wabi-segmented-option"
+                id="send-mode-pseudo"
+                data-send-mode="pseudo-file"
+                role="radio"
+                aria-checked="false"
+              ></button>
+            </div>
+          </div>
+
+          <p class="hint-text" id="lbl-send-mode-hint"></p>
+
+          <dl class="meta-field-list" id="send-mode-facts"></dl>
+        </section>
+
+        <!-- ==============================================================
+             SEC. 03 · 黑名单管理
+             ============================================================== -->
+        <section class="wabi-card" aria-labelledby="lbl-blacklist-title">
+          <div class="wabi-meta-header">
+            <span class="meta-index">SEC. 03</span>
+            <span id="lbl-blacklist-title">黑名单管理</span>
+            <span class="meta-rule" aria-hidden="true"></span>
+          </div>
+
+          <div class="input-action-row">
+            <input
+              id="blacklist-input"
+              type="text"
+              class="wabi-input wabi-input--mono"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <button id="add-blacklist-btn" class="wabi-button wabi-button--ghost"></button>
+          </div>
+
+          <div id="blacklist-tags" class="blacklist-tags"></div>
+        </section>
+
+        <!-- ==============================================================
+             SEC. 04 · GitHub PAT 凭据
+             ============================================================== -->
+        <section class="wabi-card" aria-labelledby="lbl-token-title">
+          <div class="wabi-meta-header">
+            <span class="meta-index">SEC. 04</span>
+            <span id="lbl-token-title">GitHub PAT 凭据</span>
+            <span class="meta-rule" aria-hidden="true"></span>
+            <span class="wabi-chip wabi-chip--moss" id="token-state-chip" data-state="empty">
+              <span id="token-state-text">未配置</span>
+            </span>
+          </div>
+
+          <div class="input-action-row">
+            <input
+              id="token-input"
+              type="password"
+              class="wabi-input wabi-input--mono"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <button
+              id="toggle-token-visibility"
+              class="wabi-icon-button"
+              aria-label="Toggle Visibility"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M2.5 12S6 5.8 12 5.8 21.5 12 21.5 12 18 18.2 12 18.2 2.5 12 2.5 12Z" />
+                <circle cx="12" cy="12" r="2.8" />
+              </svg>
+            </button>
+          </div>
+
+          <p class="hint-text" id="lbl-token-hint"></p>
+
+          <div class="btn-grid-dual">
+            <button id="save-token-btn" class="wabi-button wabi-button--primary"></button>
+            <button id="clear-token-btn" class="wabi-button wabi-button--ghost"></button>
+          </div>
+
+          <div id="token-status" class="inline-status" aria-live="polite"></div>
+        </section>
+
+        <!-- ==============================================================
+             SEC. 05 · 分片阈值配置
+             ============================================================== -->
+        <section class="wabi-card" aria-labelledby="lbl-site-limits-title">
+          <div class="wabi-meta-header">
+            <span class="meta-index">SEC. 05</span>
+            <span id="lbl-site-limits-title">分片阈值配置 (MB)</span>
+            <span class="meta-rule" aria-hidden="true"></span>
+          </div>
+
+          <p class="hint-text" id="lbl-site-limits-hint"></p>
+
+          <div id="site-limits-list" class="site-limits-list"></div>
+        </section>
+      </main>
+
+      <div class="hairline" role="presentation"></div>
+
+      <!-- 版权页 · Colophon -->
+      <footer class="colophon">
+        <span class="colophon-mark">Wabi-Press · 侘寂刊本</span>
+        <span class="meta-rule" aria-hidden="true"></span>
+        <span class="colophon-version" id="colophon-version">v0.0.0</span>
+      </footer>
     </div>
+
     <script type="module" src="popup.js"></script>
   </body>
 </html>

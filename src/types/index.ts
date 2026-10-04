@@ -78,6 +78,37 @@ export type ExtensionResponse =
 export type SupportedLang = 'zh-CN' | 'en';
 export type ThemeMode = 'light' | 'dark';
 
+/**
+ * How a repository digest is handed to the host AI chat surface.
+ *
+ * - `real-file`   — build `File` objects and push them through the site's real
+ *                   upload pipeline (file input / drop zone / paste adapter).
+ * - `pseudo-file` — keep the text in memory, render a lightweight metadata
+ *                   card, and splice the content into the prompt at submit
+ *                   time. Nothing large ever enters the host DOM.
+ */
+export type DigestSendMode = 'real-file' | 'pseudo-file';
+
+/**
+ * A large text payload held outside the DOM.
+ *
+ * `content` is the single source of truth and is never written into the host
+ * document until the moment of submission. The DOM only ever sees `id`,
+ * `name`, `size`, and `tokenEstimate`.
+ */
+export interface PseudoFile {
+  /** Unique handle, format `pf_[base36 timestamp][base36 counter]`. */
+  readonly id: string;
+  /** File name including extension; drives icon + syntax inference. */
+  readonly name: string;
+  /** Payload size in bytes (UTF-8). */
+  readonly size: number;
+  /** Full raw text. Resident in memory only — never injected into the DOM. */
+  readonly content: string;
+  /** Estimated token count for the payload. */
+  readonly tokenEstimate: number;
+}
+
 export interface StorageSchema {
   readonly userWhitelist?: readonly string[];
   readonly userBlacklist?: readonly string[];
@@ -88,4 +119,6 @@ export interface StorageSchema {
   readonly siteFileSizeLimits?: Readonly<Record<string, number>>;
   /** Fallback single-file limit (bytes) for hostnames not present in {@link siteFileSizeLimits}. */
   readonly defaultFileSizeLimit?: number;
+  /** How digests are delivered to the host chat surface. Defaults to `real-file`. */
+  readonly digestSendMode?: DigestSendMode;
 }

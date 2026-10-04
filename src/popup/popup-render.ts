@@ -1,9 +1,11 @@
 import { t, I18nKey } from '../core/i18n';
 import { StorageSchema, SupportedLang, ThemeMode } from '../types';
 import { renderBlacklistTags } from './blacklist-view';
+import { renderSendMode } from './send-mode-view';
 import { renderSitePolicy } from './site-policy-view';
 import { renderSiteLimits } from './site-limits-view';
 import { StorageService } from './storage-service';
+import { datasetKey, querySwitchOptions } from './segmented-switch';
 
 export async function getStorage(): Promise<StorageSchema> {
   return StorageService.load();
@@ -16,6 +18,7 @@ interface TextBinding {
 
 const TEXT_BINDINGS: readonly TextBinding[] = [
   { id: 'lbl-title', key: 'popupTitle' },
+  { id: 'lbl-send-mode-title', key: 'sendModeTitle' },
   { id: 'lbl-blacklist-title', key: 'blacklistSectionTitle' },
   { id: 'add-blacklist-btn', key: 'addBlacklistBtn' },
   { id: 'lbl-token-title', key: 'tokenSectionTitle' },
@@ -35,24 +38,29 @@ function updateStaticTexts(lang: SupportedLang): void {
   }
 }
 
-function updateTopBar(storage: StorageSchema, lang: SupportedLang): void {
-  // 1. 同步语言滑块
-  const langToggle = document.getElementById('lang-toggle') as HTMLInputElement | null;
-  if (langToggle) {
-    langToggle.checked = lang === 'en';
-  }
+/** Paint the two masthead switches from the resolved locale/spectrum. */
+function syncSegmentedSwitch(wrapperId: string, attribute: string, activeValue: string): void {
+  const wrapper = document.getElementById(wrapperId);
+  if (!wrapper) return;
 
-  // 2. 同步日间/夜间模式滑块
-  const themeToggle = document.getElementById('theme-toggle') as HTMLInputElement | null;
+  for (const option of querySwitchOptions(wrapper, attribute)) {
+    const selected = option.dataset[datasetKey(attribute)] === activeValue;
+    option.setAttribute('aria-pressed', String(selected));
+  }
+}
+
+function applyTheme(theme: ThemeMode): void {
+  document.documentElement.dataset.theme = theme;
+}
+
+function updateTopBar(storage: StorageSchema, lang: SupportedLang): void {
   const isSystemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
   const resolvedTheme: ThemeMode = storage.theme ?? (isSystemDark ? 'dark' : 'light');
 
-  document.documentElement.dataset.theme = resolvedTheme;
-  if (themeToggle) {
-    themeToggle.checked = resolvedTheme === 'dark';
-  }
+  applyTheme(resolvedTheme);
+  syncSegmentedSwitch('lang-switch-wrapper', 'lang', lang);
+  syncSegmentedSwitch('theme-switch-wrapper', 'theme-value', resolvedTheme);
 
-  // 3. 同步 GitHub 链接
   const githubLink = document.getElementById('github-link') as HTMLAnchorElement | null;
   if (githubLink) {
     const label = t('openGithubRepo', lang);
@@ -60,15 +68,11 @@ function updateTopBar(storage: StorageSchema, lang: SupportedLang): void {
     githubLink.setAttribute('title', label);
   }
 
-  // 4. 设置 switch 的 title
   const langWrapper = document.getElementById('lang-switch-wrapper');
-  if (langWrapper) {
-    langWrapper.title = t('popupLangSwitchTitle', lang);
-  }
+  if (langWrapper) langWrapper.title = t('popupLangSwitchTitle', lang);
+
   const themeWrapper = document.getElementById('theme-switch-wrapper');
-  if (themeWrapper) {
-    themeWrapper.title = t('popupThemeSwitchTitle', lang);
-  }
+  if (themeWrapper) themeWrapper.title = t('popupThemeSwitchTitle', lang);
 }
 
 function updateInputs(storage: StorageSchema, lang: SupportedLang): void {
@@ -78,14 +82,37 @@ function updateInputs(storage: StorageSchema, lang: SupportedLang): void {
   }
 
   const tokenInput = document.getElementById('token-input') as HTMLInputElement | null;
-  if (!tokenInput) {
-    return;
+  if (tokenInput) {
+    tokenInput.placeholder = t('tokenPlaceholder', lang);
+    if (Boolean(storage.githubToken) && !tokenInput.dataset.dirty) {
+      tokenInput.value = storage.githubToken ?? '';
+    }
   }
 
-  tokenInput.placeholder = t('tokenPlaceholder', lang);
-  const shouldSyncToken = Boolean(storage.githubToken) && !tokenInput.dataset.dirty;
-  if (shouldSyncToken) {
-    tokenInput.value = storage.githubToken ?? '';
+  updateTokenState(storage, lang);
+}
+
+/** The PAT section states its own status — a trust boundary, not a form field. */
+function updateTokenState(storage: StorageSchema, lang: SupportedLang): void {
+  const chip = document.getElementById('token-state-chip');
+  const text = document.getElementById('token-state-text');
+  const configured = Boolean(storage.githubToken);
+  if (text) {
+    text.textContent = configured ? t('tokenStateSet', lang) : t('tokenStateEmpty', lang);
+  }
+  if (chip) {
+    chip.setAttribute('data-state', configured ? 'set' : 'empty');
+    chip.className = configured ? 'wabi-chip wabi-chip--moss' : 'wabi-chip';
+  }
+}
+
+function updateColophon(): void {
+  const el = document.getElementById('colophon-version');
+  if (!el) return;
+  try {
+    el.textContent = `v${chrome.runtime.getManifest().version}`;
+  } catch {
+    el.textContent = '';
   }
 }
 
@@ -97,7 +124,9 @@ export async function render(): Promise<void> {
   updateTopBar(storage, currentLang);
   updateStaticTexts(currentLang);
   updateInputs(storage, currentLang);
+  updateColophon();
 
+  renderSendMode(storage, currentLang, render);
   renderBlacklistTags(blacklist, currentLang, render);
   await renderSiteLimits(storage, currentLang, render);
   await renderSitePolicy(storage, currentLang, render);

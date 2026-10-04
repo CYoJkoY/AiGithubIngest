@@ -89,7 +89,7 @@ function makeNumberInput(bytes: number, unit: Unit): HTMLInputElement {
   input.type = 'number';
   input.min = unit === 'MB' ? '0.01' : '1';
   input.step = unit === 'MB' ? '0.5' : '1';
-  input.className = 'input-text site-limit-input';
+  input.className = 'wabi-input wabi-input--mono site-limit-input';
   input.value = formatValue(bytes, unit);
   input.autocomplete = 'off';
   input.spellcheck = false;
@@ -123,7 +123,7 @@ function makeIconButton(
 ): HTMLButtonElement {
   const btn = document.createElement('button');
   btn.type = 'button';
-  btn.className = `btn-icon site-limit-icon-btn site-limit-icon-btn--${variant}`;
+  btn.className = `wabi-icon-button site-limit-icon-btn site-limit-icon-btn--${variant}`;
   btn.textContent = glyph;
   btn.title = title;
   btn.setAttribute('aria-label', title);
@@ -286,7 +286,7 @@ function buildAddRow(currentHost: string | null, ctx: RowContext): HTMLElement {
 
   const domainInput = document.createElement('input');
   domainInput.type = 'text';
-  domainInput.className = 'input-text site-limit-domain';
+  domainInput.className = 'wabi-input wabi-input--mono site-limit-domain';
   domainInput.placeholder = t('siteFileLimitDomainPlaceholder', ctx.currentLang);
   domainInput.autocomplete = 'off';
   domainInput.spellcheck = false;
@@ -306,7 +306,7 @@ function buildAddRow(currentHost: string | null, ctx: RowContext): HTMLElement {
 
   const addBtn = document.createElement('button');
   addBtn.type = 'button';
-  addBtn.className = 'btn btn-secondary btn-inline site-limit-add-btn';
+  addBtn.className = 'wabi-button wabi-button--ghost site-limit-add-btn';
   addBtn.textContent = t('siteFileLimitAddBtn', ctx.currentLang);
   addBtn.addEventListener('click', () => {
     void addSiteLimit(domainInput, sizeInput, select, ctx);
@@ -323,11 +323,14 @@ export async function renderSiteLimits(
 ): Promise<void> {
   const container = document.getElementById('site-limits-list');
   if (!container) return;
-  container.innerHTML = '';
 
   const userLimits = { ...(storage.siteFileSizeLimits ?? {}) };
   const defaultBytes = storage.defaultFileSizeLimit ?? DEFAULT_FILE_SIZE_LIMIT;
   const currentHost = await resolveCurrentHostname();
+
+  // Clearing happens *after* the await, so two overlapping renders resolve
+  // last-writer-wins instead of appending two copies of the list.
+  container.innerHTML = '';
   const ctx: RowContext = { userLimits, currentLang, onUpdate };
 
   if (currentHost) {

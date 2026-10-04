@@ -1,6 +1,6 @@
 import { evaluateSitePolicyForHostnames, resolveSiteLimit } from '../core/policy';
 import { extractGitHubRepo } from '../core/parser';
-import { OutputFormatter } from '../core/output-formatter';
+import { OutputFormatter, type DigestPart } from '../core/output-formatter';
 import { UniversalEditor } from '../dom/universal-editor';
 import { showToast } from '../ui/toast';
 import { ExtensionResponse, IngestSummary } from '../types';
@@ -8,6 +8,7 @@ import { t } from '../core/i18n';
 import { IngestGuard } from '../core/ingest-guard';
 import { DomainError } from '../core/errors';
 import { logger } from '../core/logger';
+import { PseudoFileEngine } from '../pseudo/pseudo-file-engine';
 import { resolvePolicyHostnames, resolveActiveEditor, resolveEventTarget } from './policy-resolver';
 import { sleep } from '../dom/dom-utils';
 import { SavedRange } from '../dom/editor-writer';
@@ -15,6 +16,8 @@ import {
   cachedWhitelist,
   cachedBlacklist,
   cachedLang,
+  cachedTheme,
+  cachedDigestSendMode,
   cachedSiteFileSizeLimits,
   cachedDefaultFileSizeLimit,
 } from './storage-cache';
@@ -159,10 +162,7 @@ function extractOwnerRepo(canonicalUrl: string): { owner: string; repo: string }
   return { owner: m?.[1] ?? 'repo', repo: m?.[2] ?? 'digest' };
 }
 
-async function mountDigestParts(
-  summary: IngestSummary,
-  targetElement: HTMLElement | null,
-): Promise<MountOutcome> {
+function buildDigestParts(summary: IngestSummary): DigestPart[] {
   const { owner, repo } = extractOwnerRepo(summary.repoInfo.canonicalUrl);
   const baseName = `${owner}_${repo}`;
 
@@ -179,14 +179,106 @@ async function mountDigestParts(
     cachedDefaultFileSizeLimit,
   );
 
-  const parts = OutputFormatter.splitIntoParts(
+  return OutputFormatter.splitIntoParts(
     summaryPrefix,
     summary.treeVisual,
     summary.files,
     limit,
     baseName,
   );
+}
 
+/**
+ * Delivery router: pseudo-file mode first when selected, real-file upload as
+ * the guaranteed path.
+ *
+ * A pseudo mount that cannot find a composer must never lose the digest, so
+ * it falls through to the upload pipeline instead of reporting failure.
+ */
+async function mountDigestParts(
+  summary: IngestSummary,
+  targetElement: HTMLElement | null,
+): Promise<MountOutcome> {
+  const parts = buildDigestParts(summary);
+
+  if (cachedDigestSendMode === 'pseudo-file') {
+    const pseudoOutcome = mountPseudoParts(parts, targetElement);
+    if (pseudoOutcome === 'mounted') return 'mounted';
+    showToast(t('pseudoModeUnavailable', cachedLang), 'info', 4000, INGEST_STATUS_TOAST_KEY);
+  }
+
+  return mountRealParts(parts, summary, targetElement);
+}
+
+/** Text stays in memory; only metadata cards reach the DOM. */
+function mountPseudoParts(
+  parts: readonly DigestPart[],
+  targetElement: HTMLElement | null,
+): MountOutcome {
+  const editor = targetElement ?? resolveActiveEditor(null);
+  const engine = resolveEngine();
+  const result = engine.mount(parts, editor);
+
+  if (!result.ok) return 'failed';
+
+  if (result.rejected.length > 0) {
+    showToast(
+      t('pseudoLimitHit', cachedLang, { skipped: result.rejected.length }),
+      'error',
+      6000,
+      INGEST_STATUS_TOAST_KEY,
+    );
+  }
+
+  showToast(
+    t('pseudoMounted', cachedLang, { count: result.registered }),
+    'success',
+    4000,
+    INGEST_STATUS_TOAST_KEY,
+  );
+  return 'mounted';
+}
+
+/**
+ * Drop the page's pseudo-file dock.
+ *
+ * Called on SPA navigation: the host composer is about to be rebuilt, so any
+ * pending digest would be flushed into a node that no longer exists.
+ */
+export function disposePseudoEngine(): void {
+  activeEngine?.dispose();
+  activeEngine = null;
+}
+
+let activeEngine: PseudoFileEngine | null = null;
+
+/**
+ * Reuse the page's engine across pastes so successive digests stack in one
+ * dock, but never reuse one whose dock was destroyed by a SPA navigation.
+ */
+function resolveEngine(): PseudoFileEngine {
+  if (activeEngine && activeEngine.isHealthy()) return activeEngine;
+
+  activeEngine?.dispose();
+  activeEngine = new PseudoFileEngine({
+    lang: cachedLang,
+    theme: cachedTheme,
+    onFlushed: ({ count }) => {
+      showToast(t('pseudoFlushed', cachedLang, { count }), 'success', 3500);
+    },
+    onEmptied: () => {
+      activeEngine?.dispose();
+      activeEngine = null;
+    },
+  });
+  return activeEngine;
+}
+
+async function mountRealParts(
+  parts: readonly DigestPart[],
+  summary: IngestSummary,
+  targetElement: HTMLElement | null,
+): Promise<MountOutcome> {
   if (parts.length === 1) {
     const file = new File([parts[0].content], parts[0].fileName, { type: 'text/markdown' });
     const ok = await UniversalEditor.attachVirtualFile(file, targetElement);

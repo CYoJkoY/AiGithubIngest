@@ -1,4 +1,4 @@
-import { StorageSchema, SupportedLang, ThemeMode } from '../types';
+import { StorageSchema, SupportedLang, ThemeMode, DigestSendMode } from '../types';
 import { normalizeHostname } from '../core/policy';
 
 export class StorageService {
@@ -13,6 +13,7 @@ export class StorageService {
           'theme',
           'siteFileSizeLimits',
           'defaultFileSizeLimit',
+          'digestSendMode',
         ],
         (res) => resolve((res as StorageSchema) ?? {}),
       );
@@ -25,6 +26,10 @@ export class StorageService {
 
   public static async setTheme(theme: ThemeMode): Promise<void> {
     await chrome.storage.sync.set({ theme });
+  }
+
+  public static async setDigestSendMode(digestSendMode: DigestSendMode): Promise<void> {
+    await chrome.storage.sync.set({ digestSendMode });
   }
 
   public static async saveGitHubToken(githubToken: string): Promise<void> {

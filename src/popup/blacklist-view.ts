@@ -23,13 +23,15 @@ export function renderBlacklistTags(
     const tag = document.createElement('span');
     tag.className = 'blacklist-tag';
     const text = document.createElement('span');
+    text.className = 'blacklist-tag-text';
     text.textContent = domain;
     tag.appendChild(text);
 
     const delBtn = document.createElement('button');
-    delBtn.className = 'tag-remove-btn';
+    delBtn.className = 'blacklist-tag-remove';
     delBtn.textContent = '×';
     delBtn.title = t('removeFromBlacklistBtn', currentLang);
+    delBtn.setAttribute('aria-label', t('removeFromBlacklistBtn', currentLang));
     delBtn.onclick = async () => {
       await StorageService.removeBlacklist(domain);
       await onUpdate();

@@ -1,0 +1,922 @@
+/* ============================================================================
+   Wabi-Press · 侘寂刊本 — AzSkills canonical design system
+   ----------------------------------------------------------------------------
+   Material: washi paper (和纸) + pine-soot ink (松烟墨).
+   Prohibited: pure #000000, pure #FFFFFF, heavy shadows, spring/bounce motion.
+   Depth comes from 1px hairline borders + background lightness steps only.
+   Single source of truth for every AzSkills-owned visual surface.
+   ----------------------------------------------------------------------------
+   PROVENANCE — vendored into AiGithubIngest
+   Source: https://github.com/CYoJkoY/AzSkills → design-system/wabi-press.css
+   License: MIT © 2026 CYoJkoY (see THIRD_PARTY_NOTICES.md)
+   Class:   verified-token (colors, type, spacing, radii, motion curves)
+            verified-prose (material thesis, prohibited list, motion intent)
+
+   USAGE CONTRACT FOR THIS REPOSITORY
+   1. This file is authoritative for extension-owned surfaces: the popup
+      (src/popup/popup.css) and the standalone page (style.css). Both load it
+      directly and consume its tokens; neither may redefine a token value.
+   2. It MUST NOT be injected into third-party pages. The content-script
+      surfaces (src/ui/toast.css, src/pseudo/pseudo-file.css) re-declare the
+      spectrum locally inside their own root class instead of using :root,
+      because writing --bg-canvas & friends onto a host document's :root would
+      clobber that host's design system.
+   3. Extension-local additions live in the "AiGithubIngest Extensions"
+      section at the bottom of this file. Everything above that line is kept
+      byte-faithful to the upstream artifact so the vendored file stays
+      diffable against its source.
+   ============================================================================ */
+
+:root {
+  /* [Light · washi tone spectrum 和纸鸟子谱] */
+  --bg-canvas: #f5f3ec; /* warm washi base */
+  --bg-surface: #faf9f5; /* cards & carriers */
+  --bg-overlay: #ece8dc; /* overlays, hover, secondary blocks */
+  --border-subtle: rgba(40, 36, 32, 0.1); /* 1px hairline impression */
+  --border-strong: rgba(40, 36, 32, 0.25); /* active & focus ink line */
+
+  --text-primary: #1c1a17; /* pine-soot ink */
+  --text-secondary: #524c44; /*熟褐灰 body & descriptions */
+  --text-muted: #878074; /* faded ink, meta & footnotes */
+
+  --accent-cinnabar: #a6382a; /* cinnabar seal · primary action */
+  --accent-moss: #3b5848; /* patina moss · success / secondary */
+
+  /* [Editorial type stacks 排印字体栈] */
+  --font-editorial: 'Source Han Serif SC', 'Noto Serif CJK SC', 'Songti SC', Georgia, serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', SFMono-Regular, Menlo, monospace;
+
+  /* [Space & geometry 空间与几何] */
+  --radius-subtle: 2px; /* hand-cut paper corner */
+  --shadow-press: 0 1px 2px rgba(40, 36, 32, 0.04); /* near-zero paper seating */
+
+  /* [Physical motion curves 物理动效曲线] */
+  --ease-paper: cubic-bezier(0.25, 1, 0.4, 1); /* page & surface transitions 240–320ms */
+  --ease-ink: cubic-bezier(0.16, 1, 0.3, 1); /* micro-interactions 120–150ms */
+
+  /* [Spacing module · 8px grid, 間-friendly scale] */
+  --space-1: 8px;
+  --space-2: 16px;
+  --space-3: 24px;
+  --space-4: 32px;
+  --space-5: 40px;
+  --space-6: 48px;
+  --space-8: 64px;
+  --space-10: 80px;
+
+  /* [Measured prose] */
+  --measure-prose: 65ch;
+  --line-height-prose: 1.75;
+  --line-height-display: 1.28;
+}
+
+[data-theme='dark'] {
+  /* [Dark · inkstone night spectrum 砚石夜墨谱] */
+  --bg-canvas: #131416; /* inkstone black, never pure black */
+  --bg-surface: #1b1c20; /* lifted charcoal carrier */
+  --bg-overlay: #25272d; /* floating panels & active background */
+  --border-subtle: rgba(240, 235, 225, 0.08); /* mica hairline */
+  --border-strong: rgba(240, 235, 225, 0.18);
+
+  --text-primary: #edeae2; /* warm rice-paper ink white */
+  --text-secondary: #a39f95; /* faded ash */
+  --text-muted: #68645c; /* dark charcoal, auxiliary marks */
+
+  --accent-cinnabar: #c84a3b; /* faintly luminous night cinnabar */
+  --accent-moss: #537b65; /* valley moss */
+}
+
+/* ============================================================================
+   Base reset & editorial defaults
+   ============================================================================ */
+
+html,
+body {
+  background: var(--bg-canvas);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: var(--line-height-prose);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-editorial);
+  font-weight: 500; /* medium only — no bold bloat */
+  line-height: var(--line-height-display); /* 1.2–1.35 */
+  color: var(--text-primary);
+}
+
+h1 {
+  font-size: 2.5rem;
+}
+h2 {
+  font-size: 1.75rem;
+}
+h3 {
+  font-size: 1.25rem;
+}
+
+p {
+  max-width: var(--measure-prose); /* 45–75ch discipline, 65ch default */
+}
+
+a {
+  color: var(--accent-cinnabar);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-decoration-color: var(--border-subtle);
+  text-underline-offset: 3px;
+  transition:
+    text-decoration-color 140ms var(--ease-ink),
+    color 140ms var(--ease-ink);
+}
+
+a:hover {
+  text-decoration-color: var(--accent-cinnabar);
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 1px solid var(--border-strong); /* hairline ink focus, not a glow */
+  outline-offset: 2px;
+  border-radius: var(--radius-subtle);
+}
+
+code,
+kbd,
+samp,
+var,
+.mono,
+.meta,
+.meta-index,
+.wabi-meta-header,
+.kbd,
+.seal {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums; /* tabular figures for all technical text */
+  letter-spacing: 0.08em;
+}
+
+::selection {
+  background: var(--bg-overlay);
+  color: var(--text-primary);
+}
+
+/* ============================================================================
+   Chapter hairlines · 章节引线
+   ============================================================================ */
+
+.hairline {
+  height: 1px;
+  border: 0;
+  background: var(--border-subtle);
+}
+
+.hairline-strong {
+  height: 1px;
+  border: 0;
+  background: var(--border-strong);
+}
+
+/* Thin editorial lead-in rule prefixed by a mono marker, e.g. "SEC. 02 ─────" */
+.lead-rule {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-6) 0 var(--space-3);
+}
+
+.lead-rule::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-subtle);
+}
+
+/* ============================================================================
+   Wabi-Press card · .wabi-card
+   Hairline frame, 2px cut corners, faint paper seating. No heavy shadow.
+   ============================================================================ */
+
+.wabi-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-subtle);
+  box-shadow: var(--shadow-press);
+  padding: var(--space-3);
+}
+
+.wabi-card:hover {
+  /* reserved for interactive cards only; see .wabi-card--hoverable */
+}
+
+.wabi-card--hoverable {
+  transition:
+    background 140ms var(--ease-ink),
+    border-color 140ms var(--ease-ink);
+}
+
+.wabi-card--hoverable:hover {
+  background: var(--bg-overlay);
+  border-color: var(--border-strong);
+}
+
+.wabi-card--raised {
+  background: var(--bg-surface);
+  border-color: var(--border-strong);
+}
+
+/* Secondary block sitting directly on the canvas (no card chrome) */
+.wabi-panel {
+  background: var(--bg-overlay);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-subtle);
+  padding: var(--space-3);
+}
+
+/* ============================================================================
+   Meta header · .wabi-meta-header
+   Monospace batch identifiers, section numbers, and seal badges.
+   ============================================================================ */
+
+.wabi-meta-header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-bottom: var(--space-2);
+}
+
+.wabi-meta-header .meta-index {
+  color: var(--accent-cinnabar);
+}
+
+.wabi-meta-header .meta-rule {
+  flex: 1;
+  height: 1px;
+  align-self: center;
+  background: var(--border-subtle);
+}
+
+/* ============================================================================
+   Seal badges · .seal / .seal-cinnabar / .seal-moss
+   Publication stamp marks in place of generic icon chips.
+   ============================================================================ */
+
+.seal {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.75em;
+  height: 1.75em;
+  padding: 0 0.35em;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-subtle);
+  font-family: var(--font-editorial);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  user-select: none;
+}
+
+.seal-cinnabar {
+  color: var(--accent-cinnabar);
+}
+
+.seal-moss {
+  color: var(--accent-moss);
+}
+
+.seal--solid {
+  background: var(--accent-cinnabar);
+  border-color: var(--accent-cinnabar);
+  color: var(--bg-canvas);
+}
+
+/* ============================================================================
+   Editorial prose · .editorial-prose
+   Body measure, pull quotes, footnotes, index connectors.
+   ============================================================================ */
+
+.editorial-prose {
+  font-family: var(--font-sans);
+  line-height: var(--line-height-prose); /* 1.7–1.8 */
+  max-width: var(--measure-prose);
+  color: var(--text-secondary);
+}
+
+.editorial-prose p + p {
+  margin-top: var(--space-2);
+}
+
+.editorial-prose .prose-lede {
+  color: var(--text-primary);
+  font-size: 1.125rem;
+  line-height: 1.7;
+}
+
+/* First-letter settlement · 首字沉降 */
+.editorial-prose .drop-cap::first-letter {
+  float: left;
+  font-family: var(--font-editorial);
+  font-weight: 500;
+  font-size: 3.2em;
+  line-height: 0.9;
+  padding-right: 0.12em;
+  color: var(--text-primary);
+}
+
+/* Pull quote bound by a 1px ink rule, never a box */
+.editorial-prose .pull-quote {
+  margin: var(--space-4) 0;
+  padding-left: var(--space-3);
+  border-left: 1px solid var(--border-strong);
+  font-family: var(--font-editorial);
+  font-weight: 500;
+  font-size: 1.25rem;
+  line-height: 1.6;
+  color: var(--text-primary);
+}
+
+.editorial-prose .pull-quote .pull-quote-cite {
+  display: block;
+  margin-top: var(--space-1);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.08em;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+/* Footnotes · 注脚 */
+.footnotes {
+  margin-top: var(--space-4);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.footnotes .footnote-ref {
+  color: var(--accent-cinnabar);
+  margin-right: 0.5em;
+}
+
+.footnote-mark {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.75em;
+  letter-spacing: 0.08em;
+  color: var(--accent-cinnabar);
+  vertical-align: super;
+}
+
+/* Index connector column (left rail of a directory flow) */
+.index-rail {
+  border-left: 1px solid var(--border-subtle);
+  padding-left: var(--space-2);
+}
+
+/* ============================================================================
+   Layout & 間 — asymmetric grids and measured container
+   ============================================================================ */
+
+.wabi-container {
+  max-width: 1088px; /* 12 × 8 + generous 間 */
+  margin-inline: auto;
+  padding-inline: var(--space-6); /* 1.5× a dense dashboard gutter */
+  padding-block: var(--space-8);
+}
+
+.ma-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--space-3);
+  align-items: start;
+}
+
+/* 5/7 golden split — index & meta rail + primary reading flow */
+.ma-grid .ma-5 {
+  grid-column: span 5;
+}
+.ma-grid .ma-7 {
+  grid-column: span 7;
+}
+
+/* 3/6/3 three-column ledger */
+.ma-grid .ma-3 {
+  grid-column: span 3;
+}
+.ma-grid .ma-6 {
+  grid-column: span 6;
+}
+
+/* Section breathing: 48–80px between blocks */
+.ma-section {
+  margin-block: var(--space-6) var(--space-10);
+}
+
+@media (max-width: 720px) {
+  .ma-grid .ma-3,
+  .ma-grid .ma-5,
+  .ma-grid .ma-6,
+  .ma-grid .ma-7 {
+    grid-column: span 12;
+  }
+}
+
+/* ============================================================================
+   Controls · .wabi-button / .wabi-input
+   Ink-absorption feedback: on :active the background darkens one step and the
+   1px ink line deepens — like ink instantly soaking into paper.
+   No transform, no scale, no bounce.
+   ============================================================================ */
+
+.wabi-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-subtle);
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition:
+    background 140ms var(--ease-ink),
+    border-color 140ms var(--ease-ink),
+    color 140ms var(--ease-ink);
+}
+
+.wabi-button:hover {
+  background: var(--bg-overlay);
+}
+
+.wabi-button:active {
+  /* ink absorption: one step darker + deepened ink line, zero bounce */
+  background: var(--bg-overlay);
+  border-color: var(--text-secondary);
+  box-shadow: inset 0 1px 0 rgba(40, 36, 32, 0.06);
+}
+
+.wabi-button--primary {
+  background: var(--accent-cinnabar);
+  border-color: var(--accent-cinnabar);
+  color: var(--bg-canvas);
+}
+
+.wabi-button--primary:hover {
+  background: color-mix(in srgb, var(--accent-cinnabar) 88%, var(--text-primary));
+}
+
+.wabi-button--primary:active {
+  background: color-mix(in srgb, var(--accent-cinnabar) 78%, var(--text-primary));
+  border-color: color-mix(in srgb, var(--accent-cinnabar) 70%, var(--text-primary));
+}
+
+.wabi-button--moss {
+  background: var(--accent-moss);
+  border-color: var(--accent-moss);
+  color: var(--bg-canvas);
+}
+
+.wabi-button--moss:hover {
+  background: color-mix(in srgb, var(--accent-moss) 88%, var(--text-primary));
+}
+
+.wabi-button--moss:active {
+  background: color-mix(in srgb, var(--accent-moss) 78%, var(--text-primary));
+}
+
+.wabi-button--ghost {
+  background: transparent;
+  border-color: var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+.wabi-button--ghost:hover {
+  background: var(--bg-overlay);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.wabi-button[disabled],
+.wabi-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Keyboard affordance, publication keycap */
+.kbd {
+  display: inline-block;
+  padding: 0.05em 0.45em;
+  border: 1px solid var(--border-subtle);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-subtle);
+  background: var(--bg-surface);
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.wabi-input {
+  width: 100%;
+  max-width: 320px;
+  padding: var(--space-1) 0.75em;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-subtle);
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--text-primary);
+  transition:
+    border-color 140ms var(--ease-ink),
+    background 140ms var(--ease-ink);
+}
+
+.wabi-input::placeholder {
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+}
+
+.wabi-input:hover {
+  border-color: var(--border-strong);
+}
+
+.wabi-input:focus {
+  outline: none;
+  border-color: var(--border-strong);
+  background: var(--bg-surface);
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
+}
+
+/* Minimal underline variant */
+.wabi-input--underline {
+  padding-inline: 0.25em;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  border-radius: 0;
+}
+
+.wabi-input--underline:hover {
+  border-bottom-color: var(--border-strong);
+  background: transparent;
+}
+
+.wabi-input--underline:focus {
+  box-shadow: none;
+  border-bottom: 1px solid var(--border-strong);
+}
+
+.wabi-input--mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.08em;
+  font-size: 0.8125rem;
+}
+
+/* ============================================================================
+   Page & surface transitions · 平缓转场
+   ============================================================================ */
+
+.wabi-fade {
+  opacity: 0;
+  transform: translateY(8px);
+  transition:
+    opacity 280ms var(--ease-paper),
+    transform 280ms var(--ease-paper);
+}
+
+.wabi-fade.is-in {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Micro states (hover fills, seal stamps) ride the ink curve */
+.wabi-micro {
+  transition:
+    background 140ms var(--ease-ink),
+    color 140ms var(--ease-ink),
+    border-color 140ms var(--ease-ink),
+    box-shadow 140ms var(--ease-ink);
+}
+
+/* ============================================================================
+   Reduced motion — preserve state feedback, remove spatial movement
+   ============================================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 1ms !important;
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+  }
+
+  .wabi-fade {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ============================================================================
+   AiGithubIngest Extensions
+   ----------------------------------------------------------------------------
+   Everything below this line is NOT upstream AzSkills content. It adapts
+   Wabi-Press to two surfaces the upstream artifact does not model:
+
+   A. `.wabi-density-compact` — an extension popup is ~380px wide, roughly a
+      third of the 1088px container the canonical scale was measured against.
+      The 8px grid collapses to 4/6/10/14/20 inside this scope. Tokens are
+      overridden on the scope root only, so the canonical scale stays intact
+      for every other surface.
+   B. Controls the popup needs but Wabi-Press does not ship: a two-state
+      segmented switch, metadata fields, and status chips.
+
+   Provenance: implementation-choice (documented, not upstream).
+   ============================================================================ */
+
+.wabi-density-compact {
+  --space-1: 4px;
+  --space-2: 6px;
+  --space-3: 10px;
+  --space-4: 14px;
+  --space-5: 20px;
+  --space-6: 20px;
+  --space-8: 24px;
+  --space-10: 32px;
+
+  font-size: 12px;
+}
+
+.wabi-density-compact h1 {
+  font-size: 1.375rem;
+}
+.wabi-density-compact h2 {
+  font-size: 1.125rem;
+}
+.wabi-density-compact h3 {
+  font-size: 0.9375rem;
+}
+
+.wabi-density-compact .wabi-card {
+  padding: var(--space-4);
+}
+
+.wabi-density-compact .wabi-panel {
+  padding: var(--space-3);
+}
+
+.wabi-density-compact .wabi-meta-header {
+  font-size: 0.625rem;
+  letter-spacing: 0.1em;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.wabi-density-compact .wabi-button {
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.75rem;
+}
+
+.wabi-density-compact .wabi-input {
+  max-width: none;
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.75rem;
+}
+
+/* ---------------------------------------------------------------------------
+   System-preference fallback · 系统明度回退
+   ---------------------------------------------------------------------------
+   Upstream Wabi-Press only ships an explicit `[data-theme="dark"]` override, so
+   a document that has not been stamped yet renders light even on a dark system.
+   This block applies the inkstone spectrum before any script runs and steps
+   aside the moment an explicit choice is written to `data-theme`.
+   --------------------------------------------------------------------------- */
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg-canvas: #131416;
+    --bg-surface: #1b1c20;
+    --bg-overlay: #25272d;
+    --border-subtle: rgba(240, 235, 225, 0.08);
+    --border-strong: rgba(240, 235, 225, 0.18);
+    --text-primary: #edeae2;
+    --text-secondary: #a39f95;
+    --text-muted: #68645c;
+    --accent-cinnabar: #c84a3b;
+    --accent-moss: #537b65;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Segmented switch · 二态分节开关
+   Replaces a spring-loaded toggle. The indicator travels on --ease-ink, and
+   the unselected side is dimmed rather than translated — no bounce, no scale.
+   --------------------------------------------------------------------------- */
+
+.wabi-segmented {
+  display: inline-flex;
+  align-items: stretch;
+  position: relative;
+  background: var(--bg-overlay);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-subtle);
+  padding: 1px;
+  gap: 1px;
+}
+
+.wabi-segmented[aria-disabled='true'] {
+  opacity: 0.45;
+}
+
+.wabi-segmented-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  min-height: 22px;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-subtle);
+  background: transparent;
+  font-family: var(--font-sans);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background 140ms var(--ease-ink),
+    color 140ms var(--ease-ink);
+}
+
+.wabi-segmented-option:hover:not([aria-pressed='true']) {
+  color: var(--text-primary);
+  background: var(--bg-surface);
+}
+
+.wabi-segmented-option[aria-pressed='true'] {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  color: var(--text-primary);
+}
+
+.wabi-segmented-option:focus-visible {
+  outline: 1px solid var(--border-strong);
+  outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------------------
+   Metadata field · 元数据行
+   Monospace label/value pairs for sizes, counts, and identifiers.
+   --------------------------------------------------------------------------- */
+
+.wabi-meta-field {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.wabi-meta-field dt {
+  text-transform: uppercase;
+}
+
+.wabi-meta-field dd {
+  color: var(--text-secondary);
+}
+
+/* ---------------------------------------------------------------------------
+   Status chip · 状态签
+   Cinnabar for attention, moss for confirmation, muted for neutral.
+   Bordered, never filled — a stamp on paper, not a badge on plastic.
+   --------------------------------------------------------------------------- */
+
+.wabi-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 1px var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-subtle);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.625rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: var(--bg-surface);
+  white-space: nowrap;
+}
+
+.wabi-chip::before {
+  content: '';
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+
+.wabi-chip--cinnabar {
+  color: var(--accent-cinnabar);
+  border-color: currentColor;
+}
+.wabi-chip--moss {
+  color: var(--accent-moss);
+  border-color: currentColor;
+}
+.wabi-chip--ink {
+  color: var(--text-secondary);
+  border-color: var(--border-strong);
+}
+
+/* ---------------------------------------------------------------------------
+   Icon button · 图标按钮
+   28px square, hairline frame, ink absorption on press.
+   --------------------------------------------------------------------------- */
+
+.wabi-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  padding: 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-subtle);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition:
+    background 140ms var(--ease-ink),
+    border-color 140ms var(--ease-ink),
+    color 140ms var(--ease-ink);
+}
+
+.wabi-icon-button:hover {
+  background: var(--bg-overlay);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.wabi-icon-button:active {
+  background: var(--bg-overlay);
+  border-color: var(--text-secondary);
+  box-shadow: inset 0 1px 0 rgba(40, 36, 32, 0.06);
+}
+
+.wabi-icon-button svg {
+  width: 13px;
+  height: 13px;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ---------------------------------------------------------------------------
+   Utility: visually-hidden, for labels that must exist for assistive tech
+   --------------------------------------------------------------------------- */
+
+.wabi-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
