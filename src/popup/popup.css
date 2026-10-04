@@ -1,182 +1,41 @@
-/* ====================================================================
-   AiGithubIngest — Extension Popup System
-   Google Material Design 3 (M3) Architecture (Light & Dark Adaptive)
-   ==================================================================== */
+/* ============================================================================
+   AiGithubIngest — Extension Popup Composition
+   ----------------------------------------------------------------------------
+   Visual language: Wabi-Press · 侘寂刊本 (vendored in wabi-press.css).
+   This file composes ONLY. It must never redefine a Wabi-Press token value;
+   everything here is layout, sequence, and surface-specific rhythm.
 
-:root {
-  /* Google M3 Baseline Light Palette */
-  --md-sys-color-primary: #1a73e8;
-  --md-sys-color-primary-hover: #1557d0;
-  --md-sys-color-primary-active: #174ea6;
-  --md-sys-color-on-primary: #ffffff;
-  --md-sys-color-primary-container: #e8f0fe;
-  --md-sys-color-on-primary-container: #1967d2;
-
-  --md-sys-color-surface: #ffffff;
-  --md-sys-color-surface-container: #f8f9fa;
-  --md-sys-color-surface-container-high: #f1f3f4;
-  --md-sys-color-surface-container-highest: #e8eaed;
-  --md-sys-color-on-surface: #202124;
-  --md-sys-color-on-surface-variant: #5f6368;
-  --md-sys-color-outline: #dadce0;
-  --md-sys-color-outline-variant: #e8eaed;
-
-  /* Switch Tokens */
-  --md-sys-color-switch-track: #e8eaed;
-  --md-sys-color-switch-thumb: #ffffff;
-  --md-sys-color-switch-thumb-shadow: 0 1px 3px rgba(60, 64, 67, 0.3);
-
-  /* Google M3 Semantic Feedback Colors */
-  --md-sys-color-success: #1e8e3e;
-  --md-sys-color-success-bg: #e6f4ea;
-  --md-sys-color-success-border: #ceead6;
-
-  --md-sys-color-info: #1a73e8;
-  --md-sys-color-info-bg: #e8f0fe;
-  --md-sys-color-info-border: #d2e3fc;
-
-  --md-sys-color-error: #d93025;
-  --md-sys-color-error-hover: #c5221f;
-  --md-sys-color-error-bg: #fce8e6;
-  --md-sys-color-error-border: #fad2cf;
-  --md-sys-color-on-error: #ffffff;
-
-  --md-sys-color-neutral: #5f6368;
-  --md-sys-color-neutral-bg: #f1f3f4;
-  --md-sys-color-neutral-border: #dadce0;
-
-  /* Typography & Shape Tokens */
-  --font-family-google:
-    'Google Sans', 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
-    sans-serif;
-  --font-family-mono: 'Roboto Mono', 'SF Mono', Consolas, Menlo, monospace;
-
-  --radius-xs: 4px;
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-pill: 9999px;
-
-  /* Elevation & Motion Tokens */
-  --shadow-elevation-1: 0 1px 2px 0 rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
-  --shadow-elevation-2: 0 1px 2px 0 rgba(60, 64, 67, 0.3), 0 2px 6px 2px rgba(60, 64, 67, 0.15);
-  --motion-easing-standard: cubic-bezier(0.2, 0, 0, 1);
-  --motion-duration-short: 180ms;
-}
-
-/* System Dark Mode Detection (Fallback) */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) {
-    --md-sys-color-primary: #8ab4f8;
-    --md-sys-color-primary-hover: #aecbfa;
-    --md-sys-color-primary-active: #d2e3fc;
-    --md-sys-color-on-primary: #202124;
-    --md-sys-color-primary-container: #174ea6;
-    --md-sys-color-on-primary-container: #d2e3fc;
-
-    --md-sys-color-surface: #202124;
-    --md-sys-color-surface-container: #292a2d;
-    --md-sys-color-surface-container-high: #35363a;
-    --md-sys-color-surface-container-highest: #3c4043;
-    --md-sys-color-on-surface: #e8eaed;
-    --md-sys-color-on-surface-variant: #9aa0a6;
-    --md-sys-color-outline: #5f6368;
-    --md-sys-color-outline-variant: #3c4043;
-
-    --md-sys-color-switch-track: #3c4043;
-    --md-sys-color-switch-thumb: #e8eaed;
-    --md-sys-color-switch-thumb-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
-
-    --md-sys-color-success: #81c995;
-    --md-sys-color-success-bg: rgba(129, 201, 149, 0.16);
-    --md-sys-color-success-border: rgba(129, 201, 149, 0.3);
-
-    --md-sys-color-info: #8ab4f8;
-    --md-sys-color-info-bg: rgba(138, 180, 248, 0.16);
-    --md-sys-color-info-border: rgba(138, 180, 248, 0.3);
-
-    --md-sys-color-error: #f28b82;
-    --md-sys-color-error-hover: #f6aea9;
-    --md-sys-color-error-bg: rgba(242, 139, 130, 0.16);
-    --md-sys-color-error-border: rgba(242, 139, 130, 0.3);
-    --md-sys-color-on-error: #202124;
-
-    --md-sys-color-neutral: #9aa0a6;
-    --md-sys-color-neutral-bg: rgba(154, 160, 166, 0.16);
-    --md-sys-color-neutral-border: rgba(154, 160, 166, 0.3);
-  }
-}
-
-/* Explicit Dark Mode Overrides */
-:root[data-theme='dark'] {
-  --md-sys-color-primary: #8ab4f8;
-  --md-sys-color-primary-hover: #aecbfa;
-  --md-sys-color-primary-active: #d2e3fc;
-  --md-sys-color-on-primary: #202124;
-  --md-sys-color-primary-container: #174ea6;
-  --md-sys-color-on-primary-container: #d2e3fc;
-
-  --md-sys-color-surface: #202124;
-  --md-sys-color-surface-container: #292a2d;
-  --md-sys-color-surface-container-high: #35363a;
-  --md-sys-color-surface-container-highest: #3c4043;
-  --md-sys-color-on-surface: #e8eaed;
-  --md-sys-color-on-surface-variant: #9aa0a6;
-  --md-sys-color-outline: #5f6368;
-  --md-sys-color-outline-variant: #3c4043;
-
-  --md-sys-color-switch-track: #3c4043;
-  --md-sys-color-switch-thumb: #e8eaed;
-  --md-sys-color-switch-thumb-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
-
-  --md-sys-color-success: #81c995;
-  --md-sys-color-success-bg: rgba(129, 201, 149, 0.16);
-  --md-sys-color-success-border: rgba(129, 201, 149, 0.3);
-
-  --md-sys-color-info: #8ab4f8;
-  --md-sys-color-info-bg: rgba(138, 180, 248, 0.16);
-  --md-sys-color-info-border: rgba(138, 180, 248, 0.3);
-
-  --md-sys-color-error: #f28b82;
-  --md-sys-color-error-hover: #f6aea9;
-  --md-sys-color-error-bg: rgba(242, 139, 130, 0.16);
-  --md-sys-color-error-border: rgba(242, 139, 130, 0.3);
-  --md-sys-color-on-error: #202124;
-
-  --md-sys-color-neutral: #9aa0a6;
-  --md-sys-color-neutral-bg: rgba(154, 160, 166, 0.16);
-  --md-sys-color-neutral-border: rgba(154, 160, 166, 0.3);
-}
+   Surface constraints (from ui-ux-design-intelligence/patterns/browser-extension):
+     · popup is a transient surface → status visible before configuration
+     · one obvious next action per card
+     · ~380px wide, vertical scroll on the sheet, never nested scrollbars
+   ============================================================================ */
 
 *,
 *::before,
 *::after {
   box-sizing: border-box;
-  margin: 0;
-  padding: 0;
 }
 
-/* 核心布局：仅外围滚动，杜绝内部滚动条 */
 html {
-  box-sizing: border-box;
+  /* The extension popup is a fixed-size sheet; the scroll lives on <body>. */
+  overflow: hidden;
 }
 
 body {
-  width: 360px;
-  max-height: 580px;
+  width: 380px;
+  max-height: 600px;
   margin: 0;
-  padding: 14px 16px 18px;
   overflow-x: hidden;
   overflow-y: auto;
-  background-color: var(--md-sys-color-surface-container);
-  color: var(--md-sys-color-on-surface);
-  font-family: var(--font-family-google);
-  font-size: 12px;
-  line-height: 1.5;
+  background: var(--bg-canvas);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  line-height: var(--line-height-prose);
   -webkit-font-smoothing: antialiased;
 }
 
-/* 优雅的 Google Chrome 细外层滚动条 */
+/* Paper-thin scrollbar tinted with the ink line, not a chrome slab. */
 ::-webkit-scrollbar {
   width: 6px;
 }
@@ -184,266 +43,127 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background-color: var(--md-sys-color-outline-variant);
-  border-radius: var(--radius-pill);
-}
-::-webkit-scrollbar-thumb:hover {
-  background-color: var(--md-sys-color-outline);
+  background: var(--border-strong);
+  border-radius: var(--radius-subtle);
 }
 
-.container {
+.hidden {
+  display: none !important;
+}
+
+/* ============================================================================
+   Sheet · 版面
+   ============================================================================ */
+
+.sheet {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-4) var(--space-3);
 }
 
-/* ---------- Top Bar (Google App Bar Style) -------------------------- */
-
-.app-topbar {
+.sheet-body {
   display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* ---------------------------------------------------------------------------
+   报头 · Masthead
+   --------------------------------------------------------------------------- */
+
+.masthead {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.masthead .wabi-meta-header {
+  margin-bottom: 0;
+}
+
+.masthead-org {
+  letter-spacing: 0.12em;
+}
+
+.masthead-row {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
-  align-items: center;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  gap: var(--space-2);
 }
 
-.brand-group {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.app-logo {
-  display: block;
-}
-
-.app-name {
+.masthead-title {
+  font-family: var(--font-editorial);
+  font-size: 1.125rem;
   font-weight: 500;
-  font-size: 14px;
-  letter-spacing: -0.01em;
-  color: var(--md-sys-color-on-surface);
+  letter-spacing: 0.01em;
+  color: var(--text-primary);
+  line-height: var(--line-height-display);
+  margin: 0;
 }
 
-.topbar-actions {
+.masthead-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
+  flex: none;
 }
 
-/* ---------- 左右滑块开关组件 (Google M3 Segmented Switch) ------------ */
+/* ---------------------------------------------------------------------------
+   版权页 · Colophon
+   --------------------------------------------------------------------------- */
 
-.switch-control {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  user-select: none;
-}
-
-.switch-checkbox {
-  position: absolute;
-  opacity: 0;
-  width: 0;
-  height: 0;
-  pointer-events: none;
-}
-
-.switch-slider {
-  position: relative;
+.colophon {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  width: 52px;
-  height: 24px;
-  background-color: var(--md-sys-color-switch-track);
-  border-radius: var(--radius-pill);
-  padding: 2px;
-  cursor: pointer;
-  box-sizing: border-box;
-  transition: background-color var(--motion-duration-short) var(--motion-easing-standard);
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.625rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
 }
 
-.switch-label,
-.switch-icon {
+.colophon .meta-rule {
+  height: 1px;
+  background: var(--border-subtle);
   flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 2;
-  font-size: 10.5px;
-  font-weight: 600;
-  color: var(--md-sys-color-on-surface-variant);
-  transition: color var(--motion-duration-short) var(--motion-easing-standard);
 }
 
-.switch-icon svg {
-  width: 12px;
-  height: 12px;
-  display: block;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  pointer-events: none;
+.colophon-version {
+  color: var(--text-secondary);
 }
 
-.switch-thumb {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 24px;
-  height: 20px;
-  background-color: var(--md-sys-color-switch-thumb);
-  border-radius: var(--radius-pill);
-  box-shadow: var(--md-sys-color-switch-thumb-shadow);
-  transition: transform var(--motion-duration-short) var(--motion-easing-standard);
-  z-index: 1;
-}
-
-.switch-checkbox:checked + .switch-slider .switch-thumb {
-  transform: translateX(24px);
-}
-
-.switch-checkbox:not(:checked) + .switch-slider .left {
-  color: var(--md-sys-color-primary);
-}
-
-.switch-checkbox:checked + .switch-slider .right {
-  color: var(--md-sys-color-primary);
-}
-
-.switch-checkbox:focus-visible + .switch-slider {
-  outline: 2px solid var(--md-sys-color-primary);
-  outline-offset: 2px;
-}
-
-.topbar-icon-link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: var(--radius-pill);
-  background: transparent;
-  border: 1px solid transparent;
-  transition: all var(--motion-duration-short) var(--motion-easing-standard);
-  text-decoration: none;
-}
-
-.topbar-icon-link img {
-  opacity: 0.75;
-  transition: opacity var(--motion-duration-short);
-}
-
-.topbar-icon-link:hover {
-  background: var(--md-sys-color-surface-container-highest);
-}
-
-.topbar-icon-link:hover img {
-  opacity: 1;
-}
-
-/* ---------- Cards (M3 Surface Container) --------------------------- */
-
-.card {
-  background: var(--md-sys-color-surface);
-  border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: var(--radius-md);
-  padding: 12px 14px;
-  box-shadow: 0 1px 2px rgba(60, 64, 67, 0.05);
-  transition: border-color var(--motion-duration-short) var(--motion-easing-standard);
-}
-
-.card:hover {
-  border-color: var(--md-sys-color-outline);
-}
-
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 10px;
-  gap: 8px;
-}
-
-.section-title {
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  color: var(--md-sys-color-on-surface-variant);
-}
-
-/* ---------- Badges (M3 Assist Chips) ------------------------------- */
-
-.badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: var(--radius-pill);
-  font-weight: 500;
-  white-space: nowrap;
-  word-break: keep-all;
-  flex-shrink: 0;
-}
-
-.badge-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  display: block;
-  background-color: currentColor;
-}
-
-.badge--builtin {
-  background: var(--md-sys-color-success-bg);
-  color: var(--md-sys-color-success);
-  border: 1px solid var(--md-sys-color-success-border);
-}
-
-.badge--whitelist {
-  background: var(--md-sys-color-info-bg);
-  color: var(--md-sys-color-info);
-  border: 1px solid var(--md-sys-color-info-border);
-}
-
-.badge--blacklist {
-  background: var(--md-sys-color-error-bg);
-  color: var(--md-sys-color-error);
-  border: 1px solid var(--md-sys-color-error-border);
-}
-
-.badge--disabled,
-.badge--neutral {
-  background: var(--md-sys-color-neutral-bg);
-  color: var(--md-sys-color-neutral);
-  border: 1px solid var(--md-sys-color-neutral-border);
-}
-
-/* ---------- Site Policy Section ------------------------------------ */
+/* ============================================================================
+   SEC. 01 · 站点策略
+   ============================================================================ */
 
 .site-display-box {
   display: flex;
   align-items: center;
-  gap: 8px;
-  background: var(--md-sys-color-surface-container);
-  border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: var(--radius-sm);
-  padding: 7px 10px;
-  margin-bottom: 10px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-overlay);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-subtle);
+  margin-bottom: var(--space-3);
 }
 
-.site-icon {
-  font-size: 13px;
-  opacity: 0.85;
+.site-mark {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  line-height: 1;
+  flex: none;
 }
 
 .current-site-domain {
-  font-family: var(--font-family-mono);
-  font-size: 11.5px;
-  font-weight: 500;
-  color: var(--md-sys-color-on-surface);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -451,331 +171,299 @@ body {
 
 .action-btn-group {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
+}
+
+.action-btn-group .wabi-button {
+  flex: 1;
+  justify-content: center;
+  min-height: 28px;
+}
+
+#blacklist-current-btn.wabi-button--danger {
+  border-color: var(--accent-cinnabar);
+  color: var(--accent-cinnabar);
+}
+
+#blacklist-current-btn.wabi-button--danger:hover {
+  background: var(--bg-overlay);
+  border-color: var(--accent-cinnabar);
+}
+
+/* ============================================================================
+   SEC. 02 · 交付方式
+   ============================================================================ */
+
+.send-mode-control {
+  margin-bottom: var(--space-3);
+}
+
+.wabi-segmented--block {
+  display: flex;
   width: 100%;
 }
 
-.btn-action {
-  flex: 1 1 0;
+.wabi-segmented--block .wabi-segmented-option {
+  flex: 1;
+  min-height: 30px;
+  font-size: 0.75rem;
+}
+
+.hint-text {
+  margin: 0;
+  max-width: none;
+  font-size: 0.6875rem;
+  line-height: 1.65;
+  color: var(--text-muted);
+}
+
+.meta-field-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: var(--space-3) 0 0;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* ============================================================================
+   SEC. 03 / 04 · 输入行
+   ============================================================================ */
+
+.input-action-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.input-action-row .wabi-input {
+  flex: 1;
   min-width: 0;
 }
 
-/* ---------- Buttons (Google Material Button Specs) ------------------ */
-
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 6px 14px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-pill);
-  font-size: 11.5px;
-  font-weight: 500;
-  cursor: pointer;
-  font-family: var(--font-family-google);
-  white-space: nowrap;
-  word-break: keep-all;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  transition: all var(--motion-duration-short) var(--motion-easing-standard);
-  text-decoration: none;
-}
-
-.btn:focus-visible {
-  outline: 2px solid var(--md-sys-color-primary);
-  outline-offset: 2px;
-}
-
-.btn:disabled {
-  opacity: 0.38;
-  cursor: not-allowed;
-  pointer-events: none;
-}
-
-.btn-primary {
-  background: var(--md-sys-color-primary);
-  color: var(--md-sys-color-on-primary);
-  box-shadow: var(--shadow-elevation-1);
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: var(--md-sys-color-primary-hover);
-  box-shadow: var(--shadow-elevation-2);
-}
-
-.btn-primary:active:not(:disabled) {
-  background: var(--md-sys-color-primary-active);
-}
-
-.btn-secondary {
-  background: var(--md-sys-color-surface);
-  border: 1px solid var(--md-sys-color-outline);
-  color: var(--md-sys-color-primary);
-}
-
-.btn-secondary:hover:not(:disabled) {
-  background: var(--md-sys-color-primary-container);
-  border-color: var(--md-sys-color-outline);
-  color: var(--md-sys-color-on-primary-container);
-}
-
-.btn-danger {
-  background: var(--md-sys-color-error-bg);
-  border: 1px solid var(--md-sys-color-error-border);
-  color: var(--md-sys-color-error);
-}
-
-.btn-danger:hover:not(:disabled) {
-  background: var(--md-sys-color-error);
-  color: var(--md-sys-color-on-error);
-  box-shadow: var(--shadow-elevation-1);
-}
-
-.btn-compact {
-  padding: 5px 12px;
-  font-size: 11px;
-  flex-shrink: 0;
+.input-action-row .wabi-button {
+  flex: none;
+  min-height: 26px;
 }
 
 .btn-grid-dual {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
 }
 
-/* ---------- Material Outlined Input Fields ------------------------- */
-
-.input-action-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.input-text {
-  flex: 1 1 0;
-  min-width: 0;
-  background: var(--md-sys-color-surface);
-  border: 1px solid var(--md-sys-color-outline);
-  color: var(--md-sys-color-on-surface);
-  padding: 6px 10px;
-  border-radius: var(--radius-sm);
-  font-size: 11.5px;
-  font-family: var(--font-family-mono);
-  outline: none;
-  transition: all var(--motion-duration-short) var(--motion-easing-standard);
-}
-
-.input-text:focus,
-.input-text:focus-visible {
-  border-color: var(--md-sys-color-primary);
-  box-shadow: 0 0 0 1px var(--md-sys-color-primary);
-}
-
-.token-row {
-  position: relative;
-}
-
-.token-input {
-  padding-right: 30px;
-}
-
-.btn-icon {
-  background: transparent;
-  border: 1px solid transparent;
-  color: var(--md-sys-color-on-surface-variant);
-  border-radius: var(--radius-pill);
-  padding: 4px;
-  cursor: pointer;
-  font-size: 12px;
-  line-height: 1;
-  display: inline-flex;
-  align-items: center;
+.btn-grid-dual .wabi-button {
   justify-content: center;
-  transition: all var(--motion-duration-short);
+  min-height: 28px;
 }
 
-.btn-icon:hover {
-  background: var(--md-sys-color-surface-container-highest);
-  color: var(--md-sys-color-on-surface);
+.inline-status {
+  min-height: 1em;
+  margin-top: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  color: var(--accent-moss);
 }
 
-.hint-text {
-  font-size: 11px;
-  color: var(--md-sys-color-on-surface-variant);
-  line-height: 1.45;
-  margin: 6px 0 8px 0;
-}
-
-.token-status {
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--md-sys-color-success);
-  min-height: 16px;
-  margin-top: 6px;
-}
-
-/* ---------- Blacklist Tags (无内部滑块，完全自适应平铺) ---------- */
+/* ---------------------------------------------------------------------------
+   黑名单标签 · Blocked-domain chips
+   --------------------------------------------------------------------------- */
 
 .blacklist-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 8px;
+  gap: var(--space-1);
+  margin-top: var(--space-3);
+}
+
+.blacklist-tags:empty {
+  display: none;
 }
 
 .blacklist-tag {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  background: var(--md-sys-color-surface-container-high);
-  border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: var(--radius-sm);
-  padding: 2px 8px;
-  font-size: 11px;
-  color: var(--md-sys-color-error);
-  font-family: var(--font-family-mono);
+  gap: var(--space-1);
+  max-width: 100%;
+  padding: 1px var(--space-1) 1px var(--space-2);
+  background: var(--bg-overlay);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-subtle);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
 }
 
-.tag-remove-btn {
+.blacklist-tag-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.blacklist-tag-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex: none;
+  padding: 0;
+  border: 0;
   background: transparent;
-  border: none;
-  color: var(--md-sys-color-on-surface-variant);
-  cursor: pointer;
-  font-size: 12px;
-  padding: 0 1px;
+  color: var(--text-muted);
+  font-size: 0.75rem;
   line-height: 1;
+  cursor: pointer;
+  border-radius: var(--radius-subtle);
+  transition:
+    color 140ms var(--ease-ink),
+    background 140ms var(--ease-ink);
 }
 
-.tag-remove-btn:hover {
-  color: var(--md-sys-color-error);
+.blacklist-tag-remove:hover {
+  color: var(--accent-cinnabar);
+  background: var(--bg-surface);
+}
+
+.blacklist-tag-remove:focus-visible {
+  outline: 1px solid var(--border-strong);
+  outline-offset: 1px;
 }
 
 .empty-tip {
-  font-size: 11px;
-  color: var(--md-sys-color-on-surface-variant);
-  padding: 2px 0;
+  padding: var(--space-2) 0;
+  font-size: 0.6875rem;
+  color: var(--text-muted);
 }
 
-/* ---------- Site Upload Limits (无内部滑块，完全自适应平铺) ------- */
+/* ============================================================================
+   SEC. 05 · 分片阈值
+   ============================================================================ */
 
 .site-limits-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-top: 6px;
+  gap: var(--space-1);
+  margin-top: var(--space-3);
 }
 
 .site-limit-section {
-  font-size: 10px;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--md-sys-color-on-surface-variant);
-  font-weight: 600;
-  margin-top: 6px;
+  color: var(--text-muted);
+  margin-top: var(--space-2);
+  padding-bottom: var(--space-1);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.site-limits-list > .site-limit-section:first-child {
+  margin-top: 0;
 }
 
 .site-limit-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 6px;
-  border-radius: var(--radius-sm);
-  background: var(--md-sys-color-surface-container);
-  border: 1px solid var(--md-sys-color-outline-variant);
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-subtle);
 }
 
+/* The row for the site currently in the foreground carries an ink line. */
 .site-limit-row--current {
-  border-color: var(--md-sys-color-info-border);
-  background: var(--md-sys-color-info-bg);
-}
-
-.site-limit-row--unset {
-  border-style: dashed;
+  background: var(--bg-overlay);
+  border-color: var(--border-subtle);
 }
 
 .site-limit-row--fallback {
-  border-top: 1px dashed var(--md-sys-color-outline);
-  padding-top: 6px;
-  margin-top: 4px;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--space-2);
+  margin-top: var(--space-1);
 }
 
 .site-limit-label {
-  flex: 1 1 auto;
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11px;
-  font-family: var(--font-family-mono);
-  color: var(--md-sys-color-on-surface);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
 }
 
 .site-limit-input {
-  width: 52px;
-  flex: 0 0 auto;
-  padding: 4px 6px;
+  width: 62px;
+  flex: none;
   text-align: right;
-  font-size: 11px;
-}
-
-.site-limit-input::-webkit-outer-spin-button,
-.site-limit-input::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-
-.site-limit-input {
-  -moz-appearance: textfield;
-  appearance: textfield;
-}
-
-.site-limit-unit {
-  flex: 0 0 auto;
-  padding: 3px 4px;
-  font-size: 10.5px;
-  background: var(--md-sys-color-surface);
-  border: 1px solid var(--md-sys-color-outline);
-  color: var(--md-sys-color-on-surface-variant);
-  border-radius: var(--radius-xs);
-  outline: none;
-  cursor: pointer;
 }
 
 .site-limit-domain {
-  flex: 1 1 100px;
+  flex: 1;
   min-width: 0;
+}
+
+.select-box {
+  flex: none;
+  padding: var(--space-1) var(--space-1);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-subtle);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.select-box:hover {
+  border-color: var(--border-strong);
+}
+
+.select-box:focus-visible {
+  outline: 1px solid var(--border-strong);
+  outline-offset: 1px;
 }
 
 .site-limit-icon-btn {
   width: 22px;
   height: 22px;
-  padding: 0;
-}
-
-.site-limit-icon-btn--save {
-  color: var(--md-sys-color-success);
+  flex: none;
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  line-height: 1;
 }
 
 .site-limit-icon-btn--save:hover {
-  background: var(--md-sys-color-success-bg);
-}
-
-.site-limit-icon-btn--remove {
-  color: var(--md-sys-color-error);
+  border-color: var(--accent-moss);
+  color: var(--accent-moss);
 }
 
 .site-limit-icon-btn--remove:hover {
-  background: var(--md-sys-color-error-bg);
+  border-color: var(--accent-cinnabar);
+  color: var(--accent-cinnabar);
 }
 
-.hidden {
-  display: none !important;
+.site-limit-add-btn {
+  flex: none;
+  min-height: 26px;
 }
+
+/* ============================================================================
+   Reduced motion — state feedback stays, spatial movement goes
+   ============================================================================ */
 
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
-    transition-duration: 0.01ms !important;
+    transition-duration: 1ms !important;
+    animation-duration: 1ms !important;
   }
 }

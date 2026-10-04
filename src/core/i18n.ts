@@ -52,8 +52,24 @@ export const translations = {
     siteFileLimitSaveBtn: '保存',
     siteFileLimitRemoveBtn: '移除',
     siteFileLimitFallback: '全局默认分片上限',
+
+    // Digest delivery mode
+    sendModeTitle: '摘要交付方式',
+    sendModeHint: '决定仓库摘要以何种形态进入对话框。',
+    sendModeRealFile: '真文件 .md',
+    sendModePseudoFile: '伪文件 文本',
+    sendModeRealDesc: '生成 Markdown 文件并走站点原生上传通道，保留附件形态。',
+    sendModePseudoDesc: '文本常驻内存，仅显示轻量卡片，发送瞬间拼装进 Prompt，不受上传限制影响。',
+    sendModeFactMode: '当前模式',
+    sendModeFactPayload: '交付形态',
+    sendModeFactReal: '站点附件 (.md)',
+    sendModeFactPseudo: '纯文本消息',
+    sendModeFactRisk: '失败回退',
+    sendModeFactRiskValue: '自动改用真文件',
     siteFileLimitInvalidValue: '请输入有效数值',
     siteFileLimitInvalidDomain: '请输入有效域名',
+    tokenStateEmpty: '未配置',
+    tokenStateSet: '已配置',
 
     // Content & Toast
     taskInProgress: '已有提取任务进行中，已恢复普通文本粘贴',
@@ -69,6 +85,14 @@ export const translations = {
     attachingPart: '正在上传第 {current}/{total} 部分...',
     attachedMultiPart: '已成功上传 {count} 个分片文件',
     partialAttachFailed: '第 {current}/{total} 部分上传失败，请重试或手动粘贴',
+
+    // Pseudo-file engine
+    pseudoMounted: '已挂载 {count} 个摘要卡片，发送时自动展开为文本',
+    pseudoFlushed: '已随消息发送 {count} 个摘要分片',
+    pseudoModeUnavailable: '无法定位输入框，已回退为真文件上传',
+    pseudoLimitHit: '伪文件数量或体积超限，已跳过 {skipped} 个分片',
+    pseudoManualHint: '按 Enter 发送时，摘要将自动拼接到消息末尾。',
+    pseudoRemoved: '已移除该摘要分片',
 
     // Core steps
     stepResolvingBranch: '正在解析分支信息...',
@@ -161,8 +185,26 @@ export const translations = {
     siteFileLimitSaveBtn: 'Save',
     siteFileLimitRemoveBtn: 'Remove',
     siteFileLimitFallback: 'Global Default Limit',
+
+    // Digest delivery mode
+    sendModeTitle: 'Digest Delivery',
+    sendModeHint: 'Choose how a repository digest reaches the chat composer.',
+    sendModeRealFile: 'Real .md file',
+    sendModePseudoFile: 'Pseudo-file (text)',
+    sendModeRealDesc:
+      'Builds Markdown files and pushes them through the site’s native upload pipeline, keeping true attachment semantics.',
+    sendModePseudoDesc:
+      'Text stays in memory behind a lightweight card and is spliced into the prompt at send time, bypassing upload limits entirely.',
+    sendModeFactMode: 'Active mode',
+    sendModeFactPayload: 'Delivered as',
+    sendModeFactReal: 'Site attachment (.md)',
+    sendModeFactPseudo: 'Plain text message',
+    sendModeFactRisk: 'On failure',
+    sendModeFactRiskValue: 'Falls back to real file',
     siteFileLimitInvalidValue: 'Please enter a valid value',
     siteFileLimitInvalidDomain: 'Please enter a valid domain',
+    tokenStateEmpty: 'Not set',
+    tokenStateSet: 'Configured',
 
     // Content & Toast
     taskInProgress: 'An extraction task is already in progress, pasted as raw text.',
@@ -180,6 +222,14 @@ export const translations = {
     attachedMultiPart: 'Successfully attached as {count} part(s)',
     partialAttachFailed:
       'Attachment interrupted at part {current}/{total}. Please retry or paste manually.',
+
+    // Pseudo-file engine
+    pseudoMounted: 'Mounted {count} digest card(s); text expands on send',
+    pseudoFlushed: 'Sent {count} digest part(s) with the message',
+    pseudoModeUnavailable: 'Could not locate the composer; fell back to real file upload',
+    pseudoLimitHit: 'Pseudo-file count or size limit reached; skipped {skipped} part(s)',
+    pseudoManualHint: 'On Enter, the digest is appended to the end of your message.',
+    pseudoRemoved: 'Removed that digest part',
 
     // Core steps
     stepResolvingBranch: 'Resolving branch information...',

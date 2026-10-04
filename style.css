@@ -1,0 +1,256 @@
+/* ============================================================================
+   AiGithubIngest — Standalone Web Page
+   ----------------------------------------------------------------------------
+   Visual language: Wabi-Press · 侘寂刊本 (vendored in wabi-press.css).
+   This file composes only; no token values are redefined here.
+
+   Layout thesis: one measured reading column on washi, sections separated by
+   1px hairlines and generous 間, status visible before it is requested.
+   ============================================================================ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg-canvas);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  line-height: var(--line-height-prose);
+  -webkit-font-smoothing: antialiased;
+}
+
+.page {
+  max-width: 720px;
+  margin-inline: auto;
+  padding-inline: var(--space-4);
+  padding-block: var(--space-6) var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* ---------------------------------------------------------------------------
+   报头 · Masthead
+   --------------------------------------------------------------------------- */
+
+.page-masthead h1 {
+  margin: var(--space-2) 0 var(--space-3);
+  font-size: 2.25rem;
+}
+
+.page-masthead .prose-lede {
+  margin: 0;
+  max-width: var(--measure-prose);
+}
+
+.page-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* ---------------------------------------------------------------------------
+   SEC. 01 · 表单
+   --------------------------------------------------------------------------- */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-bottom: var(--space-4);
+}
+
+.field label {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.field-required,
+.field-optional {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-cinnabar);
+}
+
+.field-optional {
+  color: var(--text-muted);
+}
+
+.field .wabi-input {
+  max-width: none;
+}
+
+.field-hint {
+  margin: 0;
+  max-width: var(--measure-prose);
+  font-size: 0.75rem;
+  line-height: 1.65;
+  color: var(--text-muted);
+}
+
+.form-actions {
+  display: flex;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* ---------------------------------------------------------------------------
+   SEC. 02 · 任务状态
+   --------------------------------------------------------------------------- */
+
+.progress-indicator {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.progress-mark {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--accent-cinnabar);
+  animation: wabi-breathe 1400ms var(--ease-paper) infinite;
+}
+
+@keyframes wabi-breathe {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.error-banner {
+  margin-top: var(--space-2);
+  padding-left: var(--space-3);
+  border-left: 1px solid var(--accent-cinnabar);
+  color: var(--accent-cinnabar);
+  font-size: 0.8125rem;
+}
+
+/* ---------------------------------------------------------------------------
+   SEC. 03 · 结果
+   --------------------------------------------------------------------------- */
+
+.result-stats {
+  margin-bottom: var(--space-3);
+  font-size: 0.9375rem;
+  color: var(--text-secondary);
+}
+
+.result-stats strong {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.result-stats code {
+  padding: 0 0.35em;
+  background: var(--bg-overlay);
+  border-radius: var(--radius-subtle);
+  font-size: 0.875em;
+}
+
+.output-area {
+  display: block;
+  width: 100%;
+  height: 420px;
+  padding: var(--space-3);
+  background: var(--bg-overlay);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-subtle);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.output-area:focus-visible {
+  outline: 1px solid var(--border-strong);
+  outline-offset: 2px;
+}
+
+.copy-btn {
+  margin-left: auto;
+}
+
+/* The meta header is a flex row; the copy button must not inherit its
+   uppercase mono treatment. */
+.wabi-meta-header .copy-btn {
+  font-family: var(--font-sans);
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
+
+/* ---------------------------------------------------------------------------
+   版权页 · Colophon
+   --------------------------------------------------------------------------- */
+
+.page-colophon {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.page-colophon .meta-rule {
+  flex: 1;
+  height: 1px;
+  background: var(--border-subtle);
+}
+
+.page-colophon a {
+  font-size: inherit;
+  letter-spacing: inherit;
+}
+
+/* ---------------------------------------------------------------------------
+   Responsive — one column, tighter gutters
+   --------------------------------------------------------------------------- */
+
+@media (max-width: 640px) {
+  .page {
+    padding-inline: var(--space-3);
+    padding-block: var(--space-4) var(--space-3);
+  }
+
+  .page-masthead h1 {
+    font-size: 1.75rem;
+  }
+
+  .output-area {
+    height: 320px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 1ms !important;
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

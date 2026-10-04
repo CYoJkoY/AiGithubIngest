@@ -1,11 +1,18 @@
-/* ====================================================================
-   AiGithubIngest — Toast System
-   Google Material Design 3 Snackbar (Top Center Dropdown)
-   ==================================================================== */
+/* ============================================================================
+   AiGithubIngest — Toast (content-script surface)
+   ----------------------------------------------------------------------------
+   Injected into third-party pages, so the Wabi-Press spectrum is re-declared
+   inside `.ai-github-ingest-toast-container` rather than on `:root` — writing
+   `--bg-canvas` & friends onto a host document would clobber that host's own
+   design system.
+
+   Visual language: Wabi-Press · 侘寂刊本 (MIT © 2026 CYoJkoY, AzSkills).
+   Motion: settles on --ease-paper (280ms), never springs, never scales up.
+   ============================================================================ */
 
 .ai-github-ingest-toast-container {
   position: fixed;
-  top: 24px;
+  top: 20px;
   bottom: auto;
   left: 50%;
   transform: translateX(-50%);
@@ -13,55 +20,85 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   pointer-events: none;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', sans-serif;
 }
 
 .ai-github-ingest-toast {
+  /* ---- Scoped spectrum: washi light (和纸) ---- */
+  --aigi-toast-bg: #faf9f5;
+  --aigi-toast-border: rgba(40, 36, 32, 0.25);
+  --aigi-toast-text: #1c1a17;
+  --aigi-toast-accent: #a6382a;
+
   pointer-events: auto;
-  min-width: 280px;
+  min-width: 260px;
   max-width: 480px;
-  padding: 12px 18px;
-  border-radius: 8px;
-  font-family:
-    'Google Sans',
-    'Roboto',
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    sans-serif;
-  font-size: 13px;
+  padding: 9px 16px 9px 13px;
+  background: var(--aigi-toast-bg);
+  border: 1px solid var(--aigi-toast-border);
+  /* 1px ink rail on the leading edge instead of a colored slab. */
+  border-left-width: 2px;
+  border-left-color: var(--aigi-toast-accent);
+  border-radius: 2px;
+  box-shadow: 0 1px 2px rgba(40, 36, 32, 0.06);
+  font-size: 12px;
   font-weight: 400;
-  line-height: 1.4;
-  color: #ffffff;
-  background-color: #202124;
-  box-shadow:
-    0 1px 3px 0 rgba(60, 64, 67, 0.3),
-    0 4px 8px 3px rgba(60, 64, 67, 0.15);
-  transition:
-    opacity 0.25s cubic-bezier(0, 0, 0.2, 1),
-    transform 0.25s cubic-bezier(0, 0, 0.2, 1);
+  line-height: 1.5;
+  letter-spacing: 0.01em;
+  color: var(--aigi-toast-text);
   opacity: 0;
-  transform: translateY(-24px) scale(0.96);
+  transform: translateY(-8px);
+  transition:
+    opacity 280ms cubic-bezier(0.25, 1, 0.4, 1),
+    transform 280ms cubic-bezier(0.25, 1, 0.4, 1);
 }
 
 .ai-github-ingest-toast.show {
   opacity: 1;
-  transform: translateY(0) scale(1);
+  transform: translateY(0);
 }
 
-/* Material Snackbar Types */
+/* 状态 · 语义色只作用于左侧引线与主色，不做整块填充 */
 .ai-github-ingest-toast.info {
-  background-color: #202124;
-  border-left: 4px solid #1a73e8;
+  --aigi-toast-accent: #3b5848;
 }
 
 .ai-github-ingest-toast.success {
-  background-color: #1e8e3e;
-  border-left: 4px solid #ceead6;
+  --aigi-toast-accent: #3b5848;
 }
 
 .ai-github-ingest-toast.error {
-  background-color: #d93025;
-  border-left: 4px solid #fad2cf;
+  --aigi-toast-accent: #a6382a;
+  --aigi-toast-text: #a6382a;
+}
+
+/* 夜间 · 砚石夜墨谱 — follows the host document's own dark preference, since
+   a content script cannot know the extension's stored theme without a lookup. */
+@media (prefers-color-scheme: dark) {
+  .ai-github-ingest-toast {
+    --aigi-toast-bg: #1b1c20;
+    --aigi-toast-border: rgba(240, 235, 225, 0.18);
+    --aigi-toast-text: #edeae2;
+    --aigi-toast-accent: #c84a3b;
+  }
+
+  .ai-github-ingest-toast.info,
+  .ai-github-ingest-toast.success {
+    --aigi-toast-accent: #537b65;
+  }
+
+  .ai-github-ingest-toast.error {
+    --aigi-toast-accent: #c84a3b;
+    --aigi-toast-text: #f0b3a8;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-github-ingest-toast {
+    transition-duration: 1ms;
+  }
 }

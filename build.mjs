@@ -75,9 +75,13 @@ try {
   const staticAssets = [
     { from: "manifest.json", to: "dist/manifest.json" },
     { from: "index.html", to: "dist/index.html" },
+    { from: "style.css", to: "dist/style.css" },
     { from: "src/popup/popup.html", to: "dist/popup.html" },
     { from: "src/popup/popup.css", to: "dist/popup.css" },
+    // Wabi-Press token authority — loaded by the popup and the standalone page.
+    { from: "src/ui/wabi-press.css", to: "dist/wabi-press.css" },
     { from: "src/ui/toast.css", to: "dist/toast.css" },
+    { from: "src/pseudo/pseudo-file.css", to: "dist/pseudo-file.css" },
   ];
 
   // ---------------------------------------------------------------------------

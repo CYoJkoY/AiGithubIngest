@@ -8,9 +8,10 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json-summary'],
-      include: ['src/core/**/*.ts'],
+      include: ['src/core/**/*.ts', 'src/pseudo/**/*.ts'],
       exclude: [
         'src/core/**/*.test.ts',
+        'src/pseudo/**/*.test.ts',
         'src/core/errors.ts',
         'src/core/logger.ts',
         'src/core/github-engine.ts', // network-bound: exercised via integration tests only

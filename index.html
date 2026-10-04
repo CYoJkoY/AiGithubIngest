@@ -3,70 +3,132 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AiGithubIngest - GitHub 仓库 AI 上下文提取器</title>
+    <meta name="color-scheme" content="light dark" />
+    <title>AiGithubIngest — GitHub 仓库 AI 上下文提取器</title>
+    <!-- Wabi-Press · 侘寂刊本 is the single token authority; style.css composes. -->
+    <link rel="stylesheet" href="./wabi-press.css" />
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
-    <div class="container">
-      <header class="app-header">
+    <div class="page">
+      <!-- 报头 · Masthead ------------------------------------------------ -->
+      <header class="page-masthead">
+        <div class="wabi-meta-header">
+          <span class="meta-index">VOL. 01</span>
+          <span>AIGITHUBINGEST / CONTEXT EXTRACTOR</span>
+          <span class="meta-rule" aria-hidden="true"></span>
+          <span class="seal seal-cinnabar" aria-hidden="true">墨</span>
+        </div>
         <h1>AiGithubIngest</h1>
-        <p class="subtitle">将 GitHub 仓库解析为适合 AI 大模型分析的聚合文本</p>
+        <p class="editorial-prose prose-lede">
+          将 GitHub 仓库解析为适合 AI
+          大模型分析的聚合文本。全程在浏览器本地完成，不经任何第三方服务器。
+        </p>
       </header>
 
-      <main>
-        <!-- 表单区域：禁止默认提交，保护输入态 -->
-        <form id="ingest-form" class="card" novalidate>
-          <div class="form-group">
-            <label for="repo-url">GitHub 仓库 URL 或 Path <span class="required">*</span></label>
-            <input
-              id="repo-url"
-              name="repoUrl"
-              type="text"
-              placeholder="例如: https://github.com/CYoJkoY/AiGithubIngest 或 owner/repo"
-              required
-              autocomplete="off"
-              spellcheck="false"
-            />
+      <div class="hairline" role="presentation"></div>
+
+      <main class="page-body">
+        <!-- SEC. 01 · 提取参数 -------------------------------------------- -->
+        <section class="wabi-card" aria-labelledby="form-title">
+          <div class="wabi-meta-header">
+            <span class="meta-index">SEC. 01</span>
+            <span id="form-title">提取参数</span>
+            <span class="meta-rule" aria-hidden="true"></span>
           </div>
 
-          <div class="form-group">
-            <label for="github-token">
-              GitHub Personal Access Token (可选，突破 60次/h 速率上限)
-            </label>
-            <input
-              id="github-token"
-              name="githubToken"
-              type="password"
-              placeholder="ghp_xxxxxxxxxxxxxxxxxxxx (仅在浏览器本地发起请求，不上传服务器)"
-              autocomplete="off"
-            />
+          <form id="ingest-form" novalidate>
+            <div class="field">
+              <label for="repo-url">GitHub 仓库 URL <span class="field-required">必填</span></label>
+              <input
+                id="repo-url"
+                name="repoUrl"
+                type="text"
+                class="wabi-input wabi-input--mono"
+                placeholder="https://github.com/CYoJkoY/AiGithubIngest"
+                required
+                autocomplete="off"
+                spellcheck="false"
+              />
+            </div>
+
+            <div class="field">
+              <label for="github-token">
+                GitHub Personal Access Token
+                <span class="field-optional">可选</span>
+              </label>
+              <input
+                id="github-token"
+                name="githubToken"
+                type="password"
+                class="wabi-input wabi-input--mono"
+                placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+                autocomplete="off"
+              />
+              <p class="field-hint">
+                配置后可将 API 速率限额提升至 5000 次/小时，并支持私有仓库。令牌仅用于向 GitHub
+                发起请求。
+              </p>
+            </div>
+
+            <div class="form-actions">
+              <button id="submit-btn" type="submit" class="wabi-button wabi-button--primary">
+                <span class="btn-text">开始提取</span>
+              </button>
+            </div>
+          </form>
+        </section>
+
+        <!-- SEC. 02 · 任务状态 -------------------------------------------- -->
+        <section id="status-panel" class="wabi-card status-panel hidden" aria-live="polite">
+          <div class="wabi-meta-header">
+            <span class="meta-index">SEC. 02</span>
+            <span>任务状态</span>
+            <span class="meta-rule" aria-hidden="true"></span>
+            <span class="wabi-chip wabi-chip--ink" id="status-chip">进行中</span>
           </div>
 
-          <div class="form-actions">
-            <button id="submit-btn" type="submit" class="btn btn-primary">
-              <span class="btn-text">开始提取</span>
-            </button>
-          </div>
-        </form>
-
-        <!-- 独立状态挂载区：确保发生任何异常都不触碰表单输入框 -->
-        <div id="status-panel" class="status-panel hidden" aria-live="polite">
           <div id="progress-indicator" class="progress-indicator hidden">
-            <div class="spinner"></div>
+            <span class="progress-mark" aria-hidden="true"></span>
             <span id="progress-text" class="progress-text">准备就绪...</span>
           </div>
-          <div id="error-banner" class="error-banner hidden" role="alert"></div>
-        </div>
 
-        <!-- 提取结果呈现区 -->
-        <section id="result-section" class="card hidden">
-          <div class="result-header">
-            <div class="result-stats" id="result-stats"></div>
-            <button id="copy-btn" class="btn btn-secondary">一键复制上下文</button>
+          <div id="error-banner" class="error-banner hidden" role="alert"></div>
+        </section>
+
+        <!-- SEC. 03 · 提取结果 -------------------------------------------- -->
+        <section id="result-section" class="wabi-card hidden" aria-labelledby="result-title">
+          <div class="wabi-meta-header">
+            <span class="meta-index">SEC. 03</span>
+            <span id="result-title">提取结果</span>
+            <span class="meta-rule" aria-hidden="true"></span>
+            <button id="copy-btn" class="wabi-button wabi-button--ghost copy-btn">一键复制</button>
           </div>
-          <textarea id="output-area" class="output-area" readonly></textarea>
+
+          <div id="result-stats" class="result-stats"></div>
+          <textarea
+            id="output-area"
+            class="output-area"
+            readonly
+            spellcheck="false"
+            aria-label="Formatted repository digest"
+          ></textarea>
         </section>
       </main>
+
+      <div class="hairline" role="presentation"></div>
+
+      <footer class="page-colophon">
+        <span>Wabi-Press · 侘寂刊本</span>
+        <span class="meta-rule" aria-hidden="true"></span>
+        <a
+          href="https://github.com/CYoJkoY/AiGithubIngest"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          GitHub
+        </a>
+      </footer>
     </div>
 
     <script type="module" src="./src/main.ts"></script>
