@@ -27,7 +27,7 @@ export const PSEUDO_PLACEHOLDER_PATTERN = /__PSEUDO_FILE_([A-Za-z0-9_-]+)__/g;
 export const TOKEN_BYTES_PER_TOKEN_FALLBACK = 3.8;
 
 /** Upper bound for a synthesized payload, guarding against runaway prompts. */
-export const MAX_PAYLOAD_CHARS = 4_000_000;
+export const MAX_PAYLOAD_CHARS = 300_000;
 
 const UTF8_ENCODER = new TextEncoder();
 

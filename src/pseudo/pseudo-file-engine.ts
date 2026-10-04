@@ -39,10 +39,14 @@ export class PseudoFileEngine {
     this.renderer = new PseudoFileRenderer(this.manager, {
       lang: callbacks.lang,
       theme: callbacks.theme,
-      // `onChange` is the single source of emptiness: it covers both a manual
-      // card removal and a post-flush clear, so `onEmptied` fires exactly once.
       onChange: (count) => {
         if (count === 0) callbacks.onEmptied?.();
+      },
+      onSendNow: () => {
+        void this.interceptor.flushAndSubmit('manual');
+      },
+      onInsertNow: () => {
+        this.interceptor.insertOnly();
       },
     });
     this.interceptor = new SubmitInterceptor(this.manager, this.renderer, {

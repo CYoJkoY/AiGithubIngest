@@ -93,6 +93,8 @@ export const translations = {
     pseudoLimitHit: '伪文件数量或体积超限，已跳过 {skipped} 个分片',
     pseudoManualHint: '按 Enter 发送时，摘要将自动拼接到消息末尾。',
     pseudoRemoved: '已移除该摘要分片',
+    pseudoLargePayloadNotice:
+      '摘要文本较大 ({size})，已启用防卡顿注入；若仍有延迟可改用真文件模式。',
 
     // Core steps
     stepResolvingBranch: '正在解析分支信息...',
@@ -230,6 +232,8 @@ export const translations = {
     pseudoLimitHit: 'Pseudo-file count or size limit reached; skipped {skipped} part(s)',
     pseudoManualHint: 'On Enter, the digest is appended to the end of your message.',
     pseudoRemoved: 'Removed that digest part',
+    pseudoLargePayloadNotice:
+      'Large digest payload ({size}); smooth injection active. Switch to Real .md mode if lag occurs.',
 
     // Core steps
     stepResolvingBranch: 'Resolving branch information...',

@@ -70,6 +70,7 @@ export class SubmitInterceptor {
   private readonly options: SubmitInterceptorOptions;
   private editor: HTMLElement | null = null;
   private attached = false;
+  private isFlushing = false;
 
   constructor(
     manager: PseudoFileManager,
@@ -107,6 +108,7 @@ export class SubmitInterceptor {
     document.removeEventListener('pointerdown', this.handlePointerDown, true);
     this.attached = false;
     this.editor = null;
+    this.isFlushing = false;
   }
 
   rebind(editor: HTMLElement | null): boolean {
@@ -116,14 +118,17 @@ export class SubmitInterceptor {
   }
 
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
-    if (this.manager.count === 0) return;
+    if (this.manager.count === 0 || this.isFlushing) return;
     if (!this.isSubmissionKey(event)) return;
     if (!this.isWithinEditor(event)) return;
+
+    // 关键：阻止 Enter 的原生默认换行行为，消除大文本下的二次强制排版死锁
+    event.preventDefault();
     this.flush('keyboard');
   };
 
   private readonly handlePointerDown = (event: Event): void => {
-    if (this.manager.count === 0) return;
+    if (this.manager.count === 0 || this.isFlushing) return;
     if (!isSendControl(event.target)) return;
     this.flush('pointer');
   };
@@ -144,30 +149,37 @@ export class SubmitInterceptor {
   }
 
   public flush(source: FlushSource = 'manual'): boolean {
-    const editor = this.editor;
-    const files = this.manager.list();
-    if (files.length === 0) return false;
-    if (!editor || !editor.isConnected) {
-      logger.warn('SubmitInterceptor.flush: editor detached, payload retained');
-      return false;
+    if (this.isFlushing) return false;
+    this.isFlushing = true;
+
+    try {
+      const editor = this.editor;
+      const files = this.manager.list();
+      if (files.length === 0) return false;
+      if (!editor || !editor.isConnected) {
+        logger.warn('SubmitInterceptor.flush: editor detached, payload retained');
+        return false;
+      }
+
+      const current = readEditorText(editor);
+      const expanded = replacePlaceholders(current, (id) => this.manager.get(id));
+      const next = expanded !== current ? expanded : this.appendPayload(current, files);
+
+      const written = EditorWriter.setEntireContent(next, editor);
+      if (!written) {
+        logger.warn('SubmitInterceptor.flush: editor write failed, payload retained');
+        return false;
+      }
+
+      this.renderer.clear();
+      this.manager.clear();
+
+      logger.debug('SubmitInterceptor flushed', files.length, 'file(s) via', source);
+      this.options.onFlushed?.({ count: files.length, chars: next.length - current.length });
+      return true;
+    } finally {
+      this.isFlushing = false;
     }
-
-    const current = readEditorText(editor);
-    const expanded = replacePlaceholders(current, (id) => this.manager.get(id));
-    const next = expanded !== current ? expanded : this.appendPayload(current, files);
-
-    const written = EditorWriter.setEntireContent(next, editor);
-    if (!written) {
-      logger.warn('SubmitInterceptor.flush: editor write failed, payload retained');
-      return false;
-    }
-
-    this.renderer.clear();
-    this.manager.clear();
-
-    logger.debug('SubmitInterceptor flushed', files.length, 'file(s) via', source);
-    this.options.onFlushed?.({ count: files.length, chars: next.length - current.length });
-    return true;
   }
 
   public async flushAndSubmit(source: FlushSource = 'manual'): Promise<boolean> {

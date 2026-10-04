@@ -5,6 +5,9 @@ export interface SavedRange {
   end: number;
 }
 
+/** 超过此字符阈值即视为大文本，优先采用 Paste 管道以防止 execCommand 阻塞主线程 */
+const LARGE_TEXT_THRESHOLD = 15_000;
+
 export class EditorWriter {
   public static setEntireContent(text: string, targetElement?: EventTarget | null): boolean {
     const activeEl = (
@@ -71,8 +74,24 @@ export class EditorWriter {
     if (!container) return false;
 
     container.focus();
+    this.selectAll(container);
 
-    // 1. 全选内容
+    const isLargeText = text.length >= LARGE_TEXT_THRESHOLD;
+
+    // 大文本优先使用 Paste 模拟（绕过 execCommand 导致的主线程撤销栈死锁）
+    if (isLargeText) {
+      if (this.tryPaste(container, text)) return true;
+      if (this.tryExecCommand(container, text)) return true;
+    } else {
+      if (this.tryExecCommand(container, text)) return true;
+      if (this.tryPaste(container, text)) return true;
+    }
+
+    if (this.tryDomFallback(container, text)) return true;
+    return (container.textContent?.length ?? 0) > 0;
+  }
+
+  private static selectAll(container: HTMLElement): void {
     try {
       const selection = window.getSelection();
       if (selection) {
@@ -84,8 +103,9 @@ export class EditorWriter {
     } catch (err) {
       logger.debug('setContentEditableValue: selectAll failed', err);
     }
+  }
 
-    // 2. 尝试 execCommand 替换
+  private static tryExecCommand(container: HTMLElement, text: string): boolean {
     try {
       if (typeof document.execCommand === 'function') {
         const ok = document.execCommand('insertText', false, text);
@@ -94,10 +114,12 @@ export class EditorWriter {
         }
       }
     } catch (err) {
-      logger.debug('setContentEditableValue: execCommand threw', err);
+      logger.debug('tryExecCommand threw', err);
     }
+    return false;
+  }
 
-    // 3. 尝试模拟 Paste 事件
+  private static tryPaste(container: HTMLElement, text: string): boolean {
     try {
       const dt = new DataTransfer();
       dt.setData('text/plain', text);
@@ -112,10 +134,12 @@ export class EditorWriter {
         return true;
       }
     } catch (err) {
-      logger.debug('setContentEditableValue: paste dispatch threw', err);
+      logger.debug('tryPaste threw', err);
     }
+    return false;
+  }
 
-    // 4. DOM 级兜底写入
+  private static tryDomFallback(container: HTMLElement, text: string): boolean {
     try {
       container.innerHTML = '';
       const p = document.createElement('p');
@@ -134,10 +158,9 @@ export class EditorWriter {
       container.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
       return true;
     } catch (err) {
-      logger.debug('setContentEditableValue: DOM fallback threw', err);
+      logger.debug('tryDomFallback threw', err);
     }
-
-    return (container.textContent?.length ?? 0) > 0;
+    return false;
   }
 
   private static insertIntoFormField(
@@ -182,15 +205,12 @@ export class EditorWriter {
     container.focus();
     const beforeLen = container.textContent?.length ?? 0;
 
-    try {
-      if (typeof document.execCommand === 'function') {
-        const ok = document.execCommand('insertText', false, text);
-        if (ok && (container.textContent?.length ?? 0) > beforeLen) {
-          return true;
-        }
-      }
-    } catch (err) {
-      logger.debug('insertIntoContentEditable: execCommand threw', err);
+    if (text.length >= LARGE_TEXT_THRESHOLD && this.tryPaste(container, text)) {
+      return true;
+    }
+
+    if (this.tryExecCommand(container, text)) {
+      return (container.textContent?.length ?? 0) > beforeLen;
     }
 
     return (container.textContent?.length ?? 0) > beforeLen;

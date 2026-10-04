@@ -9,6 +9,7 @@ import { IngestGuard } from '../core/ingest-guard';
 import { DomainError } from '../core/errors';
 import { logger } from '../core/logger';
 import { PseudoFileEngine } from '../pseudo/pseudo-file-engine';
+import { formatBytes } from '../pseudo/payload';
 import { resolvePolicyHostnames, resolveActiveEditor, resolveEventTarget } from './policy-resolver';
 import { sleep } from '../dom/dom-utils';
 import { SavedRange } from '../dom/editor-writer';
@@ -36,6 +37,7 @@ const INGEST_STATUS_TOAST_KEY = 'ingest-status';
 const INGESTING_TOAST_DELAY_MS = 800;
 const MULTI_PART_INTERVAL_MS = 300;
 const MULTI_PART_PROGRESS_MS = 30000;
+const LARGE_PAYLOAD_NOTICE_BYTES = 150 * 1024;
 
 export async function handlePasteEvent(event: ClipboardEvent, guard: IngestGuard): Promise<void> {
   const policy = evaluateSitePolicyForHostnames(
@@ -236,6 +238,19 @@ function mountPseudoParts(
     4000,
     INGEST_STATUS_TOAST_KEY,
   );
+
+  if (engine.totalBytes > LARGE_PAYLOAD_NOTICE_BYTES) {
+    const totalBytes = engine.totalBytes;
+    window.setTimeout(() => {
+      showToast(
+        t('pseudoLargePayloadNotice', cachedLang, { size: formatBytes(totalBytes) }),
+        'info',
+        5000,
+        'pseudo-payload-notice',
+      );
+    }, 500);
+  }
+
   return 'mounted';
 }
 
@@ -321,6 +336,7 @@ async function mountRealParts(
     4000,
     INGEST_STATUS_TOAST_KEY,
   );
+
   return 'mounted';
 }
 
