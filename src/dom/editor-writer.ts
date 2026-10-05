@@ -5,8 +5,8 @@ export interface SavedRange {
   end: number;
 }
 
-/** 超过此字符阈值即视为大文本，优先采用 Paste 管道以防止 execCommand 阻塞主线程 */
-const LARGE_TEXT_THRESHOLD = 15_000;
+/** 超过此字符阈值严禁走 execCommand，直接使用原子性快照注入以防撤销栈死锁 */
+const LARGE_TEXT_THRESHOLD = 8_000;
 
 export class EditorWriter {
   public static setEntireContent(text: string, targetElement?: EventTarget | null): boolean {
@@ -40,7 +40,7 @@ export class EditorWriter {
     }
 
     if (activeEl.isContentEditable || activeEl.closest("[contenteditable='true']")) {
-      return this.insertIntoContentEditable(activeEl, text);
+      return this.setContentEditableValue(activeEl, text);
     }
     return false;
   }
@@ -62,6 +62,8 @@ export class EditorWriter {
     } catch (err) {
       logger.debug('setSelectionRange failed', err);
     }
+
+    // 触发 React/Vue/原生框架监听
     el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
     el.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
     return true;
@@ -74,39 +76,49 @@ export class EditorWriter {
     if (!container) return false;
 
     container.focus();
-    this.selectAll(container);
 
-    const isLargeText = text.length >= LARGE_TEXT_THRESHOLD;
-
-    // 大文本优先使用 Paste 模拟（绕过 execCommand 导致的主线程撤销栈死锁）
-    if (isLargeText) {
-      if (this.tryPaste(container, text)) return true;
-      if (this.tryExecCommand(container, text)) return true;
-    } else {
-      if (this.tryExecCommand(container, text)) return true;
-      if (this.tryPaste(container, text)) return true;
+    // 针对大型代码摘要（超出阈值），彻底规避 execCommand 与合成 paste
+    // 直接采用最底层的 DOM 文本节点快速置换，阻止主线程 Undo 栈挂起
+    if (text.length >= LARGE_TEXT_THRESHOLD) {
+      return this.tryFastDomReplacement(container, text);
     }
 
-    if (this.tryDomFallback(container, text)) return true;
-    return (container.textContent?.length ?? 0) > 0;
+    if (this.tryExecCommand(container, text)) return true;
+    if (this.tryPaste(container, text)) return true;
+    return this.tryFastDomReplacement(container, text);
   }
 
-  private static selectAll(container: HTMLElement): void {
+  private static tryFastDomReplacement(container: HTMLElement, text: string): boolean {
     try {
-      const selection = window.getSelection();
-      if (selection) {
-        const range = document.createRange();
-        range.selectNodeContents(container);
-        selection.removeAllRanges();
-        selection.addRange(range);
-      }
+      container.innerHTML = '';
+      const fragment = document.createDocumentFragment();
+      const p = document.createElement('p');
+      p.textContent = text;
+      fragment.appendChild(p);
+      container.appendChild(fragment);
+
+      // 调度合成 Input 事件通知富文本框架（如 ProseMirror / Lexical）
+      container.dispatchEvent(
+        new InputEvent('beforeinput', {
+          bubbles: true,
+          cancelable: true,
+          composed: true,
+          inputType: 'insertText',
+          data: text,
+        }),
+      );
+      container.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+      container.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+      return true;
     } catch (err) {
-      logger.debug('setContentEditableValue: selectAll failed', err);
+      logger.error('tryFastDomReplacement failed', err);
+      return false;
     }
   }
 
   private static tryExecCommand(container: HTMLElement, text: string): boolean {
     try {
+      this.selectAll(container);
       if (typeof document.execCommand === 'function') {
         const ok = document.execCommand('insertText', false, text);
         if (ok && container.textContent?.includes(text.slice(0, 30))) {
@@ -121,6 +133,7 @@ export class EditorWriter {
 
   private static tryPaste(container: HTMLElement, text: string): boolean {
     try {
+      this.selectAll(container);
       const dt = new DataTransfer();
       dt.setData('text/plain', text);
       const pasteEvt = new ClipboardEvent('paste', {
@@ -139,28 +152,18 @@ export class EditorWriter {
     return false;
   }
 
-  private static tryDomFallback(container: HTMLElement, text: string): boolean {
+  private static selectAll(container: HTMLElement): void {
     try {
-      container.innerHTML = '';
-      const p = document.createElement('p');
-      p.textContent = text;
-      container.appendChild(p);
-      container.dispatchEvent(
-        new InputEvent('beforeinput', {
-          bubbles: true,
-          cancelable: true,
-          composed: true,
-          inputType: 'insertText',
-          data: text,
-        }),
-      );
-      container.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
-      container.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
-      return true;
+      const selection = window.getSelection();
+      if (selection) {
+        const range = document.createRange();
+        range.selectNodeContents(container);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
     } catch (err) {
-      logger.debug('tryDomFallback threw', err);
+      logger.debug('selectAll failed', err);
     }
-    return false;
   }
 
   private static insertIntoFormField(
@@ -177,42 +180,6 @@ export class EditorWriter {
       : (el.selectionEnd ?? originalValue.length);
 
     const updated = originalValue.slice(0, start) + text + originalValue.slice(end);
-    const proto =
-      el instanceof HTMLTextAreaElement
-        ? HTMLTextAreaElement.prototype
-        : HTMLInputElement.prototype;
-    const nativeSetter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-    if (nativeSetter) nativeSetter.call(el, updated);
-    else el.value = updated;
-
-    const newPos = start + text.length;
-    try {
-      el.setSelectionRange(newPos, newPos);
-    } catch (err) {
-      logger.debug('setSelectionRange failed', err);
-    }
-    el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
-    el.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
-    return true;
-  }
-
-  private static insertIntoContentEditable(el: HTMLElement, text: string): boolean {
-    const container = el.isContentEditable
-      ? el
-      : (el.closest("[contenteditable='true']") as HTMLElement | null);
-    if (!container) return false;
-
-    container.focus();
-    const beforeLen = container.textContent?.length ?? 0;
-
-    if (text.length >= LARGE_TEXT_THRESHOLD && this.tryPaste(container, text)) {
-      return true;
-    }
-
-    if (this.tryExecCommand(container, text)) {
-      return (container.textContent?.length ?? 0) > beforeLen;
-    }
-
-    return (container.textContent?.length ?? 0) > beforeLen;
+    return this.setFormFieldValue(el, updated);
   }
 }
