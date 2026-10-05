@@ -3,28 +3,22 @@ import { logger } from '../core/logger';
 import { EditorWriter } from '../dom/editor-writer';
 import { sleep } from '../dom/dom-utils';
 import { replacePlaceholders, synthesizePayload } from './payload';
-import { resolveActiveEditor } from '../content/policy-resolver';
 import type { PseudoFileManager } from './pseudo-file-manager';
 import type { PseudoFileRenderer } from './pseudo-file-renderer';
 
 export type FlushSource = 'keyboard' | 'pointer' | 'manual';
 
 const IME_COMPOSITION_KEYCODE = 229;
-const SEND_NAME_PATTERN = /(send|submit|发送|送出|提交|运行|run|chat|prompt)/i;
+const SEND_NAME_PATTERN = /(send|submit|发送|送出|提交|运行|run\b)/i;
 
-/** 涵盖全球主流与国内大模型专属发送控件的高敏选择器矩阵 */
-const SEND_CONTROL_SELECTORS: readonly string[] = [
-  'button[data-testid*="send" i]',
-  'button[aria-label*="send" i]',
-  'button[aria-label*="发送"]',
-  'button[title*="发送"]',
-  'button[id*="send" i]',
-  'button[class*="send" i]',
-  'div[role="button"][aria-label*="发送"]',
-  'div[role="button"][data-testid*="send" i]',
-  'button[type="submit"]',
+const SEND_CONTROL_SELECTOR = [
+  'button',
+  '[role="button"]',
   'input[type="submit"]',
-];
+  '[data-testid*="send" i]',
+  '[aria-label*="send" i]',
+  '[aria-label*="发送" i]',
+].join(', ');
 
 export interface SubmitInterceptorOptions {
   readonly lang: SupportedLang;
@@ -38,38 +32,73 @@ function readEditorText(editor: HTMLElement): string {
   return editor.textContent ?? '';
 }
 
-function isSendButtonElement(target: EventTarget | null): HTMLElement | null {
-  if (!(target instanceof Element)) return null;
-  if (target.closest('.aigi-pseudo-dock')) return null;
+function isSendControl(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  if (target.closest('.aigi-pseudo-dock')) return false;
 
-  for (const sel of SEND_CONTROL_SELECTORS) {
-    const hit = target.closest<HTMLElement>(sel);
-    if (hit) {
-      if (hit instanceof HTMLButtonElement && hit.disabled) return null;
-      if (hit.getAttribute('aria-disabled') === 'true') return null;
-      return hit;
-    }
+  const control = target.closest(SEND_CONTROL_SELECTOR);
+  if (!control) return false;
+
+  if (control instanceof HTMLButtonElement || control instanceof HTMLInputElement) {
+    if (control.disabled) return false;
   }
+  if (control.getAttribute('aria-disabled') === 'true') return false;
+  if (control.getAttribute('type') === 'submit') return true;
 
-  // 启发式：匹配文本或内嵌图标带 Arrow / Send 特征的按钮
-  const btn = target.closest<HTMLElement>('button, [role="button"]');
-  if (btn) {
-    if (btn instanceof HTMLButtonElement && btn.disabled) return null;
-    if (btn.getAttribute('aria-disabled') === 'true') return null;
-    const desc = (
-      btn.getAttribute('aria-label') ||
-      btn.getAttribute('title') ||
-      btn.textContent ||
-      ''
-    ).trim();
-    if (SEND_NAME_PATTERN.test(desc)) return btn;
+  const testId = control.getAttribute('data-testid') ?? '';
+  if (SEND_NAME_PATTERN.test(testId)) return true;
 
-    // 检查是否有向上发射箭头 svg
-    const hasSendSvg = btn.querySelector('svg path[d*="M"], svg[class*="send" i]');
-    if (hasSendSvg && !desc.includes('取消') && !desc.includes('stop')) return btn;
+  const name = (
+    control.getAttribute('aria-label') ??
+    control.getAttribute('title') ??
+    control.textContent ??
+    ''
+  ).trim();
+  return SEND_NAME_PATTERN.test(name);
+}
+
+function findHostSendButton(anchor: HTMLElement | null): HTMLElement | null {
+  const root =
+    anchor?.closest('form') ||
+    anchor?.closest('[class*="chat" i], [class*="composer" i], [class*="input" i]') ||
+    document;
+
+  const buttons = Array.from(root.querySelectorAll<HTMLElement>('button, [role="button"]'));
+  for (const btn of buttons) {
+    if (btn.closest('.aigi-pseudo-dock')) continue;
+    if (isSendControl(btn)) return btn;
   }
-
   return null;
+}
+
+function findActiveEditor(target?: EventTarget | null): HTMLElement | null {
+  if (target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement) {
+    return target;
+  }
+  if (target instanceof HTMLElement) {
+    const root = target.closest<HTMLElement>(
+      'textarea, [contenteditable="true"], [role="textbox"]',
+    );
+    if (root) return root;
+    if (target.isContentEditable) return target;
+  }
+  if (document.activeElement instanceof HTMLElement) {
+    if (
+      document.activeElement instanceof HTMLTextAreaElement ||
+      document.activeElement instanceof HTMLInputElement ||
+      document.activeElement.isContentEditable
+    ) {
+      return document.activeElement;
+    }
+    const activeClosest = document.activeElement.closest<HTMLElement>(
+      'textarea, [contenteditable="true"], [role="textbox"]',
+    );
+    if (activeClosest) return activeClosest;
+  }
+  const candidates = Array.from(
+    document.querySelectorAll<HTMLElement>('textarea, [contenteditable="true"], [role="textbox"]'),
+  );
+  return candidates.find((el) => el.offsetWidth > 0 && el.offsetHeight > 0) || null;
 }
 
 export class SubmitInterceptor {
@@ -78,7 +107,7 @@ export class SubmitInterceptor {
   private readonly options: SubmitInterceptorOptions;
   private editor: HTMLElement | null = null;
   private attached = false;
-  private isProcessing = false;
+  private isFlushing = false;
 
   constructor(
     manager: PseudoFileManager,
@@ -99,85 +128,85 @@ export class SubmitInterceptor {
   }
 
   attach(editor: HTMLElement | null): boolean {
+    if (!editor) return false;
     this.editor = editor;
     if (this.attached) return true;
 
-    // 在全局 capture 阶段最高优先级监听，防止宿主先发
     document.addEventListener('keydown', this.handleKeyDown, true);
+    document.addEventListener('pointerdown', this.handlePointerDown, true);
     document.addEventListener('click', this.handleClick, true);
     this.attached = true;
-    logger.debug('SubmitInterceptor securely attached');
+    logger.debug('SubmitInterceptor attached to', editor.tagName);
     return true;
   }
 
   detach(): void {
     if (!this.attached) return;
     document.removeEventListener('keydown', this.handleKeyDown, true);
+    document.removeEventListener('pointerdown', this.handlePointerDown, true);
     document.removeEventListener('click', this.handleClick, true);
     this.attached = false;
     this.editor = null;
-    this.isProcessing = false;
+    this.isFlushing = false;
   }
 
   rebind(editor: HTMLElement | null): boolean {
+    if (!this.attached || !editor) return false;
     this.editor = editor;
     return true;
   }
 
-  /**
-   * 动态定位当下真正活跃的 Editor（消灭 DOM 替换漂移带来的脱节）
-   */
-  private resolveLiveEditor(eventTarget?: EventTarget | null): HTMLElement | null {
-    if (eventTarget instanceof HTMLElement) {
-      if (
-        eventTarget instanceof HTMLTextAreaElement ||
-        eventTarget instanceof HTMLInputElement ||
-        eventTarget.isContentEditable
-      ) {
-        return eventTarget;
-      }
-      const closest = eventTarget.closest<HTMLElement>(
-        'textarea, [contenteditable="true"], [role="textbox"]',
-      );
-      if (closest) return closest;
-    }
-
+  private resolveLiveEditor(target: EventTarget | null): HTMLElement | null {
     if (this.editor && this.editor.isConnected) {
-      return this.editor;
+      if (target instanceof Node && (target === this.editor || this.editor.contains(target))) {
+        return this.editor;
+      }
+      if (document.activeElement === this.editor) {
+        return this.editor;
+      }
+      if (!target || target === document.body) {
+        return this.editor;
+      }
+      return null;
     }
 
-    return resolveActiveEditor(null);
+    const candidate = findActiveEditor(target);
+    if (candidate && candidate.isConnected) {
+      this.editor = candidate;
+      return candidate;
+    }
+    return null;
   }
 
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
-    if (this.manager.count === 0 || this.isProcessing) return;
+    if (this.manager.count === 0 || this.isFlushing) return;
     if (!this.isSubmissionKey(event)) return;
 
-    const liveEditor = this.resolveLiveEditor(event.target);
-    if (!liveEditor) return;
+    const editor = this.resolveLiveEditor(event.target);
+    if (!editor) return;
 
-    // 关键修正：确认为发送按键，必须无条件阻断原生半截逻辑
     event.preventDefault();
-    event.stopPropagation();
-    event.stopImmediatePropagation();
+    void this.executeAtomicSpliceAndSend(editor, 'keyboard');
+  };
 
-    void this.executeAtomicSpliceAndSend(liveEditor, 'keyboard');
+  private readonly handlePointerDown = (event: Event): void => {
+    if (this.manager.count === 0 || this.isFlushing) return;
+    if (!isSendControl(event.target)) return;
+
+    const editor = this.resolveLiveEditor(null);
+    if (!editor) return;
+
+    this.flush('pointer');
   };
 
   private readonly handleClick = (event: MouseEvent): void => {
-    if (this.manager.count === 0 || this.isProcessing) return;
-    const sendBtn = isSendButtonElement(event.target);
-    if (!sendBtn) return;
+    if (this.manager.count === 0 || this.isFlushing) return;
+    if (!isSendControl(event.target)) return;
 
-    const liveEditor = this.resolveLiveEditor(null);
-    if (!liveEditor) return;
+    const editor = this.resolveLiveEditor(null);
+    if (!editor) return;
 
-    // 拦截原生提前读取，先拼后发
-    event.preventDefault();
-    event.stopPropagation();
-    event.stopImmediatePropagation();
-
-    void this.executeAtomicSpliceAndSend(liveEditor, 'pointer', sendBtn);
+    this.flush('pointer');
   };
 
   private isSubmissionKey(event: KeyboardEvent): boolean {
@@ -185,79 +214,6 @@ export class SubmitInterceptor {
     if (event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) return false;
     if (event.isComposing) return false;
     return event.keyCode !== IME_COMPOSITION_KEYCODE;
-  }
-
-  /**
-   * 原子性拼接并直接触发发送（彻底打通卡顿与丢失的闭环）
-   */
-  private async executeAtomicSpliceAndSend(
-    editor: HTMLElement,
-    source: FlushSource,
-    triggerButton?: HTMLElement,
-  ): Promise<void> {
-    this.isProcessing = true;
-    try {
-      const files = this.manager.list();
-      if (files.length === 0) return;
-
-      const current = readEditorText(editor);
-      const expanded = replacePlaceholders(current, (id) => this.manager.get(id));
-      const next = expanded !== current ? expanded : this.appendPayload(current, files);
-
-      // 1. 无死锁更新输入框内容
-      const written = EditorWriter.setEntireContent(next, editor);
-      if (!written) {
-        logger.error('EditorWriter failed to write composite payload');
-        return;
-      }
-
-      // 2. 释放伪文件状态与卡片 DOM
-      const count = files.length;
-      const chars = next.length - current.length;
-      this.renderer.clear();
-      this.manager.clear();
-      this.options.onFlushed?.({ count, chars });
-
-      // 3. 让渡排版执行帧（给 React / Vue 状态机吸收 input 事件的时机）
-      await sleep(60);
-
-      // 4. 驱动真实发送动作
-      const finalBtn = triggerButton || this.findSendButton(editor);
-      if (finalBtn && !finalBtn.hasAttribute('disabled')) {
-        finalBtn.click();
-      } else {
-        // 合成回车触发提交（此时输入框已完备，不会再被拦截器捕捉）
-        editor.dispatchEvent(
-          new KeyboardEvent('keydown', {
-            key: 'Enter',
-            code: 'Enter',
-            keyCode: 13,
-            which: 13,
-            bubbles: true,
-            cancelable: true,
-          }),
-        );
-      }
-
-      logger.info(`Successfully dispatched pseudo payload (${count} parts) via ${source}`);
-    } catch (err) {
-      logger.error('executeAtomicSpliceAndSend encountered an error', err);
-    } finally {
-      this.isProcessing = false;
-    }
-  }
-
-  private findSendButton(anchor: HTMLElement): HTMLElement | null {
-    const scope =
-      anchor.closest('form') ||
-      anchor.closest('[class*="chat" i], [class*="composer" i], [class*="input" i]') ||
-      document.body;
-
-    const buttons = Array.from(scope.querySelectorAll<HTMLElement>('button, [role="button"]'));
-    for (const btn of buttons) {
-      if (isSendButtonElement(btn)) return btn;
-    }
-    return null;
   }
 
   private appendPayload(current: string, files: readonly PseudoFile[]): string {
@@ -269,26 +225,92 @@ export class SubmitInterceptor {
     return current.trim().length > 0 ? `${current}\n\n${payload}` : payload;
   }
 
-  public flush(source: FlushSource = 'manual'): boolean {
-    const liveEditor = this.resolveLiveEditor(null);
-    if (!liveEditor) return false;
-    void this.executeAtomicSpliceAndSend(liveEditor, source);
-    return true;
-  }
-
-  public insertOnly(): boolean {
-    const liveEditor = this.resolveLiveEditor(null);
-    if (!liveEditor) return false;
+  private spliceIntoEditor(editor: HTMLElement, source: FlushSource): boolean {
     const files = this.manager.list();
     if (files.length === 0) return false;
 
-    const current = readEditorText(liveEditor);
-    const next = this.appendPayload(current, files);
-    const ok = EditorWriter.setEntireContent(next, liveEditor);
-    if (ok) {
-      this.renderer.clear();
-      this.manager.clear();
+    const current = readEditorText(editor);
+    const expanded = replacePlaceholders(current, (id) => this.manager.get(id));
+    const next = expanded !== current ? expanded : this.appendPayload(current, files);
+
+    const written = EditorWriter.setEntireContent(next, editor);
+    if (!written) {
+      logger.warn('SubmitInterceptor.flush: editor write failed, payload retained');
+      return false;
     }
-    return ok;
+
+    const count = files.length;
+    const chars = next.length - current.length;
+    this.renderer.clear();
+    this.manager.clear();
+
+    logger.debug('SubmitInterceptor flushed', count, 'file(s) via', source);
+    this.options.onFlushed?.({ count, chars });
+    return true;
+  }
+
+  private async executeAtomicSpliceAndSend(
+    editor: HTMLElement,
+    source: FlushSource,
+    triggerButton?: HTMLElement,
+  ): Promise<boolean> {
+    if (this.isFlushing) return false;
+    this.isFlushing = true;
+    try {
+      const spliced = this.spliceIntoEditor(editor, source);
+      if (!spliced) return false;
+
+      await sleep(60);
+
+      const finalBtn = triggerButton || findHostSendButton(editor);
+      if (
+        finalBtn &&
+        !finalBtn.hasAttribute('disabled') &&
+        finalBtn.getAttribute('aria-disabled') !== 'true'
+      ) {
+        finalBtn.click();
+      } else {
+        editor.dispatchEvent(
+          new KeyboardEvent('keydown', {
+            key: 'Enter',
+            code: 'Enter',
+            keyCode: 13,
+            which: 13,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+      }
+      return true;
+    } finally {
+      this.isFlushing = false;
+    }
+  }
+
+  public flush(source: FlushSource = 'manual'): boolean {
+    if (this.isFlushing) return false;
+    this.isFlushing = true;
+    try {
+      const editor = this.resolveLiveEditor(null);
+      if (!editor || !editor.isConnected) {
+        logger.warn('SubmitInterceptor.flush: editor detached, payload retained');
+        return false;
+      }
+      return this.spliceIntoEditor(editor, source);
+    } finally {
+      this.isFlushing = false;
+    }
+  }
+
+  public async flushAndSubmit(source: FlushSource = 'manual'): Promise<boolean> {
+    const editor = this.resolveLiveEditor(null);
+    if (!editor || !editor.isConnected) return false;
+    return this.executeAtomicSpliceAndSend(editor, source);
+  }
+
+  public insertOnly(): boolean {
+    const editor = this.resolveLiveEditor(null);
+    if (!editor || !editor.isConnected) return false;
+    return this.spliceIntoEditor(editor, 'manual');
   }
 }
