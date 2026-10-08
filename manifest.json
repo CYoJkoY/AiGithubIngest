@@ -1,10 +1,12 @@
 {
   "manifest_version": 3,
   "name": "__MSG_extName__",
-  "version": "0.8.3",
+  "version": "0.8.4",
   "description": "__MSG_extDescription__",
   "default_locale": "en",
-  "permissions": ["storage"],
+  "permissions": [
+    "storage"
+  ],
   "host_permissions": [
     "https://api.github.com/",
     "https://codeload.github.com/",
@@ -32,9 +34,36 @@
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"],
-      "css": ["toast.css", "pseudo-file.css"],
+      "matches": [
+        "https://gemini.google.com/*",
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*",
+        "https://claude.ai/*",
+        "https://chat.deepseek.com/*",
+        "https://poe.com/*",
+        "https://perplexity.ai/*",
+        "https://copilot.microsoft.com/*",
+        "https://grok.com/*",
+        "https://kimi.moonshot.cn/*",
+        "https://chatglm.cn/*",
+        "https://chat.z.ai/*",
+        "https://z.ai/*",
+        "https://bigmodel.cn/*",
+        "https://tongyi.aliyun.com/*",
+        "https://chat.qwen.ai/*",
+        "https://qwen.ai/*",
+        "https://qianwen.com/*",
+        "https://doubao.com/*",
+        "https://yuanbao.tencent.com/*",
+        "https://yuanbao.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "toast.css",
+        "pseudo-file.css"
+      ],
       "run_at": "document_start",
       "all_frames": true
     }
