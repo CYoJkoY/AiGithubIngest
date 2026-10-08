@@ -15,6 +15,7 @@ export const translations = {
     blacklisted: '已拉黑',
     whitelisted: '已加白',
     disabled: '未启用',
+    unsupportedSite: '不支持的 AI 站点',
 
     // Site Policy Actions (精简文案，根除折行风险)
     disableBuiltinBtn: '停用内置支持',
@@ -148,6 +149,7 @@ export const translations = {
     blacklisted: 'Blocked',
     whitelisted: 'Whitelisted',
     disabled: 'Inactive',
+    unsupportedSite: 'Unsupported AI site',
 
     // Site Policy Actions
     disableBuiltinBtn: 'Disable Built-in',
