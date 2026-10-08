@@ -34,7 +34,7 @@ The Extension does not intentionally read or collect unrelated chat history, pag
 
 The Extension reads the hostname of the current web page so it can determine whether the Extension is enabled for that site and whether the site is allowed or blocked by the user's site policy.
 
-The current hostname is processed for this user-facing feature. The Extension does not maintain a remote browsing-history database or send browsing history to the developer.
+The current hostname is processed for this user-facing feature on supported AI sites. The Extension does not maintain a remote browsing-history database or send browsing history to the developer.
 
 ## 2. How Information Is Used
 
@@ -115,8 +115,8 @@ The Extension cannot control the security, privacy practices, retention, or brea
 You can:
 
 - add, remove, or clear the GitHub PAT from the Extension settings;
-- configure or disable the Extension for individual websites;
-- manage the site's blacklist and whitelist;
+- enable or disable the Extension's integration for supported AI websites;
+- manage the supported site's blacklist state;
 - choose the digest delivery mode;
 - configure per-site and default file-size limits;
 - change the Extension language and theme.
@@ -125,7 +125,7 @@ Removing a PAT from the Extension stops future authenticated GitHub requests usi
 
 ## 8. Third-Party Services
 
-The Extension interacts with:
+The Extension currently interacts with:
 
 - GitHub, for repository retrieval and optional PAT authentication;
 - the AI website chosen by the user, for receiving the generated repository context;
