@@ -1,4 +1,4 @@
-import { evaluateSitePolicy, normalizeHostname } from '../core/policy';
+import { BUILTIN_AI_DOMAINS, evaluateSitePolicy, matchDomain, normalizeHostname } from '../core/policy';
 import { t } from '../core/i18n';
 import { StorageSchema, SupportedLang } from '../types';
 import { logger } from '../core/logger';
@@ -32,6 +32,12 @@ export async function renderSitePolicy(
   const cleanHost = normalizeHostname(hostname);
   domainEl.textContent = cleanHost;
 
+  const isSupportedSite = BUILTIN_AI_DOMAINS.some((domain) => matchDomain(cleanHost, domain));
+  if (!isSupportedSite) {
+    showUnsupportedSite(domainEl, badgeEl, toggleBtn, blacklistCurrentBtn, currentLang);
+    return;
+  }
+
   const whitelist = storage.userWhitelist ?? [];
   const blacklist = storage.userBlacklist ?? [];
   const policy = evaluateSitePolicy(cleanHost, whitelist, blacklist);
@@ -62,6 +68,22 @@ function updateBadgeContent(badgeEl: HTMLElement, text: string, variantClass: st
   } else {
     badgeEl.textContent = text;
   }
+}
+
+function showUnsupportedSite(
+  domainEl: HTMLElement,
+  badgeEl: HTMLElement,
+  toggleBtn: HTMLButtonElement,
+  blacklistCurrentBtn: HTMLButtonElement,
+  lang: SupportedLang,
+): void {
+  domainEl.textContent = domainEl.textContent || t('unsupportedSite', lang);
+  updateBadgeContent(badgeEl, t('unsupportedSite', lang), 'wabi-chip--ink');
+  toggleBtn.disabled = true;
+  toggleBtn.textContent = t('unsupportedSite', lang);
+  toggleBtn.className = 'wabi-button wabi-button--ghost btn-action';
+  toggleBtn.onclick = null;
+  blacklistCurrentBtn.classList.add('hidden');
 }
 
 function showCantGetDomain(
