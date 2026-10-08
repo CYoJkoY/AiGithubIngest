@@ -75,7 +75,7 @@ Everything executes inside your local browser runtime—no telemetry, no interme
 - **Smart Filter & Heuristic Token Estimator:** Automatically excludes binaries, minified files, lockfiles, virtual environments, build artifacts, and oversized files (>100 KB default), and calculates token counts aligned with modern LLM tokenizers (GPT-4o / o200k_base).
 - **Two Delivery Modes:** Choose how the digest reaches the chat — a **real `.md` file** pushed through the site's native upload pipeline, or a **pseudo-file** whose text stays in memory behind a lightweight card and is spliced into the prompt at send time. The popup states what each mode does and what happens if it fails.
 - **Zero-DOM-Pressure Pseudo-Files:** In pseudo-file mode, multi-megabyte text never enters the host document. Cards declare `contain: layout paint`, carry metadata only, and are garbage collected the instant the message is sent.
-- **Out-of-the-Box AI Site Policy:** Activates automatically on major AI platforms and allows custom domain whitelisting with one click from the popup interface.
+- **Out-of-the-Box AI Site Policy:** Activates automatically on the built-in supported AI platforms and lets users disable individual supported sites from the popup interface.
 - **Standalone Web UI Included:** Features a standalone web interface (`index.html`) for manual pasting, token entry, and one-click clipboard copying without requiring extension background scripts.
 - **Modular Adapter Architecture:** Each AI platform is handled by an isolated adapter file. Adding a new site requires only adding one adapter and registering it—no modifications to the generic orchestrator.
 
@@ -261,7 +261,7 @@ Built-in support is active by default on leading AI chat platforms:
 | **Doubao**            | `doubao.com`                     | Built-in (Dedicated Adapter)  |
 | **Qwen**              | `qwen.ai`, `qianwen.com`         | Built-in (Dedicated Adapter)  |
 | **Tencent Yuanbao**   | `yuanbao.tencent.com`            | Built-in (Dedicated Adapter)  |
-| **Custom AI Sites**   | _Any domain_                     | Whitelist via Extension Popup |
+| **Site Policy**       | _Built-in supported domains_    | Enable / disable via Extension Popup |
 
 ---
 
@@ -303,7 +303,7 @@ Then load the resulting `dist/` directory as an unpacked extension in your brows
 
 Click the extension icon in your browser toolbar to open the settings popup:
 
-- **Site Policy:** Inspects current tab status. Toggle any domain into the custom whitelist or blacklist.
+- **Site Policy:** Inspects the current supported AI site and lets you disable or re-enable that site's integration.
 - **Delivery Mode (摘要交付方式):** Pick how the repository digest reaches the chat composer.
   | Mode | Behaviour | On failure |
   |---|---|---|
