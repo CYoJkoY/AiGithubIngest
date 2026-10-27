@@ -31,12 +31,42 @@ export interface GitTreeItem {
   readonly url?: string;
 }
 
+export type IngestStrategyType = 'full' | 'subpath' | 'skeleton';
+
+export interface FileMetadata {
+  readonly path: string;
+  readonly size: number;
+  readonly isConfigFile: boolean;
+  readonly isReadme: boolean;
+  /** True when the raw content will be fetched with a size limit marker. */
+  readonly truncated: boolean;
+}
+
+export interface PreflightReport {
+  /** Target with the default branch resolved when the URL omitted a ref. */
+  readonly target: GitHubTarget;
+  readonly totalBlobs: number;
+  readonly validFiles: readonly FileMetadata[];
+  readonly estimatedTokens: number;
+  readonly recommendedStrategy: IngestStrategyType;
+  readonly stackConfigs: readonly string[];
+  readonly entrypoints: readonly string[];
+  /** True when GitHub returned a partial recursive tree. */
+  readonly truncated: boolean;
+}
+
 export interface IngestOptions {
   readonly token?: string;
   readonly maxFileSizeKb?: number;
   readonly includePatterns?: readonly string[];
   readonly excludePatterns?: readonly string[];
   readonly lang?: SupportedLang;
+  readonly forceStrategy?: IngestStrategyType;
+  /** Repository-relative directory override; applies to repo-root URLs too. */
+  readonly subpath?: string;
+  /** Hard token ceiling applied to forced full ingestion. */
+  readonly maxTokenBudget?: number;
+  readonly tokenBudgetWarningThreshold?: number;
   readonly onProgress?: (msg: string, current: number, total: number) => void;
 }
 
@@ -63,6 +93,9 @@ export interface IngestSummary {
   readonly files: readonly IngestFileResult[];
   readonly formattedOutput: string;
   readonly estimatedTokens: string;
+  readonly strategy?: IngestStrategyType;
+  readonly truncated?: boolean;
+  readonly preflight?: PreflightReport;
 }
 
 export interface ParseError {
@@ -78,10 +111,16 @@ export interface IngestSuccessPayload {
   readonly content: string;
 }
 
-export type ExtensionMessage = {
-  readonly type: 'INGEST_REPO';
-  readonly payload: { readonly url: string };
-};
+export type ExtensionMessage =
+  | {
+      readonly type: 'INGEST_REPO';
+      readonly payload: {
+        readonly url: string;
+        readonly forceStrategy?: IngestStrategyType;
+        readonly subpath?: string;
+      };
+    }
+  | { readonly type: 'PREFLIGHT_REPO'; readonly payload: { readonly url: string } };
 
 export type ExtensionResponse =
   | { readonly success: true; readonly payload: IngestSummary }

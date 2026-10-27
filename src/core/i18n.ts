@@ -101,11 +101,18 @@ export const translations = {
     stepDownloadingZip: '正在流式下载代码包 (Zipball)...',
     stepUnpacking: '正在内存解压与过滤文件...',
     stepBuildingTree: '正在构建结构化目录树与上下文...',
+    stepPreflight: '正在预检仓库结构与规模...',
+    stepFetchingFiles: '正在按策略拉取源码内容...',
+    stepSynthesizing: '正在合成 Markdown 上下文...',
     emptyZipError: '仓库压缩包内容为空',
     noMatchFiles: '指定路径下未匹配到任何符合规则的文本文件',
     downloadFailedWithStatus: '下载代码压缩包失败: HTTP {status}',
     anonymousRateLimit: '获取仓库失败：匿名访问受限或私有仓库无权限，请在扩展中配置 GitHub PAT',
     authFailedWithStatus: 'GitHub API 鉴权失败 (HTTP {status})，请检查 Token 有效性及 repo 权限。',
+    networkRequestFailed: '网络连接失败，请检查网络后重试。',
+    invalidApiResponse: 'GitHub API 返回了无法识别的数据结构。',
+    rateLimitExceeded: 'GitHub API 速率受限 (HTTP {status})，请稍后重试。',
+    rateLimitResetAfter: 'GitHub API 速率受限，请于 {time} 后重试。',
 
     // Parser errors
     parseEmptyInput: '输入内容为空',
@@ -241,6 +248,9 @@ export const translations = {
     stepDownloadingZip: 'Streaming repository archive (Zipball)...',
     stepUnpacking: 'Unpacking and filtering files in memory...',
     stepBuildingTree: 'Building structured file tree and context...',
+    stepPreflight: 'Preflighting repository structure and size...',
+    stepFetchingFiles: 'Fetching source content using the selected strategy...',
+    stepSynthesizing: 'Synthesizing Markdown context...',
     emptyZipError: 'Repository archive is empty.',
     noMatchFiles: 'No text files matched the filtering criteria.',
     downloadFailedWithStatus: 'Failed to download repository archive: HTTP {status}',
@@ -248,6 +258,10 @@ export const translations = {
       'Failed to fetch repository: Rate limit exceeded or unauthorized private repository. Please configure a GitHub Token.',
     authFailedWithStatus:
       'GitHub API authentication failed (HTTP {status}). Please check your PAT permissions.',
+    networkRequestFailed: 'Network request failed. Check your connection and retry.',
+    invalidApiResponse: 'GitHub API returned an unrecognized response shape.',
+    rateLimitExceeded: 'GitHub API rate limit reached (HTTP {status}). Please retry later.',
+    rateLimitResetAfter: 'GitHub API rate limit reached. Retry after {time}.',
 
     // Parser errors
     parseEmptyInput: 'Input is empty',

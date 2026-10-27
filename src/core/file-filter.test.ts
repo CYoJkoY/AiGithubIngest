@@ -34,6 +34,14 @@ describe('shouldIncludeFile', () => {
     expect(shouldIncludeFile('pnpm-lock.yaml')).toBe(false);
   });
 
+  it('excludes test suites and test file suffixes by default', () => {
+    expect(shouldIncludeFile('tests/helpers.ts')).toBe(false);
+    expect(shouldIncludeFile('src/__tests__/a.ts')).toBe(false);
+    expect(shouldIncludeFile('src/core/parser.test.ts')).toBe(false);
+    expect(shouldIncludeFile('src/core/parser.spec.tsx')).toBe(false);
+    expect(shouldIncludeFile('src/contest.ts')).toBe(true);
+  });
+
   it('includes regular source', () => {
     expect(shouldIncludeFile('src/index.ts')).toBe(true);
   });
