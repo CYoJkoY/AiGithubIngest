@@ -2,6 +2,7 @@ import type {
   FileMetadata,
   GitTreeItem,
   GitHubTarget,
+  PreflightSnapshot,
   PreflightReport,
   SupportedLang,
 } from '../types';
@@ -134,6 +135,14 @@ function isWithinScope(path: string, target: GitHubTarget): boolean {
   return path.startsWith(`${scope}/`);
 }
 
+/**
+ * An explicitly targeted blob is the user's intent, so exclusion patterns must
+ * not drop it. Size truncation still applies later through the content limit.
+ */
+function isExplicitBlob(path: string, target: GitHubTarget): boolean {
+  return target.type === 'blob' && path === toScopePath(target.subpath);
+}
+
 export async function resolveDefaultBranch(
   owner: string,
   repo: string,
@@ -185,13 +194,15 @@ function collectMetadata(
     if (item.type !== 'blob') continue;
     if (!isWithinScope(item.path, target)) continue;
     const size = item.size ?? 0;
-    const included = shouldIncludeFile(
-      item.path,
-      size,
-      Number.POSITIVE_INFINITY,
-      options.includePatterns,
-      options.excludePatterns,
-    );
+    const included =
+      isExplicitBlob(item.path, target) ||
+      shouldIncludeFile(
+        item.path,
+        size,
+        Number.POSITIVE_INFINITY,
+        options.includePatterns,
+        options.excludePatterns,
+      );
     if (!included) continue;
 
     const config = isConfigFile(item.path);
@@ -244,4 +255,17 @@ export async function preflightRepository(
   const resolvedTarget: GitHubTarget = { ...target, ref };
   const tree = await fetchTree(resolvedTarget, options);
   return buildReport(resolvedTarget, tree.tree, tree.truncated, options);
+}
+
+/** Reduce a full report to the payload the content script needs. */
+export function toPreflightSnapshot(report: PreflightReport): PreflightSnapshot {
+  return {
+    target: report.target,
+    totalBlobs: report.totalBlobs,
+    fileCount: report.validFiles.length,
+    estimatedTokens: report.estimatedTokens,
+    recommendedStrategy: report.recommendedStrategy,
+    stackConfigs: report.stackConfigs,
+    truncated: report.truncated,
+  };
 }

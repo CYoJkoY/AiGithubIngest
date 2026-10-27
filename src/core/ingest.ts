@@ -1,124 +1,218 @@
-import { unzipSync } from 'fflate';
-import {
+import type {
+  FileMetadata,
+  GitHubTarget,
   IngestFileResult,
   IngestOptions,
+  IngestStrategyType,
   IngestSummary,
-  RepoTarget,
+  PreflightReport,
   SupportedLang,
 } from '../types';
-import { extractGitHubRepo } from './parser';
-import { GitHubEngine } from './github-engine';
-import { shouldIncludeFile } from './file-filter';
-import { TreeBuilder } from './tree-builder';
-import { OutputFormatter } from './output-formatter';
-import { formatTokenCount } from './token-estimator';
-import { t } from './i18n';
+import { RAW_FILE_SIZE_CAP_BYTES } from './constants';
+import { fetchRawFiles } from './content-fetcher';
 import { DomainError } from './errors';
+import { t } from './i18n';
+import { OutputFormatter } from './output-formatter';
+import {
+  preflightRepository,
+  resolveContentLimitBytes,
+  toPreflightSnapshot,
+} from './repo-preflight';
+import {
+  isSkeletonTruncated,
+  selectSkeletonPaths,
+  skeletonFetchPaths,
+  synthesizeSkeleton,
+} from './skeleton-synthesizer';
+import { estimateTokensFromBytes, resolveIngestStrategy } from './strategy-engine';
+import { formatTokenCount } from './token-estimator';
+import { TreeBuilder } from './tree-builder';
+import { classifyGitHubUrl, toRepoTarget } from './url-parser';
 
-const SEPARATOR_LINE = '='.repeat(48);
-const BINARY_PLACEHOLDER = '[Binary file]';
-
-function isBinary(buffer: Uint8Array): boolean {
-  const checkLen = Math.min(buffer.length, 1024);
-  for (let i = 0; i < checkLen; i++) {
-    if (buffer[i] === 0) return true;
+/** Normalize a repository-relative override to `/a/b` form. */
+export function normalizeSubpath(value: string, lang: SupportedLang = 'zh-CN'): string {
+  const segments = value
+    .trim()
+    .replace(/\\/g, '/')
+    .split('/')
+    .filter((segment) => segment !== '');
+  if (segments.some((segment) => segment === '.' || segment === '..')) {
+    throw new DomainError('NOT_GITHUB_URL', t('parseUnsafePath', lang));
   }
-  return false;
+  return segments.length === 0 ? '/' : `/${segments.join('/')}`;
 }
 
-interface ExtractedFile {
-  readonly path: string;
-  readonly content: string;
-  readonly size: number;
+/**
+ * Apply the user's subpath override.
+ *
+ * A blob URL names one file, so its scope is never widened or moved. Roots and
+ * branch roots adopt the override before preflight narrows the metadata.
+ */
+function withSubpathOverride(
+  target: GitHubTarget,
+  override: string | undefined,
+  lang: SupportedLang,
+): GitHubTarget {
+  if (override === undefined) return target;
+  if (target.type !== 'repo_root' && target.type !== 'branch_root') return target;
+  const subpath = normalizeSubpath(override, lang);
+  if (subpath === '/') return target;
+  return { ...target, subpath, type: 'subpath' };
 }
 
-interface ExtractResult {
-  readonly treeFiles: Array<{ path: string; size: number }>;
-  readonly processedFiles: ExtractedFile[];
+function renderTree(report: PreflightReport): string {
+  const rootSlug = `${report.target.owner}-${report.target.repo}`;
+  const inputs = report.validFiles.map((file) => ({ path: file.path, size: file.size }));
+  return TreeBuilder.renderAscii(TreeBuilder.build(inputs, rootSlug));
 }
 
-/** 从 zip 键中去除 rootPrefix，并过滤掉目录项 */
-function toRelativePath(rawKey: string, rootPrefix: string): string | null {
-  if (rootPrefix && !rawKey.startsWith(rootPrefix)) return null;
-  const relative = rootPrefix ? rawKey.slice(rootPrefix.length) : rawKey;
-  if (!relative || relative.endsWith('/')) return null;
-  return relative;
+function joinBodies(files: readonly IngestFileResult[]): string {
+  return files.map((file) => file.content).join('\n');
 }
 
-/** 检查相对路径是否命中目标子路径（支持 tree/blob 语义） */
-function matchesSubpath(relativePath: string, cleanSubpath: string, isBlob: boolean): boolean {
-  if (!cleanSubpath) return true;
-  if (isBlob) return relativePath === cleanSubpath;
-  return relativePath.startsWith(`${cleanSubpath}/`);
+/** Metadata rows the skeleton needs bodies for: README, configs, entrypoints. */
+function subsetForSkeleton(report: PreflightReport): readonly FileMetadata[] {
+  const wanted = new Set(skeletonFetchPaths(selectSkeletonPaths(report)));
+  return report.validFiles.filter((file) => wanted.has(file.path));
 }
 
-function toProcessedFile(
-  relativePath: string,
-  data: Uint8Array,
-  decoder: TextDecoder,
-): ExtractedFile {
-  const size = data.length;
-  if (isBinary(data)) {
-    return { path: relativePath, content: BINARY_PLACEHOLDER, size };
-  }
-  return { path: relativePath, content: decoder.decode(data), size };
+interface BodyFetch {
+  readonly files: readonly IngestFileResult[];
+  readonly truncated: boolean;
 }
 
-function extractFilesFromZip(
-  unzipped: Record<string, Uint8Array>,
-  fileKeys: string[],
-  target: RepoTarget,
+async function fetchBodies(
+  report: PreflightReport,
+  strategy: IngestStrategyType,
   options: IngestOptions,
   lang: SupportedLang,
-): ExtractResult {
-  const sampleKey = fileKeys.find((k) => k.includes('/')) ?? fileKeys[0];
-  const slashIdx = sampleKey.indexOf('/');
-  const rootPrefix = slashIdx !== -1 ? sampleKey.slice(0, slashIdx + 1) : '';
+): Promise<BodyFetch> {
+  const requested = strategy === 'skeleton' ? subsetForSkeleton(report) : report.validFiles;
+  if (requested.length === 0) return { files: [], truncated: false };
 
-  const cleanSubpath = target.subpath ? target.subpath.replace(/^\/+|\/+$/g, '') : '';
-  const isBlob = target.type === 'blob' && cleanSubpath.length > 0;
-  const maxBytes = (options.maxFileSizeKb ?? 100) * 1024;
-  const decoder = new TextDecoder('utf-8', { fatal: false });
-
-  const treeFiles: Array<{ path: string; size: number }> = [];
-  const processedFiles: ExtractedFile[] = [];
-
-  for (const rawKey of fileKeys) {
-    const relativePath = toRelativePath(rawKey, rootPrefix);
-    if (!relativePath) continue;
-    if (!matchesSubpath(relativePath, cleanSubpath, isBlob)) continue;
-
-    const fileData = unzipped[rawKey];
-    const fileSize = fileData.length;
-    if (
-      !shouldIncludeFile(
-        relativePath,
-        fileSize,
-        maxBytes,
-        options.includePatterns,
-        options.excludePatterns,
-      )
-    ) {
-      continue;
-    }
-
-    treeFiles.push({ path: relativePath, size: fileSize });
-    processedFiles.push(toProcessedFile(relativePath, fileData, decoder));
-  }
-
-  if (processedFiles.length === 0) {
-    throw new DomainError('NO_MATCHING_FILES', t('noMatchFiles', lang));
-  }
-
-  return { treeFiles, processedFiles };
+  const result = await fetchRawFiles(report.target, requested, {
+    token: options.token,
+    maxBytes: resolveContentLimitBytes(options.maxFileSizeKb),
+    lang,
+    onProgress: (completed, total) => {
+      options.onProgress?.(t('stepFetchingFiles', lang), completed, total);
+    },
+  });
+  return { files: result.files, truncated: result.truncated > 0 };
 }
 
-function buildRawContentPart(files: readonly ExtractedFile[]): string {
-  let out = '';
-  for (const f of files) {
-    out += `\n${SEPARATOR_LINE}\nFILE: ${f.path}\n${SEPARATOR_LINE}\n${f.content}\n`;
+interface BudgetSlice {
+  readonly files: readonly IngestFileResult[];
+  readonly omitted: number;
+}
+
+/** Keep files in path order until the next one would cross the token budget. */
+function applyTokenBudget(
+  files: readonly IngestFileResult[],
+  maxTokenBudget: number | undefined,
+): BudgetSlice {
+  if (maxTokenBudget === undefined || !Number.isFinite(maxTokenBudget) || maxTokenBudget <= 0) {
+    return { files, omitted: 0 };
   }
-  return out;
+  const kept: IngestFileResult[] = [];
+  let bytes = 0;
+  for (let index = 0; index < files.length; index += 1) {
+    const nextBytes = bytes + Math.max(0, files[index].size);
+    if (estimateTokensFromBytes(nextBytes) > maxTokenBudget) {
+      return { files: kept, omitted: files.length - index };
+    }
+    kept.push(files[index]);
+    bytes = nextBytes;
+  }
+  return { files: kept, omitted: 0 };
+}
+
+interface DigestResult {
+  readonly files: readonly IngestFileResult[];
+  readonly formattedOutput: string;
+  readonly estimatedTokens: string;
+  readonly truncated: boolean;
+  readonly omitted: number;
+  /** ASCII tree reused by both the digest and the UI so it renders once. */
+  readonly treeVisual: string;
+}
+
+function buildSkeletonDigest(
+  report: PreflightReport,
+  files: readonly IngestFileResult[],
+  treeVisual: string,
+  lang: SupportedLang,
+): DigestResult {
+  const formattedOutput = synthesizeSkeleton({ report, files, treeVisual, lang });
+  return {
+    files,
+    formattedOutput,
+    estimatedTokens: formatTokenCount(formattedOutput),
+    truncated: isSkeletonTruncated(report, files),
+    omitted: 0,
+    treeVisual,
+  };
+}
+
+interface TreeDigestInput {
+  readonly report: PreflightReport;
+  readonly files: readonly IngestFileResult[];
+  readonly treeVisual: string;
+  readonly options: IngestOptions;
+  readonly strategy: IngestStrategyType;
+  readonly lang: SupportedLang;
+}
+
+function buildTreeDigest(input: TreeDigestInput): DigestResult {
+  const { report, files, treeVisual, options, strategy, lang } = input;
+  const budgeted =
+    options.forceStrategy === 'full' && strategy === 'full'
+      ? applyTokenBudget(files, options.maxTokenBudget)
+      : { files, omitted: 0 };
+  const delivered = budgeted.files;
+  const estimatedTokens = formatTokenCount(treeVisual + joinBodies(delivered));
+  const prefix = OutputFormatter.createSummaryPrefix(
+    toRepoTarget(report.target),
+    report.target.ref,
+    delivered.length,
+    estimatedTokens,
+  );
+  let formattedOutput = OutputFormatter.buildFullDigest(prefix, treeVisual, delivered);
+  if (budgeted.omitted > 0) {
+    formattedOutput += `\n${t('forcedFullOmittedNote', lang, { count: budgeted.omitted })}\n`;
+  }
+  return {
+    files: delivered,
+    formattedOutput,
+    estimatedTokens,
+    truncated: budgeted.omitted > 0,
+    omitted: budgeted.omitted,
+    treeVisual,
+  };
+}
+
+function buildDigest(
+  report: PreflightReport,
+  files: readonly IngestFileResult[],
+  strategy: IngestStrategyType,
+  options: IngestOptions,
+  lang: SupportedLang,
+): DigestResult {
+  const treeVisual = renderTree(report);
+  if (strategy === 'skeleton') {
+    return buildSkeletonDigest(report, files, treeVisual, lang);
+  }
+  return buildTreeDigest({ report, files, treeVisual, options, strategy, lang });
+}
+
+function assertStrategyScope(
+  report: PreflightReport,
+  strategy: IngestStrategyType,
+  lang: SupportedLang,
+): void {
+  if (strategy === 'single' && report.target.type !== 'blob') {
+    throw new DomainError('SINGLE_REQUIRES_BLOB', t('singleRequiresBlob', lang));
+  }
 }
 
 export async function ingestRepository(
@@ -126,61 +220,53 @@ export async function ingestRepository(
   options: IngestOptions = {},
 ): Promise<IngestSummary> {
   const lang: SupportedLang = options.lang ?? 'zh-CN';
-
-  const parseResult = extractGitHubRepo(rawUrl, lang);
-  if (!parseResult.ok) {
-    throw new DomainError('NOT_GITHUB_URL', parseResult.error.message);
+  const classified = classifyGitHubUrl(rawUrl, lang);
+  if (!classified.ok) {
+    throw new DomainError('NOT_GITHUB_URL', classified.error.message);
   }
 
-  const target = parseResult.value;
-  options.onProgress?.(t('stepResolvingBranch', lang), 0, 100);
-  const resolvedBranch = await GitHubEngine.resolveBranch(target, options.token, lang);
-
-  options.onProgress?.(t('stepDownloadingZip', lang), 20, 100);
-  const zipBuffer = await GitHubEngine.fetchZipball(target, resolvedBranch, options.token, lang);
-
-  options.onProgress?.(t('stepUnpacking', lang), 60, 100);
-  const unzipped = unzipSync(new Uint8Array(zipBuffer));
-  const fileKeys = Object.keys(unzipped);
-
-  if (fileKeys.length === 0) {
-    throw new DomainError('EMPTY_ARCHIVE', t('emptyZipError', lang));
+  const target = withSubpathOverride(classified.value, options.subpath, lang);
+  if (options.forceStrategy === 'single' && target.type !== 'blob') {
+    throw new DomainError('SINGLE_REQUIRES_BLOB', t('singleRequiresBlob', lang));
   }
 
-  const { treeFiles, processedFiles } = extractFilesFromZip(
-    unzipped,
-    fileKeys,
-    target,
-    options,
+  options.onProgress?.(t('stepPreflight', lang), 0, 100);
+  const report = await preflightRepository(target, {
+    token: options.token,
     lang,
-  );
+    includePatterns: options.includePatterns,
+    excludePatterns: options.excludePatterns,
+    maxFileSizeKb: options.maxFileSizeKb,
+    tokenBudgetWarningThreshold: options.tokenBudgetWarningThreshold,
+  });
+  if (report.validFiles.length === 0) {
+    throw new DomainError('NO_MATCHING_FILES', t('noMatchFiles', lang));
+  }
 
-  options.onProgress?.(t('stepBuildingTree', lang), 90, 100);
+  const strategy = resolveIngestStrategy(report, {
+    forceStrategy: options.forceStrategy,
+    tokenBudgetWarningThreshold: options.tokenBudgetWarningThreshold,
+  });
+  assertStrategyScope(report, strategy, lang);
 
-  const rootSlug = `${target.owner}-${target.repo}`;
-  const fileTree = TreeBuilder.build(treeFiles, rootSlug);
-  const treeVisual = TreeBuilder.renderAscii(fileTree);
+  const bodies = await fetchBodies(report, strategy, options, lang);
+  options.onProgress?.(t('stepBuildingTree', lang), 95, 100);
+  if (strategy === 'skeleton') options.onProgress?.(t('stepSynthesizing', lang), 98, 100);
 
-  const rawContentPart = buildRawContentPart(processedFiles);
-  const estimatedTokens = formatTokenCount(treeVisual + rawContentPart);
-  const summaryPrefix = OutputFormatter.createSummaryPrefix(
-    target,
-    resolvedBranch,
-    processedFiles.length,
-    estimatedTokens,
-  );
-  const formattedOutput = OutputFormatter.buildFullDigest(
-    summaryPrefix,
-    treeVisual,
-    processedFiles as readonly IngestFileResult[],
-  );
-
+  const digest = buildDigest(report, bodies.files, strategy, options, lang);
   return {
-    repoInfo: target,
-    resolvedBranch,
-    treeVisual,
-    files: processedFiles,
-    formattedOutput,
-    estimatedTokens,
+    repoInfo: toRepoTarget(report.target),
+    resolvedBranch: report.target.ref,
+    treeVisual: digest.treeVisual,
+    files: digest.files,
+    formattedOutput: digest.formattedOutput,
+    estimatedTokens: digest.estimatedTokens,
+    strategy,
+    truncated: report.truncated || bodies.truncated || digest.truncated,
+    preflight: toPreflightSnapshot(report),
+    omittedFiles: digest.omitted > 0 ? digest.omitted : undefined,
   };
 }
+
+/** Exposed for tests: the fixed byte cap used when no override is supplied. */
+export const DEFAULT_CONTENT_LIMIT_BYTES = RAW_FILE_SIZE_CAP_BYTES;

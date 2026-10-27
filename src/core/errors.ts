@@ -5,7 +5,7 @@ export type DomainErrorCode =
   | 'AUTH_FAILED'
   | 'RATE_LIMITED'
   | 'DOWNLOAD_FAILED'
-  | 'EMPTY_ARCHIVE'
+  | 'SINGLE_REQUIRES_BLOB'
   | 'NO_MATCHING_FILES'
   | 'NETWORK_ERROR';
 

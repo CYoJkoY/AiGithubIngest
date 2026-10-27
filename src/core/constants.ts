@@ -52,3 +52,18 @@ export const RAW_FILE_SIZE_CAP_BYTES = 60 * KB;
 
 /** Concurrent raw content requests. */
 export const RAW_FETCH_CONCURRENCY = 6;
+
+/** Maximum files listed in the skeleton file index. */
+export const SKELETON_INDEX_LIMIT = 200;
+
+/** Maximum entrypoint excerpts included in a skeleton digest. */
+export const SKELETON_ENTRY_LIMIT = 5;
+
+/** Characters kept from each entrypoint excerpt. */
+export const SKELETON_ENTRY_EXCERPT_CHARS = 4000;
+
+/** How long a ready status pill stays visible before fading out. */
+export const STATUS_PILL_FADE_MS = 3000;
+
+/** Long-running ingest heartbeat that refreshes the guard watchdog. */
+export const INGEST_HEARTBEAT_MS = 5000;

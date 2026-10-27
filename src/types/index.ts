@@ -31,7 +31,8 @@ export interface GitTreeItem {
   readonly url?: string;
 }
 
-export type IngestStrategyType = 'full' | 'subpath' | 'skeleton';
+/** Delivery shape selected by the strategy engine. `single` serves one blob. */
+export type IngestStrategyType = 'full' | 'subpath' | 'skeleton' | 'single';
 
 export interface FileMetadata {
   readonly path: string;
@@ -52,6 +53,22 @@ export interface PreflightReport {
   readonly stackConfigs: readonly string[];
   readonly entrypoints: readonly string[];
   /** True when GitHub returned a partial recursive tree. */
+  readonly truncated: boolean;
+}
+
+/**
+ * Compact preflight payload sent to the content script.
+ *
+ * The per-file metadata stays in the background worker; the UI only needs the
+ * scope totals, the decision, and the resolved target.
+ */
+export interface PreflightSnapshot {
+  readonly target: GitHubTarget;
+  readonly totalBlobs: number;
+  readonly fileCount: number;
+  readonly estimatedTokens: number;
+  readonly recommendedStrategy: IngestStrategyType;
+  readonly stackConfigs: readonly string[];
   readonly truncated: boolean;
 }
 
@@ -95,7 +112,9 @@ export interface IngestSummary {
   readonly estimatedTokens: string;
   readonly strategy?: IngestStrategyType;
   readonly truncated?: boolean;
-  readonly preflight?: PreflightReport;
+  readonly preflight?: PreflightSnapshot;
+  /** Files skipped because a forced full digest exceeded its token budget. */
+  readonly omittedFiles?: number;
 }
 
 export interface ParseError {
@@ -118,12 +137,20 @@ export type ExtensionMessage =
         readonly url: string;
         readonly forceStrategy?: IngestStrategyType;
         readonly subpath?: string;
+        readonly maxTokenBudget?: number;
       };
     }
   | { readonly type: 'PREFLIGHT_REPO'; readonly payload: { readonly url: string } };
 
 export type ExtensionResponse =
   | { readonly success: true; readonly payload: IngestSummary }
+  | {
+      readonly success: false;
+      readonly error: { readonly code: string; readonly message: string };
+    };
+
+export type PreflightResponse =
+  | { readonly success: true; readonly payload: PreflightSnapshot }
   | {
       readonly success: false;
       readonly error: { readonly code: string; readonly message: string };

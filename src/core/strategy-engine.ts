@@ -30,7 +30,7 @@ export function resolveIngestStrategy(
 ): IngestStrategyType {
   if (report.truncated) return 'skeleton';
   if (options.forceStrategy) return options.forceStrategy;
-
+  if (report.target.type === 'blob') return 'single';
   if (report.target.type === 'subpath' && report.validFiles.length <= SUBPATH_INGEST_MAX_FILES) {
     return 'subpath';
   }
