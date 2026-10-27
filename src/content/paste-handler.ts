@@ -3,16 +3,16 @@ import { extractGitHubRepo } from '../core/parser';
 import { OutputFormatter, type DigestPart } from '../core/output-formatter';
 import { UniversalEditor } from '../dom/universal-editor';
 import { showToast } from '../ui/toast';
-import { ExtensionResponse, IngestSummary } from '../types';
+import type { IngestSummary } from '../types';
 import { t } from '../core/i18n';
-import { IngestGuard } from '../core/ingest-guard';
-import { DomainError } from '../core/errors';
+import type { IngestGuard } from '../core/ingest-guard';
 import { logger } from '../core/logger';
 import { PseudoFileEngine } from '../pseudo/pseudo-file-engine';
 import { formatBytes } from '../pseudo/payload';
 import { resolvePolicyHostnames, resolveActiveEditor, resolveEventTarget } from './policy-resolver';
 import { sleep } from '../dom/dom-utils';
-import { SavedRange } from '../dom/editor-writer';
+import type { SavedRange } from '../dom/editor-writer';
+import { IngestSession, INGEST_STATUS_TOAST_KEY } from './ingest-session';
 import {
   cachedWhitelist,
   cachedBlacklist,
@@ -23,18 +23,8 @@ import {
   cachedDefaultFileSizeLimit,
 } from './storage-cache';
 
-interface IngestContext {
-  readonly rawText: string;
-  readonly targetElement: HTMLElement | null;
-  readonly savedRange: SavedRange | undefined;
-  readonly guard: IngestGuard;
-  readonly ingestingTimer: number;
-}
-
 type MountOutcome = 'mounted' | 'partial' | 'failed';
 
-const INGEST_STATUS_TOAST_KEY = 'ingest-status';
-const INGESTING_TOAST_DELAY_MS = 800;
 const MULTI_PART_INTERVAL_MS = 300;
 const MULTI_PART_PROGRESS_MS = 30000;
 const LARGE_PAYLOAD_NOTICE_BYTES = 150 * 1024;
@@ -65,22 +55,28 @@ export async function handlePasteEvent(event: ClipboardEvent, guard: IngestGuard
   }
 
   const repo = parseResult.value;
-
-  const ingestingTimer = window.setTimeout(() => {
-    showToast(
-      t('ingesting', cachedLang, { repo: `${repo.owner}/${repo.repo}` }),
-      'info',
-      3000,
-      INGEST_STATUS_TOAST_KEY,
-    );
-  }, INGESTING_TOAST_DELAY_MS);
-
-  const ctx: IngestContext = { rawText, targetElement, savedRange, guard, ingestingTimer };
+  const session = new IngestSession({
+    guard,
+    deliver: async (summary, target, range) => {
+      const outcome = await mountDigestParts(summary, target);
+      if (outcome !== 'mounted' && outcome !== 'partial') {
+        insertFallback(summary, target, range);
+      }
+    },
+  });
 
   try {
-    sendIngestMessage(repo.canonicalUrl, ctx);
+    session.start({
+      url: repo.canonicalUrl,
+      repoLabel: repo.owner + '/' + repo.repo,
+      targetElement,
+      savedRange,
+      revert: () => {
+        UniversalEditor.insertAtCursor(rawText, targetElement, savedRange);
+      },
+    });
   } catch (err) {
-    window.clearTimeout(ingestingTimer);
+    session.dispose();
     guard.reset();
     UniversalEditor.insertAtCursor(rawText, targetElement, savedRange);
     const errMsg = err instanceof Error ? err.message : 'Error';
@@ -102,61 +98,6 @@ function captureRange(el: HTMLElement | null): SavedRange | undefined {
     };
   }
   return undefined;
-}
-
-function sendIngestMessage(url: string, ctx: IngestContext): void {
-  chrome.runtime.sendMessage(
-    { type: 'INGEST_REPO', payload: { url } },
-    (response: ExtensionResponse) => {
-      window.clearTimeout(ctx.ingestingTimer);
-      void handleIngestResponse(response, ctx);
-    },
-  );
-}
-
-async function handleIngestResponse(
-  response: ExtensionResponse,
-  ctx: IngestContext,
-): Promise<void> {
-  const { rawText, targetElement, savedRange, guard } = ctx;
-
-  try {
-    if (chrome.runtime.lastError || !response || !response.success) {
-      const errorMsg = resolveErrorMessage(response);
-      UniversalEditor.insertAtCursor(rawText, targetElement, savedRange);
-      showToast(
-        t('ingestFailed', cachedLang, { err: errorMsg }),
-        'error',
-        4500,
-        INGEST_STATUS_TOAST_KEY,
-      );
-      return;
-    }
-
-    const summary = response.payload;
-    const outcome = await mountDigestParts(summary, targetElement);
-
-    if (outcome === 'mounted' || outcome === 'partial') return;
-
-    insertFallback(summary, targetElement, savedRange);
-  } catch (err) {
-    const domainErr = DomainError.from(err);
-    logger.error('handleIngestResponse failed', domainErr);
-    showToast(
-      t('ingestFailed', cachedLang, { err: domainErr.message }),
-      'error',
-      4500,
-      INGEST_STATUS_TOAST_KEY,
-    );
-  } finally {
-    guard.reset();
-  }
-}
-
-function resolveErrorMessage(response: ExtensionResponse | undefined): string {
-  if (chrome.runtime.lastError) return chrome.runtime.lastError.message ?? 'runtime error';
-  if (response && !response.success) return response.error.message;
-  return 'Extension background response error';
 }
 
 function extractOwnerRepo(canonicalUrl: string): { owner: string; repo: string } {

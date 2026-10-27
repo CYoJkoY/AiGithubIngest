@@ -45,16 +45,17 @@ export function normalizeSubpath(value: string, lang: SupportedLang = 'zh-CN'): 
 /**
  * Apply the user's subpath override.
  *
- * A blob URL names one file, so its scope is never widened or moved. Roots and
- * branch roots adopt the override before preflight narrows the metadata.
+ * A blob URL names one file, so its scope is never widened or moved. Every
+ * other target adopts the override before preflight narrows the metadata; the
+ * value is repository-relative, so it replaces any path the URL carried.
  */
-function withSubpathOverride(
+export function withSubpathOverride(
   target: GitHubTarget,
   override: string | undefined,
-  lang: SupportedLang,
+  lang: SupportedLang = 'zh-CN',
 ): GitHubTarget {
   if (override === undefined) return target;
-  if (target.type !== 'repo_root' && target.type !== 'branch_root') return target;
+  if (target.type === 'blob') return target;
   const subpath = normalizeSubpath(override, lang);
   if (subpath === '/') return target;
   return { ...target, subpath, type: 'subpath' };
