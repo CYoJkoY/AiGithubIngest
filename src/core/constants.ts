@@ -59,6 +59,9 @@ export const SKELETON_INDEX_LIMIT = 200;
 /** Maximum entrypoint excerpts included in a skeleton digest. */
 export const SKELETON_ENTRY_LIMIT = 5;
 
+/** Maximum configuration files included in a skeleton digest. */
+export const SKELETON_CONFIG_LIMIT = 8;
+
 /** Characters kept from each entrypoint excerpt. */
 export const SKELETON_ENTRY_EXCERPT_CHARS = 4000;
 

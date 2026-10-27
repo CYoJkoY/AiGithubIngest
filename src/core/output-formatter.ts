@@ -83,7 +83,9 @@ function splitAtNewlines(text: string, maxBytes: number): string[] {
       break;
     }
     const boundary = safeBoundary(text, end);
-    const newline = text.lastIndexOf('\n', boundary);
+    // Search only the fitted prefix: a newline at `boundary` itself lies past
+    // the byte budget and must start the next part.
+    const newline = text.lastIndexOf('\n', boundary - 1);
     const cut = newline > start ? newline + 1 : boundary;
     const guaranteed = cut > start ? cut : start + 1;
     parts.push(text.slice(start, guaranteed));

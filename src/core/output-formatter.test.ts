@@ -161,4 +161,15 @@ describe('OutputFormatter.splitRenderedOutput', () => {
     expect(parts[0].content.endsWith('\n')).toBe(true);
     expect(parts.map((part) => part.content).join('')).toBe(content);
   });
+
+  it('never cuts on a newline that sits past the byte budget', () => {
+    const content = 'a'.repeat(40) + '\n' + 'b'.repeat(40) + '\n' + 'c';
+    const parts = OutputFormatter.splitRenderedOutput(content, 40, 'tight');
+
+    expect(parts.length).toBeGreaterThan(1);
+    expect(parts.map((part) => part.content).join('')).toBe(content);
+    for (const part of parts) {
+      expect(part.sizeBytes).toBeLessThanOrEqual(40);
+    }
+  });
 });

@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { FileMetadata, GitHubTarget, IngestFileResult, PreflightReport } from '../types';
-import { SKELETON_ENTRY_EXCERPT_CHARS, SKELETON_INDEX_LIMIT } from './constants';
+import {
+  SKELETON_CONFIG_LIMIT,
+  SKELETON_ENTRY_EXCERPT_CHARS,
+  SKELETON_INDEX_LIMIT,
+} from './constants';
 import {
   isSkeletonTruncated,
   selectSkeletonPaths,
@@ -79,6 +83,33 @@ describe('selectSkeletonPaths', () => {
 
     expect(paths.configs).toEqual(['a.json', 'b.json']);
     expect(paths.entrypoints).toEqual(['src/a.ts', 'src/z.ts']);
+  });
+
+  it('caps configs at the limit, preferring shallower paths', () => {
+    const validFiles = [
+      ...Array.from({ length: 6 }, (_, i) => meta(`packages/a${i}/package.json`, { config: true })),
+      ...Array.from({ length: 4 }, (_, i) => meta(`apps${i}/package.json`, { config: true })),
+      meta('package.json', { config: true }),
+    ];
+
+    const paths = selectSkeletonPaths(report({ validFiles }));
+
+    expect(paths.configs).toHaveLength(SKELETON_CONFIG_LIMIT);
+    expect(paths.configs).toContain('package.json');
+    expect(paths.configs).toEqual([...paths.configs].sort());
+    expect(paths.configs).toContain('packages/a0/package.json');
+    expect(paths.configs).not.toContain('packages/a5/package.json');
+  });
+
+  it('reports truncation when configs exceed the limit', () => {
+    const validFiles = [
+      meta('package.json', { config: true }),
+      ...Array.from({ length: SKELETON_CONFIG_LIMIT }, (_, i) =>
+        meta(`p${i}/package.json`, { config: true }),
+      ),
+    ];
+
+    expect(isSkeletonTruncated(report({ validFiles }), [])).toBe(true);
   });
 });
 

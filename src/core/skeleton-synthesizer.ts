@@ -1,5 +1,6 @@
 import type { GitHubTarget, IngestFileResult, PreflightReport, SupportedLang } from '../types';
 import {
+  SKELETON_CONFIG_LIMIT,
   SKELETON_ENTRY_EXCERPT_CHARS,
   SKELETON_ENTRY_LIMIT,
   SKELETON_INDEX_LIMIT,
@@ -53,6 +54,11 @@ function comparePaths(left: string, right: string): number {
   return 0;
 }
 
+/** Segment count, so a root config outranks an equally named nested one. */
+function depthOf(path: string): number {
+  return path.split('/').filter((segment) => segment !== '').length;
+}
+
 function uniqueSorted(paths: readonly string[]): readonly string[] {
   const unique = new Set(paths);
   return Array.from(unique).sort(comparePaths);
@@ -87,9 +93,13 @@ export function selectSkeletonPaths(report: PreflightReport): SkeletonPaths {
     a.path < b.path ? -1 : a.path > b.path ? 1 : 0,
   );
   const readme = sorted.find((file) => file.isReadme)?.path;
-  const configs = uniqueSorted(
+  const candidates = uniqueSorted(
     report.validFiles.filter((file) => file.isConfigFile).map((file) => file.path),
   );
+  const shallowFirst = [...candidates].sort(
+    (a, b) => depthOf(a) - depthOf(b) || comparePaths(a, b),
+  );
+  const configs = uniqueSorted(shallowFirst.slice(0, SKELETON_CONFIG_LIMIT));
   const entrypoints = uniqueSorted(report.entrypoints).slice(0, SKELETON_ENTRY_LIMIT);
   return {
     readme,
@@ -107,6 +117,15 @@ export function skeletonFetchPaths(paths: SkeletonPaths): readonly string[] {
   return uniqueSorted(requested);
 }
 
+/** Distinct config paths, the same population {@link selectSkeletonPaths} caps. */
+function countConfigCandidates(report: PreflightReport): number {
+  const paths = new Set<string>();
+  for (const file of report.validFiles) {
+    if (file.isConfigFile) paths.add(file.path);
+  }
+  return paths.size;
+}
+
 /**
  * True when the skeleton omits content: the file index is capped or an
  * entrypoint body is trimmed to its excerpt limit.
@@ -116,6 +135,7 @@ export function isSkeletonTruncated(
   files: readonly IngestFileResult[],
 ): boolean {
   if (report.validFiles.length > SKELETON_INDEX_LIMIT) return true;
+  if (countConfigCandidates(report) > SKELETON_CONFIG_LIMIT) return true;
 
   const bodies = new Map<string, number>();
   for (const file of files) bodies.set(file.path, file.content.length);
