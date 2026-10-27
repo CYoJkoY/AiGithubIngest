@@ -103,22 +103,83 @@ describe('preflightRepository', () => {
     expect(report.target.ref).toBe('develop');
     expect(calls.some((url) => url.includes('/git/trees/develop'))).toBe(true);
   });
+});
 
-  it('scopes a subpath target to that directory and honors a blob target', async () => {
-    stubFetch(() =>
-      treeResponse([blob('src/a.ts', 10), blob('src/nested/b.ts', 10), blob('docs/c.md', 10)]),
-    );
+describe('preflightRepository scope requests', () => {
+  it('scopes a subpath tree request to that directory', async () => {
+    const calls: string[] = [];
+    stubFetch((url) => {
+      calls.push(url);
+      if (url.includes('/git/trees/t-src?recursive=1')) {
+        return treeResponse([blob('a.ts', 10), blob('nested/b.ts', 10)]);
+      }
+      return treeResponse([
+        { path: 'src', mode: '040000', type: 'tree', sha: 't-src' },
+        blob('docs/c.md', 10),
+      ]);
+    });
 
     const subpath = await preflightRepository(
       target({ type: 'subpath', subpath: '/src', ref: 'dev' }),
     );
+
+    expect(calls).toEqual([
+      'https://api.github.com/repos/o/r/git/trees/dev',
+      'https://api.github.com/repos/o/r/git/trees/t-src?recursive=1',
+    ]);
     expect(subpath.validFiles.map((file) => file.path)).toEqual(['src/a.ts', 'src/nested/b.ts']);
     expect(subpath.recommendedStrategy).toBe('subpath');
+  });
+
+  it('walks nested scopes one level at a time', async () => {
+    const calls: string[] = [];
+    stubFetch((url) => {
+      calls.push(url);
+      if (url.endsWith('/git/trees/t-core?recursive=1')) {
+        return treeResponse([blob('ingest.ts', 10)]);
+      }
+      if (url.endsWith('/git/trees/t-src')) {
+        return treeResponse([{ path: 'core', mode: '040000', type: 'tree', sha: 't-core' }]);
+      }
+      return treeResponse([{ path: 'src', mode: '040000', type: 'tree', sha: 't-src' }]);
+    });
+
+    const report = await preflightRepository(
+      target({ type: 'subpath', subpath: '/src/core', ref: 'main' }),
+    );
+
+    expect(calls).toEqual([
+      'https://api.github.com/repos/o/r/git/trees/main',
+      'https://api.github.com/repos/o/r/git/trees/t-src',
+      'https://api.github.com/repos/o/r/git/trees/t-core?recursive=1',
+    ]);
+    expect(report.validFiles.map((file) => file.path)).toEqual(['src/core/ingest.ts']);
+  });
+
+  it('reads a blob target through one contents request', async () => {
+    const calls: string[] = [];
+    stubFetch((url) => {
+      calls.push(url);
+      return new Response(JSON.stringify({ type: 'file', sha: 'blob-sha', size: 42 }), {
+        status: 200,
+      });
+    });
 
     const single = await preflightRepository(
-      target({ type: 'blob', subpath: '/docs/c.md', ref: 'dev' }),
+      target({ type: 'blob', subpath: '/docs/c d.md', ref: 'dev' }),
     );
-    expect(single.validFiles.map((file) => file.path)).toEqual(['docs/c.md']);
+
+    expect(calls).toEqual(['https://api.github.com/repos/o/r/contents/docs/c%20d.md?ref=dev']);
+    expect(single.validFiles.map((file) => file.path)).toEqual(['docs/c d.md']);
+    expect(single.validFiles[0].size).toBe(42);
+    expect(single.truncated).toBe(false);
+  });
+
+  it('rejects a blob target that is a directory', async () => {
+    stubFetch(() => new Response(JSON.stringify([]), { status: 200 }));
+    await expect(
+      preflightRepository(target({ type: 'blob', subpath: '/docs', ref: 'dev' })),
+    ).rejects.toMatchObject({ code: 'REPO_NOT_FOUND' });
   });
 });
 

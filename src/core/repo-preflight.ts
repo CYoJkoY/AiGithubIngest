@@ -122,6 +122,111 @@ function parseTreePayload(value: unknown, lang: SupportedLang): TreePayload {
   return { tree: record.tree, truncated: record.truncated === true };
 }
 
+/** Repository-relative path segments Git accepts inside a contents URL. */
+function encodeContentsPath(path: string): string {
+  return path
+    .split('/')
+    .filter((segment) => segment !== '')
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
+}
+
+function treeUrl(owner: string, repo: string, rev: string, recursive: boolean): string {
+  const suffix = recursive ? '?recursive=1' : '';
+  return `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/trees/${encodeGitRef(rev)}${suffix}`;
+}
+
+interface ContentsPayload {
+  readonly type: string;
+  readonly sha: string;
+  readonly size: number;
+}
+
+function parseBlobPayload(value: unknown, lang: SupportedLang): ContentsPayload {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new DomainError('REPO_NOT_FOUND', t('privateRepoNotice', lang));
+  }
+  const record = value as Record<string, unknown>;
+  if (record.type !== 'file' || typeof record.sha !== 'string') {
+    throw new DomainError('REPO_NOT_FOUND', t('privateRepoNotice', lang));
+  }
+  return {
+    type: record.type,
+    sha: record.sha,
+    size: typeof record.size === 'number' && record.size >= 0 ? record.size : 0,
+  };
+}
+
+/**
+ * Metadata for one explicitly targeted blob.
+ *
+ * A blob target needs exactly one file, so a contents lookup replaces the
+ * recursive tree request.
+ */
+async function fetchBlobTree(
+  target: GitHubTarget,
+  scope: string,
+  options: PreflightOptions,
+): Promise<TreePayload> {
+  const lang = options.lang ?? 'zh-CN';
+  const { owner, repo, ref } = target;
+  const url = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${encodeContentsPath(scope)}?ref=${encodeURIComponent(ref)}`;
+  const response = await requestGitHub(url, { token: options.token, lang });
+  const blob = parseBlobPayload(await readJson(response, lang), lang);
+  return {
+    tree: [{ path: scope, mode: '100644', type: 'blob', sha: blob.sha, size: blob.size }],
+    truncated: false,
+  };
+}
+
+/**
+ * Resolve a directory scope to the tree SHA Git addresses it by.
+ *
+ * Each step reads one non-recursive listing, whose child paths are relative to
+ * the tree being read, so the walk matches a single segment at a time.
+ */
+async function resolveSubtreeSha(
+  target: GitHubTarget,
+  scope: string,
+  options: PreflightOptions,
+): Promise<string> {
+  const lang = options.lang ?? 'zh-CN';
+  let sha = target.ref;
+  for (const segment of scope.split('/')) {
+    const url = treeUrl(target.owner, target.repo, sha, false);
+    const response = await requestGitHub(url, { token: options.token, lang });
+    const payload = parseTreePayload(await readJson(response, lang), lang);
+    const entry = payload.tree.find((item) => item.path === segment && item.type === 'tree');
+    if (entry === undefined) {
+      throw new DomainError('REPO_NOT_FOUND', t('privateRepoNotice', lang));
+    }
+    sha = entry.sha;
+  }
+  return sha;
+}
+
+/**
+ * Recursive tree for a directory scope, re-prefixed with that scope.
+ *
+ * Scoping the request to the subtree makes GitHub's truncation flag describe
+ * the files that are actually ingested.
+ */
+async function fetchSubtreeTree(
+  target: GitHubTarget,
+  scope: string,
+  options: PreflightOptions,
+): Promise<TreePayload> {
+  const lang = options.lang ?? 'zh-CN';
+  const sha = await resolveSubtreeSha(target, scope, options);
+  const url = treeUrl(target.owner, target.repo, sha, true);
+  const response = await requestGitHub(url, { token: options.token, lang });
+  const payload = parseTreePayload(await readJson(response, lang), lang);
+  return {
+    tree: payload.tree.map((item) => ({ ...item, path: `${scope}/${item.path}` })),
+    truncated: payload.truncated,
+  };
+}
+
 /** Repository-relative scope without leading or trailing slashes. */
 function toScopePath(subpath: string): string {
   return subpath.replace(/^\/+|\/+$/g, '');
@@ -167,8 +272,12 @@ async function fetchTree(
   options: PreflightOptions = {},
 ): Promise<TreePayload> {
   const lang = options.lang ?? 'zh-CN';
-  const ref = encodeGitRef(target.ref);
-  const url = `https://api.github.com/repos/${encodeURIComponent(target.owner)}/${encodeURIComponent(target.repo)}/git/trees/${ref}?recursive=1`;
+  const scope = toScopePath(target.subpath);
+  if (scope !== '' && target.type === 'blob') {
+    return fetchBlobTree(target, scope, options);
+  }
+  if (scope !== '') return fetchSubtreeTree(target, scope, options);
+  const url = treeUrl(target.owner, target.repo, target.ref, true);
   const response = await requestGitHub(url, { token: options.token, lang });
   return parseTreePayload(await readJson(response, lang), lang);
 }
@@ -246,7 +355,14 @@ function buildReport(
   };
 }
 
-/** Run one metadata request (plus optional branch resolution) before content. */
+/**
+ * Resolve metadata before content.
+ *
+ * A repository scope costs one recursive tree request. A directory scope walks
+ * to its subtree and then reads one recursive tree there, so truncation
+ * describes the ingested directory. A blob scope costs one contents lookup and
+ * never requests a tree.
+ */
 export async function preflightRepository(
   target: GitHubTarget,
   options: PreflightOptions = {},
