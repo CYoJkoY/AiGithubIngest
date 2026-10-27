@@ -117,6 +117,7 @@ export const translations = {
     parseIgnoredAction: '已忽略非代码树链接 (/{action})',
     parseUnsupportedAction: '未匹配到受支持的 GitHub 代码目录 (tree) 或文件 (blob) 路径',
     parseMissingRef: '缺少具体的分支或代码引用路径',
+    parseUnsafePath: 'GitHub 路径包含不安全的路径片段',
 
     // Standalone Web UI
     standaloneExtracting: '提取中...',
@@ -259,6 +260,7 @@ export const translations = {
     parseUnsupportedAction:
       'Supported GitHub code directory (tree) or file (blob) path not matched',
     parseMissingRef: 'Missing specific branch or code reference path',
+    parseUnsafePath: 'GitHub path contains an unsafe path segment',
 
     // Standalone Web UI
     standaloneExtracting: 'Extracting...',

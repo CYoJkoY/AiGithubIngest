@@ -7,6 +7,21 @@ export interface RepoTarget {
   readonly canonicalUrl: string;
 }
 
+/** Semantic granularity of a GitHub URL. */
+export type GitHubUrlType = 'repo_root' | 'branch_root' | 'subpath' | 'blob';
+
+/** Parsed GitHub target with resolved URL granularity. */
+export interface GitHubTarget {
+  readonly owner: string;
+  readonly repo: string;
+  /** Empty when the repository default branch still needs to be resolved. */
+  readonly ref: string;
+  /** Repository-relative path prefixed with `/`; `/` for roots. */
+  readonly subpath: string;
+  readonly type: GitHubUrlType;
+  readonly canonicalUrl: string;
+}
+
 export interface GitTreeItem {
   readonly path: string;
   readonly mode: string;
