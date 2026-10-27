@@ -1,11 +1,12 @@
 import { ingestRepository } from '../core/ingest';
 import { DomainError } from '../core/errors';
-import { ExtensionResponse, StorageSchema } from '../types';
+import { ExtensionMessage, ExtensionResponse, StorageSchema } from '../types';
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message: ExtensionMessage, _sender, sendResponse) => {
   if (message.type !== 'INGEST_REPO') return false;
 
-  const targetUrl = message.payload?.url;
+  const payload = message.payload;
+  const targetUrl = payload?.url;
   if (!targetUrl || typeof targetUrl !== 'string') {
     sendResponse({
       success: false,
@@ -19,7 +20,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     const token = config.githubToken;
     const lang = config.lang || 'zh-CN';
 
-    ingestRepository(targetUrl, { token, lang })
+    ingestRepository(targetUrl, {
+      token,
+      lang,
+      forceStrategy: payload?.forceStrategy,
+      subpath: payload?.subpath,
+      maxTokenBudget: payload?.maxTokenBudget,
+    })
       .then((summary) => {
         sendResponse({ success: true, payload: summary } as ExtensionResponse);
       })

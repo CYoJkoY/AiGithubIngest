@@ -34,3 +34,39 @@ export const DEFAULT_DIGEST_SEND_MODE: DigestSendMode = 'real-file';
  * never overrides an explicit user choice.
  */
 export const PSEUDO_MODE_ADVISE_BYTES = 2 * MB;
+
+/** Maximum enabled files for a direct full digest. */
+export const FULL_INGEST_MAX_FILES = 50;
+
+/** Maximum files for an automatic subpath digest. */
+export const SUBPATH_INGEST_MAX_FILES = 80;
+
+/** Estimated token ceiling for a direct full digest. */
+export const FULL_INGEST_MAX_TOKENS = 60_000;
+
+/** Coarse byte-to-token ratio used before raw content is downloaded. */
+export const BYTES_PER_TOKEN = 3.8;
+
+/** Hard cap for a single raw file body. */
+export const RAW_FILE_SIZE_CAP_BYTES = 60 * KB;
+
+/** Concurrent raw content requests. */
+export const RAW_FETCH_CONCURRENCY = 6;
+
+/** Maximum files listed in the skeleton file index. */
+export const SKELETON_INDEX_LIMIT = 200;
+
+/** Maximum entrypoint excerpts included in a skeleton digest. */
+export const SKELETON_ENTRY_LIMIT = 5;
+
+/** Maximum configuration files included in a skeleton digest. */
+export const SKELETON_CONFIG_LIMIT = 8;
+
+/** Characters kept from each entrypoint excerpt. */
+export const SKELETON_ENTRY_EXCERPT_CHARS = 4000;
+
+/** How long a ready status pill stays visible before fading out. */
+export const STATUS_PILL_FADE_MS = 3000;
+
+/** Long-running ingest heartbeat that refreshes the guard watchdog. */
+export const INGEST_HEARTBEAT_MS = 5000;

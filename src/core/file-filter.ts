@@ -18,6 +18,8 @@ export const DEFAULT_IGNORE_PATTERNS = new Set<string>([
   'bower_components',
   'package-lock.json',
   'yarn.lock',
+  'go.sum',
+  'composer.lock',
   '.npm',
   '.yarn',
   '.pnpm-store',
@@ -34,7 +36,6 @@ export const DEFAULT_IGNORE_PATTERNS = new Set<string>([
   'build',
   '.settings',
   '.classpath',
-  '*.gradle',
   '.project',
   // C / C++ / Native
   '*.o',
@@ -87,6 +88,9 @@ export const DEFAULT_IGNORE_PATTERNS = new Set<string>([
   '*.mp4',
   '*.mp3',
   '*.wav',
+  '*.woff',
+  '*.woff2',
+  '*.wasm',
   '*.webp',
   '*.bmp',
   '*.avif',
@@ -118,6 +122,13 @@ export const DEFAULT_IGNORE_PATTERNS = new Set<string>([
   '.cache',
   '.turbo',
   'coverage',
+  'temp',
+  // Test suites are metadata-only by default; source code stays in context.
+  'tests',
+  'test',
+  '__tests__',
+  '*.test.*',
+  '*.spec.*',
   // Databases
   '*.db',
   '*.sqlite',
@@ -135,21 +146,49 @@ export function matchGlob(path: string, pattern: string): boolean {
 
   if (cleanPat === cleanPath) return true;
 
-  // 转换 glob 语法至正则表达式
-  const regexStr =
-    '^' +
-    cleanPat
-      .replace(/\./g, '\\.')
-      .replace(/\*\*/g, '.*')
-      .replace(/(?<!\.)\*/g, '[^/]*')
-      .replace(/\?/g, '[^/]') +
-    '$';
-
   try {
-    return new RegExp(regexStr, 'i').test(cleanPath);
+    return new RegExp(`^${globToRegexBody(cleanPat)}$`, 'i').test(cleanPath);
   } catch {
     return false;
   }
+}
+
+const REGEX_SPECIAL_CHARS = new Set<string>([
+  '.',
+  '+',
+  '^',
+  '$',
+  '{',
+  '}',
+  '(',
+  ')',
+  '|',
+  '[',
+  ']',
+  '\\',
+]);
+
+/** Translate glob syntax into a regex body; `*` stays inside one path segment. */
+function globToRegexBody(pattern: string): string {
+  let body = '';
+  for (let index = 0; index < pattern.length; index += 1) {
+    const char = pattern[index];
+    if (char === '*') {
+      if (pattern[index + 1] === '*') {
+        body += '.*';
+        index += 1;
+      } else {
+        body += '[^/]*';
+      }
+      continue;
+    }
+    if (char === '?') {
+      body += '[^/]';
+      continue;
+    }
+    body += REGEX_SPECIAL_CHARS.has(char) ? `\\${char}` : char;
+  }
+  return body;
 }
 
 export function shouldIncludeFile(

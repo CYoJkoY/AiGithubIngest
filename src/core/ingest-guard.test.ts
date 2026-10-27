@@ -32,4 +32,24 @@ describe('IngestGuard', () => {
     expect(guard.tryAcquire()).toBe(true);
     guard.dispose();
   });
+
+  it('refresh extends the watchdog for a lock already held', () => {
+    const guard = new IngestGuard();
+    expect(guard.tryAcquire()).toBe(true);
+    vi.advanceTimersByTime(12_000);
+    guard.refresh();
+    vi.advanceTimersByTime(12_000);
+    // Still locked: the refreshed watchdog has not fired yet.
+    expect(guard.tryAcquire()).toBe(false);
+    vi.advanceTimersByTime(4_000);
+    expect(guard.tryAcquire()).toBe(true);
+    guard.dispose();
+  });
+
+  it('refresh on an unheld lock does not arm a watchdog', () => {
+    const guard = new IngestGuard();
+    guard.refresh();
+    expect(guard.tryAcquire()).toBe(true);
+    guard.dispose();
+  });
 });

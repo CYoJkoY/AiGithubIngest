@@ -9,6 +9,21 @@ const target: RepoTarget = {
   subpath: '/',
 };
 
+function isHighSurrogate(code: number): boolean {
+  return code >= 0xd800 && code <= 0xdbff;
+}
+
+function isLowSurrogate(code: number): boolean {
+  return code >= 0xdc00 && code <= 0xdfff;
+}
+
+function loneSurrogateAtEdge(value: string): boolean {
+  if (value.length === 0) return false;
+  const last = value.charCodeAt(value.length - 1);
+  const first = value.charCodeAt(0);
+  return isHighSurrogate(last) || isLowSurrogate(first);
+}
+
 describe('OutputFormatter.createSummaryPrefix', () => {
   it('omits branch line for main/master', () => {
     const prefix = OutputFormatter.createSummaryPrefix(target, 'main', 5, '1.2k');
@@ -91,5 +106,70 @@ describe('OutputFormatter.splitIntoParts', () => {
     const parts = OutputFormatter.splitIntoParts(prefix, 'tree\n', files, 100_000, 'foo_bar');
     expect(parts).toHaveLength(1);
     expect(parts[0].content).toContain('[Binary file]');
+  });
+});
+
+describe('OutputFormatter.splitRenderedOutput', () => {
+  it('keeps a fitting digest in one file', () => {
+    const parts = OutputFormatter.splitRenderedOutput('# Repo\nbody\n', 4096, 'foo_bar');
+
+    expect(parts).toHaveLength(1);
+    expect(parts[0].fileName).toBe('foo_bar.md');
+    expect(parts[0].content).toBe('# Repo\nbody\n');
+  });
+
+  it('is lossless across parts', () => {
+    const content = Array.from({ length: 400 }, (_, i) => `line ${i}: ${'v'.repeat(40)}`).join(
+      '\n',
+    );
+    const parts = OutputFormatter.splitRenderedOutput(content, 2048, 'foo_bar');
+
+    expect(parts.length).toBeGreaterThan(1);
+    expect(parts.map((part) => part.content).join('')).toBe(content);
+    expect(parts[0].fileName).toBe(`foo_bar.part1of${parts.length}.md`);
+  });
+
+  it('never splits a surrogate pair', () => {
+    const content = '😀'.repeat(400);
+    const parts = OutputFormatter.splitRenderedOutput(content, 1001, 'emoji');
+
+    expect(parts.length).toBeGreaterThan(1);
+    expect(parts.map((part) => part.content).join('')).toBe(content);
+    for (const part of parts) {
+      expect(loneSurrogateAtEdge(part.content)).toBe(false);
+    }
+  });
+
+  it('still makes progress under a tiny byte budget', () => {
+    const parts = OutputFormatter.splitRenderedOutput('abcdef', 1, 'tiny');
+
+    expect(parts.map((part) => part.content).join('')).toBe('abcdef');
+    expect(parts.every((part) => part.content.length > 0)).toBe(true);
+  });
+
+  it('treats non-positive or non-finite limits as one byte', () => {
+    expect(OutputFormatter.splitRenderedOutput('ab', 0, 'zero').length).toBe(2);
+    expect(OutputFormatter.splitRenderedOutput('', Number.NaN, 'empty')).toEqual([
+      { fileName: 'empty.md', content: '', sizeBytes: 0 },
+    ]);
+  });
+
+  it('keeps newline boundaries when they fit', () => {
+    const content = 'a'.repeat(40) + '\n' + 'b'.repeat(40) + '\n';
+    const parts = OutputFormatter.splitRenderedOutput(content, 41, 'lines');
+
+    expect(parts[0].content.endsWith('\n')).toBe(true);
+    expect(parts.map((part) => part.content).join('')).toBe(content);
+  });
+
+  it('never cuts on a newline that sits past the byte budget', () => {
+    const content = 'a'.repeat(40) + '\n' + 'b'.repeat(40) + '\n' + 'c';
+    const parts = OutputFormatter.splitRenderedOutput(content, 40, 'tight');
+
+    expect(parts.length).toBeGreaterThan(1);
+    expect(parts.map((part) => part.content).join('')).toBe(content);
+    for (const part of parts) {
+      expect(part.sizeBytes).toBeLessThanOrEqual(40);
+    }
   });
 });

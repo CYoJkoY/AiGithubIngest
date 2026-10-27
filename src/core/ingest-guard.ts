@@ -8,11 +8,22 @@ export class IngestGuard {
   tryAcquire(): boolean {
     if (this.isProcessing) return false;
     this.isProcessing = true;
+    this.armWatchdog();
+    return true;
+  }
+
+  /** Restart the watchdog for a lock this guard already holds. */
+  refresh(): void {
+    if (!this.isProcessing) return;
+    this.armWatchdog();
+  }
+
+  private armWatchdog(): void {
+    if (this.watchdogTimer) clearTimeout(this.watchdogTimer);
     this.watchdogTimer = setTimeout(() => {
       logger.warn('IngestGuard watchdog timeout, resetting lock');
       this.reset();
     }, INGEST_TIMEOUT_MS);
-    return true;
   }
 
   reset(): void {
