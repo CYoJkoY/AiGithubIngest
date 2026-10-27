@@ -52,6 +52,22 @@ try {
   }
 
   // ---------------------------------------------------------------------------
+  // 1.1 Permission contract guard.
+  // The popup reads the active tab URL through chrome.tabs.query, which only
+  // exposes tab.url while the activeTab grant is in effect. Fail the build
+  // instead of shipping a manifest that silently breaks the site section.
+  // ---------------------------------------------------------------------------
+  const declaredPermissions = Array.isArray(manifest.permissions)
+    ? manifest.permissions
+    : [];
+
+  if (!declaredPermissions.includes("activeTab")) {
+    throw new Error(
+      "[Permission Guard] manifest.permissions must include activeTab so the popup can read the current tab URL.",
+    );
+  }
+
+  // ---------------------------------------------------------------------------
   // 2. 编译打包 TypeScript 入口为原生独立 bundle
   // ---------------------------------------------------------------------------
   await esbuild.build({

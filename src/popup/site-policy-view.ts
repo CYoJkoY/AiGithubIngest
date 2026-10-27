@@ -14,15 +14,15 @@ export async function renderSitePolicy(
   const toggleBtn = document.getElementById('toggle-btn') as HTMLButtonElement;
   const blacklistCurrentBtn = document.getElementById('blacklist-current-btn') as HTMLButtonElement;
 
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab?.url) {
+  const url = await resolveActiveTabUrl();
+  if (!url) {
     showCantGetDomain(domainEl, toggleBtn, blacklistCurrentBtn, currentLang);
     return;
   }
 
   let hostname: string;
   try {
-    hostname = new URL(tab.url).hostname;
+    hostname = new URL(url).hostname;
   } catch (err) {
     logger.debug('renderSitePolicy: invalid tab URL', err);
     showCantGetDomain(domainEl, toggleBtn, blacklistCurrentBtn, currentLang);
@@ -52,6 +52,23 @@ export async function renderSitePolicy(
     onUpdate,
     reloadTab,
   });
+}
+
+/**
+ * Read the active tab URL, degrading to `null` when Chrome refuses the query.
+ *
+ * The URL is only exposed while the `activeTab` grant is in effect, so a
+ * rejected or URL-less response must fall through to the localized notice
+ * instead of leaving the section stuck on "Checking...".
+ */
+async function resolveActiveTabUrl(): Promise<string | null> {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    return tab?.url ? tab.url : null;
+  } catch (err) {
+    logger.debug('renderSitePolicy: tabs.query failed', err);
+    return null;
+  }
 }
 
 function updateBadgeContent(badgeEl: HTMLElement, text: string, variantClass: string): void {
