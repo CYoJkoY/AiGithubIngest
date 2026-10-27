@@ -109,17 +109,24 @@ function buildDigestParts(summary: IngestSummary): DigestPart[] {
   const { owner, repo } = extractOwnerRepo(summary.repoInfo.canonicalUrl);
   const baseName = `${owner}_${repo}`;
 
+  const limit = resolveSiteLimit(
+    window.location.hostname,
+    cachedSiteFileSizeLimits,
+    cachedDefaultFileSizeLimit,
+  );
+
+  // Skeleton output is already rendered Markdown with its own note, configs,
+  // readme, and file index. Rebuilding it from the fetched subset would drop
+  // those sections, so split the rendered digest as-is.
+  if (summary.strategy === 'skeleton') {
+    return OutputFormatter.splitRenderedOutput(summary.formattedOutput, limit, baseName);
+  }
+
   const summaryPrefix = OutputFormatter.createSummaryPrefix(
     summary.repoInfo,
     summary.resolvedBranch,
     summary.files.length,
     summary.estimatedTokens,
-  );
-
-  const limit = resolveSiteLimit(
-    window.location.hostname,
-    cachedSiteFileSizeLimits,
-    cachedDefaultFileSizeLimit,
   );
 
   return OutputFormatter.splitIntoParts(
