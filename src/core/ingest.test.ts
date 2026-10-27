@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { GitHubTarget } from '../types';
-import { normalizeSubpath, withSubpathOverride } from './ingest';
+import { ingestRepository, normalizeSubpath, withSubpathOverride } from './ingest';
 
 function target(overrides: Partial<GitHubTarget> = {}): GitHubTarget {
   return {
@@ -70,5 +70,46 @@ describe('withSubpathOverride', () => {
 
   it('rejects a traversal override before any request', () => {
     expect(() => withSubpathOverride(target(), '../etc', 'en')).toThrowError();
+  });
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe('ingestRepository forced full budget', () => {
+  it('budgets metadata before fetching and reports omitted files', async () => {
+    const calls: string[] = [];
+    const tree = {
+      tree: ['a.ts', 'b.ts', 'c.ts'].map((path) => ({
+        path,
+        mode: '100644',
+        type: 'blob',
+        sha: 'x',
+        size: 4000,
+      })),
+      truncated: false,
+    };
+    vi.stubGlobal('fetch', (input: RequestInfo | URL) => {
+      const url = String(input);
+      calls.push(url);
+      if (url.includes('/git/trees/')) {
+        return Promise.resolve(new Response(JSON.stringify(tree), { status: 200 }));
+      }
+      return Promise.resolve(new Response('x'.repeat(4000), { status: 200 }));
+    });
+
+    const summary = await ingestRepository('https://github.com/o/r/tree/main', {
+      forceStrategy: 'full',
+      maxTokenBudget: 1100,
+      lang: 'en',
+    });
+
+    const rawCalls = calls.filter((url) => url.startsWith('https://raw.githubusercontent.com/'));
+    expect(rawCalls).toEqual(['https://raw.githubusercontent.com/o/r/main/a.ts']);
+    expect(summary.strategy).toBe('full');
+    expect(summary.files.map((file) => file.path)).toEqual(['a.ts']);
+    expect(summary.omittedFiles).toBe(2);
+    expect(summary.truncated).toBe(true);
   });
 });

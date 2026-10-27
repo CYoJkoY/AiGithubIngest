@@ -80,45 +80,67 @@ function subsetForSkeleton(report: PreflightReport): readonly FileMetadata[] {
 interface BodyFetch {
   readonly files: readonly IngestFileResult[];
   readonly truncated: boolean;
+  /** Metadata rows dropped because a forced full digest exceeded its budget. */
+  readonly omitted: number;
 }
 
+/**
+ * Fetch bodies for the selected strategy.
+ *
+ * A forced full digest is budgeted on metadata before downloading, so files
+ * outside the token ceiling are never fetched. Every other path fetches the
+ * full scope, or the skeleton subset, as before.
+ */
 async function fetchBodies(
   report: PreflightReport,
   strategy: IngestStrategyType,
   options: IngestOptions,
   lang: SupportedLang,
 ): Promise<BodyFetch> {
-  const requested = strategy === 'skeleton' ? subsetForSkeleton(report) : report.validFiles;
-  if (requested.length === 0) return { files: [], truncated: false };
+  const contentLimit = resolveContentLimitBytes(options.maxFileSizeKb);
+  const budgeted =
+    options.forceStrategy === 'full' && strategy === 'full'
+      ? applyTokenBudget(report.validFiles, options.maxTokenBudget, contentLimit)
+      : { files: report.validFiles, omitted: 0 };
+  const requested = strategy === 'skeleton' ? subsetForSkeleton(report) : budgeted.files;
+  if (requested.length === 0) {
+    return { files: [], truncated: false, omitted: budgeted.omitted };
+  }
 
   const result = await fetchRawFiles(report.target, requested, {
     token: options.token,
-    maxBytes: resolveContentLimitBytes(options.maxFileSizeKb),
+    maxBytes: contentLimit,
     lang,
     onProgress: (completed, total) => {
       options.onProgress?.(t('stepFetchingFiles', lang), completed, total);
     },
   });
-  return { files: result.files, truncated: result.truncated > 0 };
+  return { files: result.files, truncated: result.truncated > 0, omitted: budgeted.omitted };
 }
 
 interface BudgetSlice {
-  readonly files: readonly IngestFileResult[];
+  readonly files: readonly FileMetadata[];
   readonly omitted: number;
 }
 
-/** Keep files in path order until the next one would cross the token budget. */
+/**
+ * Keep files in path order until the next one would cross the token budget.
+ * Each file is costed at its resolved content limit, which is the most it can
+ * contribute after fetching.
+ */
 function applyTokenBudget(
-  files: readonly IngestFileResult[],
+  files: readonly FileMetadata[],
   maxTokenBudget: number | undefined,
+  contentLimit: number,
 ): BudgetSlice {
   if (maxTokenBudget === undefined || !Number.isFinite(maxTokenBudget) || maxTokenBudget <= 0) {
     return { files, omitted: 0 };
   }
-  const kept: IngestFileResult[] = [];
+  const kept: FileMetadata[] = [];
   let bytes = 0;
   for (let index = 0; index < files.length; index += 1) {
-    const nextBytes = bytes + Math.max(0, files[index].size);
+    const cost = Math.min(Math.max(0, files[index].size), contentLimit);
+    const nextBytes = bytes + cost;
     if (estimateTokensFromBytes(nextBytes) > maxTokenBudget) {
       return { files: kept, omitted: files.length - index };
     }
@@ -159,35 +181,29 @@ interface TreeDigestInput {
   readonly report: PreflightReport;
   readonly files: readonly IngestFileResult[];
   readonly treeVisual: string;
-  readonly options: IngestOptions;
-  readonly strategy: IngestStrategyType;
+  readonly omitted: number;
   readonly lang: SupportedLang;
 }
 
 function buildTreeDigest(input: TreeDigestInput): DigestResult {
-  const { report, files, treeVisual, options, strategy, lang } = input;
-  const budgeted =
-    options.forceStrategy === 'full' && strategy === 'full'
-      ? applyTokenBudget(files, options.maxTokenBudget)
-      : { files, omitted: 0 };
-  const delivered = budgeted.files;
-  const estimatedTokens = formatTokenCount(treeVisual + joinBodies(delivered));
+  const { report, files, treeVisual, omitted, lang } = input;
+  const estimatedTokens = formatTokenCount(treeVisual + joinBodies(files));
   const prefix = OutputFormatter.createSummaryPrefix(
     toRepoTarget(report.target),
     report.target.ref,
-    delivered.length,
+    files.length,
     estimatedTokens,
   );
-  let formattedOutput = OutputFormatter.buildFullDigest(prefix, treeVisual, delivered);
-  if (budgeted.omitted > 0) {
-    formattedOutput += `\n${t('forcedFullOmittedNote', lang, { count: budgeted.omitted })}\n`;
+  let formattedOutput = OutputFormatter.buildFullDigest(prefix, treeVisual, files);
+  if (omitted > 0) {
+    formattedOutput += `\n${t('forcedFullOmittedNote', lang, { count: omitted })}\n`;
   }
   return {
-    files: delivered,
+    files,
     formattedOutput,
     estimatedTokens,
-    truncated: budgeted.omitted > 0,
-    omitted: budgeted.omitted,
+    truncated: omitted > 0,
+    omitted,
     treeVisual,
   };
 }
@@ -196,14 +212,14 @@ function buildDigest(
   report: PreflightReport,
   files: readonly IngestFileResult[],
   strategy: IngestStrategyType,
-  options: IngestOptions,
+  omitted: number,
   lang: SupportedLang,
 ): DigestResult {
   const treeVisual = renderTree(report);
   if (strategy === 'skeleton') {
     return buildSkeletonDigest(report, files, treeVisual, lang);
   }
-  return buildTreeDigest({ report, files, treeVisual, options, strategy, lang });
+  return buildTreeDigest({ report, files, treeVisual, omitted, lang });
 }
 
 function assertStrategyScope(
@@ -254,7 +270,7 @@ export async function ingestRepository(
   options.onProgress?.(t('stepBuildingTree', lang), 95, 100);
   if (strategy === 'skeleton') options.onProgress?.(t('stepSynthesizing', lang), 98, 100);
 
-  const digest = buildDigest(report, bodies.files, strategy, options, lang);
+  const digest = buildDigest(report, bodies.files, strategy, bodies.omitted, lang);
   return {
     repoInfo: toRepoTarget(report.target),
     resolvedBranch: report.target.ref,
